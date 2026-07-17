@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Каталог</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <style>
+    body {
+      background-color: #f3f4f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 80px;
+    }
+  </style>
+</head>
+
+<body class="text-gray-800">
+  <div id="loading-screen" class="fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-50">
+    <div class="text-gray-400 text-sm">Загрузка...</div>
+  </div>
+
+  <div id="access-denied-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
+    <div class="text-center" style="font-family: monospace; font-size: 12px; word-break: break-all; text-align: left;">
+      <p><b>Доступ не подтверждён.</b></p>
+      <p id="debug-tg-exists"></p>
+      <p id="debug-init-data"></p>
+    </div>
+  </div>
+
+  <div id="app-content" class="hidden">
+    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
+      <a href="index.html" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="arrow-left" class="w-6 h-6"></i>
+      </a>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Каталог</h1>
+      <button id="add-sku-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="plus" class="w-6 h-6"></i>
+      </button>
+    </header>
+
+    <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
+        <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
+        <input type="text" id="catalog-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по каталогу..." autocomplete="off">
+      </div>
+
+      <div class="text-[11px] text-gray-400 px-1 mb-2" id="catalog-count"></div>
+
+      <div id="catalog-list"></div>
+      <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Позиции не найдены</div>
+    </main>
+
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <a href="index.html" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="home" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Главная</span>
+      </a>
+      <a href="orders.html" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="list" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Заказы</span>
+      </a>
+      <a href="catalog.html" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-indigo-600 pb-2 h-full">
+        <i data-lucide="layers" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Каталог</span>
+      </a>
+      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="bell" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Напоминания</span>
+      </a>
+      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="user-circle" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Профиль</span>
+      </a>
+    </nav>
+  </div>
+
+  <!-- Модальное окно создания/редактирования позиции каталога (тот же контракт, что в index.html) -->
+  <div id="create-sku-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="sku-modal-title" class="text-base font-semibold text-gray-900">Новая позиция каталога</h2>
+        <button id="create-sku-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Выпуск *</label>
+          <input type="text" id="sku-original-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Полное название">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
+          <input type="text" id="sku-short-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Бренд</label>
+          <input type="text" id="sku-brand-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Персонаж</label>
+          <input type="text" id="sku-character-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Серия</label>
+          <input type="text" id="sku-series-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Ссылка</label>
+          <input type="text" id="sku-link-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+        </div>
+        <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
+        <div id="sku-merge-conflict" class="hidden"></div>
+      </div>
+      <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="sku-delete-btn" class="hidden px-3 py-2.5 rounded-xl border border-red-200 text-red-600">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+        <button id="create-sku-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="create-sku-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    initAccessCheck(initApp);
+
+    function initApp() {
+      let allSku = [];
+
+      const listContainer = document.getElementById('catalog-list');
+      const emptyMessage = document.getElementById('empty-message');
+      const searchInput = document.getElementById('catalog-search');
+      const countLabel = document.getElementById('catalog-count');
+
+      loadCatalog();
+
+      // Загружает полный список каталога с сервера (из кэша) и перерисовывает
+      async function loadCatalog() {
+        listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка каталога...</div>';
+        try {
+          allSku = await callServer('getCatalogList');
+          render();
+        } catch (error) {
+          listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
+        }
+      }
+
+      const handleSearch = debounce(() => render(), 250);
+      searchInput.addEventListener('input', handleSearch);
+
+      // Фильтрация по всем текстовым полям — целиком на клиенте, список уже загружен
+      function render() {
+        const query = searchInput.value.trim().toLowerCase();
+
+        let filtered = allSku;
+        if (query !== '') {
+          filtered = allSku.filter(s => {
+            const haystack = `${s.original} ${s.shortName} ${s.brand} ${s.character} ${s.series}`.toLowerCase();
+            return haystack.includes(query);
+          });
+        }
+
+        countLabel.textContent = `Найдено: ${filtered.length}`;
+        listContainer.innerHTML = '';
+
+        if (filtered.length === 0) {
+          emptyMessage.classList.remove('hidden');
+        } else {
+          emptyMessage.classList.add('hidden');
+          filtered.forEach(s => listContainer.appendChild(buildCard(s)));
+        }
+      }
+
+      // Карточка позиции — клик открывает редактирование
+      function buildCard(s) {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors';
+        card.addEventListener('click', () => openSkuModal('edit', s.original));
+
+        const tags = [s.brand, s.character, s.series].filter(t => t !== '');
+
+        card.innerHTML = `
+          <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.shortName || s.original)}</div>
+          ${s.shortName && s.shortName !== s.original ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(s.original)}</div>` : ''}
+          ${tags.length > 0 ? `<div class="flex flex-wrap gap-1.5 mt-2">${tags.map(t => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
+        `;
+        return card;
+      }
+
+      document.getElementById('add-sku-btn').addEventListener('click', () => openSkuModal('create'));
+
+      // --- Модальное окно создания/редактирования SKU ---
+      let skuModalMode = 'create';
+      let skuModalOldOriginal = null;
+
+      async function openSkuModal(mode, original) {
+        skuModalMode = mode;
+        skuModalOldOriginal = original || null;
+
+        document.getElementById('sku-error-text').classList.add('hidden');
+        document.getElementById('sku-merge-conflict').classList.add('hidden');
+        document.getElementById('create-sku-save').classList.remove('hidden');
+
+        const titleEl = document.getElementById('sku-modal-title');
+        const deleteBtn = document.getElementById('sku-delete-btn');
+        const saveBtn = document.getElementById('create-sku-save');
+
+        if (mode === 'edit') {
+          titleEl.textContent = 'Редактирование позиции';
+          saveBtn.textContent = 'Сохранить изменения';
+          deleteBtn.classList.remove('hidden');
+
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
+
+          try {
+            const details = await callServer('getSkuDetails', original);
+            document.getElementById('sku-original-input').value = details.original;
+            document.getElementById('sku-short-input').value = details.shortName;
+            document.getElementById('sku-brand-input').value = details.brand;
+            document.getElementById('sku-character-input').value = details.character;
+            document.getElementById('sku-series-input').value = details.series;
+            document.getElementById('sku-link-input').value = details.link;
+          } catch (error) {
+            const errorText = document.getElementById('sku-error-text');
+            errorText.textContent = error.message;
+            errorText.classList.remove('hidden');
+          }
+        } else {
+          titleEl.textContent = 'Новая позиция каталога';
+          saveBtn.textContent = 'Сохранить';
+          deleteBtn.classList.add('hidden');
+          ['sku-original-input','sku-short-input','sku-brand-input','sku-character-input','sku-series-input','sku-link-input']
+            .forEach(id => { document.getElementById(id).value = ''; });
+
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
+        }
+      }
+
+      function closeSkuModal() {
+        document.getElementById('create-sku-modal').classList.add('hidden');
+        document.getElementById('create-sku-modal').classList.remove('flex');
+      }
+
+      function showMergeConflict(existing, incoming) {
+        document.getElementById('create-sku-save').classList.add('hidden');
+        const box = document.getElementById('sku-merge-conflict');
+        box.classList.remove('hidden');
+        box.innerHTML = `
+          <p class="text-xs text-amber-700 mb-2 px-1">Позиция «${escapeHtmlClient(incoming.original)}» уже есть в каталоге. Выберите, какую версию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
+          <div class="space-y-2">
+            <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepExisting">
+              <b>Оставить старую:</b> ${escapeHtmlClient(existing.shortName || existing.original)}
+            </button>
+            <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepNew">
+              <b>Оставить новую версию:</b> ${escapeHtmlClient(incoming.shortName || incoming.original)}
+            </button>
+          </div>
+        `;
+        box.querySelectorAll('.merge-choice-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const skuData = {
+              original: document.getElementById('sku-original-input').value.trim(),
+              shortName: document.getElementById('sku-short-input').value.trim(),
+              brand: document.getElementById('sku-brand-input').value.trim(),
+              character: document.getElementById('sku-character-input').value.trim(),
+              series: document.getElementById('sku-series-input').value.trim(),
+              link: document.getElementById('sku-link-input').value.trim()
+            };
+            try {
+              await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
+              closeSkuModal();
+              loadCatalog();
+            } catch (error) {
+              const errorText = document.getElementById('sku-error-text');
+              errorText.textContent = error.message;
+              errorText.classList.remove('hidden');
+            }
+          });
+        });
+      }
+
+      document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
+      document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
+
+      document.getElementById('sku-delete-btn').addEventListener('click', async () => {
+        if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
+        if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
+
+        const errorText = document.getElementById('sku-error-text');
+        try {
+          await callServer('deleteSku', skuModalOldOriginal);
+          closeSkuModal();
+          loadCatalog();
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('create-sku-save').addEventListener('click', async () => {
+        const original = document.getElementById('sku-original-input').value.trim();
+        const errorText = document.getElementById('sku-error-text');
+        errorText.classList.add('hidden');
+
+        if (original === '') {
+          errorText.textContent = 'Поле «Выпуск» обязательно для заполнения.';
+          errorText.classList.remove('hidden');
+          return;
+        }
+
+        const skuData = {
+          original: original,
+          shortName: document.getElementById('sku-short-input').value.trim(),
+          brand: document.getElementById('sku-brand-input').value.trim(),
+          character: document.getElementById('sku-character-input').value.trim(),
+          series: document.getElementById('sku-series-input').value.trim(),
+          link: document.getElementById('sku-link-input').value.trim()
+        };
+
+        try {
+          if (skuModalMode === 'create') {
+            await callServer('createSku', skuData);
+            closeSkuModal();
+            loadCatalog();
+          } else {
+            const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
+            if (result.status === 'conflict') {
+              showMergeConflict(result.existing, result.incoming);
+            } else {
+              closeSkuModal();
+              loadCatalog();
+            }
+          }
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+    }
+  </script>
+</body>
+
+</html>
