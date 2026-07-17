@@ -365,6 +365,11 @@
         <i data-lucide="list" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Заказы</span>
       </a>
+      <a href="catalog.html"
+        class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="layers" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Каталог</span>
+      </a>
       <div class="flex-1 relative h-full flex flex-col items-center justify-end pb-2">
         <a href="#"
           class="absolute -top-5 bg-indigo-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:scale-105 transition-transform">
@@ -389,7 +394,7 @@
   <div id="create-sku-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
       <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-gray-900">Новая позиция каталога</h2>
+        <h2 id="sku-modal-title" class="text-base font-semibold text-gray-900">Новая позиция каталога</h2>
         <button id="create-sku-close" class="p-1 text-gray-400 hover:text-gray-600">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
@@ -420,8 +425,12 @@
           <input type="text" id="sku-link-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
         </div>
         <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
+        <div id="sku-merge-conflict" class="hidden"></div>
       </div>
       <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="sku-delete-btn" class="hidden px-3 py-2.5 rounded-xl border border-red-200 text-red-600">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
         <button id="create-sku-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
         <button id="create-sku-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
       </div>
@@ -626,7 +635,12 @@
 
             const results = await searchReleaseStub(query);
             renderDropdown(releaseDropdown, results, (item) => `
-                <div class="font-medium text-gray-800 text-sm">${item.label}</div>
+                <div class="flex items-center justify-between gap-2">
+                  <div class="font-medium text-gray-800 text-sm">${item.label}</div>
+                  <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
+                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                  </button>
+                </div>
             `, (item) => {
                 // В строку поиска и в Выпуск — ТОЛЬКО оригинальное название (item.value).
                 // Запись item.label сюда сломала бы каскадное сопоставление в Заказы
@@ -643,7 +657,7 @@
             addLi.textContent = '+ Добавить выпуск';
             addLi.addEventListener('click', () => {
                 releaseDropdown.classList.remove('active');
-                openCreateSkuModal();
+                openSkuModal('create');
             });
             releaseDropdown.appendChild(addLi);
         }, 300);
@@ -651,26 +665,134 @@
         releaseSearch.addEventListener('input', handleReleaseSearch);
         releaseSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) releaseDropdown.classList.add('active'); });
 
-        // Модальное окно создания SKU
-        function openCreateSkuModal() {
-            ['sku-original-input','sku-short-input','sku-brand-input','sku-character-input','sku-series-input','sku-link-input']
-                .forEach(id => { document.getElementById(id).value = ''; });
+        // Модальное окно создания/редактирования SKU. skuModalMode переключает
+        // поведение save/delete-обработчиков между createSku и updateSku.
+        let skuModalMode = 'create';
+        let skuModalOldOriginal = null;
+
+        async function openSkuModal(mode, original) {
+            skuModalMode = mode;
+            skuModalOldOriginal = original || null;
+
             document.getElementById('sku-error-text').classList.add('hidden');
-            document.getElementById('create-sku-modal').classList.remove('hidden');
-            document.getElementById('create-sku-modal').classList.add('flex');
+            document.getElementById('sku-merge-conflict').classList.add('hidden');
+            document.getElementById('create-sku-save').classList.remove('hidden');
+
+            const titleEl = document.getElementById('sku-modal-title');
+            const deleteBtn = document.getElementById('sku-delete-btn');
+            const saveBtn = document.getElementById('create-sku-save');
+
+            if (mode === 'edit') {
+                titleEl.textContent = 'Редактирование позиции';
+                saveBtn.textContent = 'Сохранить изменения';
+                deleteBtn.classList.remove('hidden');
+
+                // Открываем модалку сразу, данные подгружаем асинхронно —
+                // не блокируем UI ожиданием ответа сервера
+                document.getElementById('create-sku-modal').classList.remove('hidden');
+                document.getElementById('create-sku-modal').classList.add('flex');
+
+                try {
+                    const details = await callServer('getSkuDetails', original);
+                    document.getElementById('sku-original-input').value = details.original;
+                    document.getElementById('sku-short-input').value = details.shortName;
+                    document.getElementById('sku-brand-input').value = details.brand;
+                    document.getElementById('sku-character-input').value = details.character;
+                    document.getElementById('sku-series-input').value = details.series;
+                    document.getElementById('sku-link-input').value = details.link;
+                } catch (error) {
+                    const errorText = document.getElementById('sku-error-text');
+                    errorText.textContent = error.message;
+                    errorText.classList.remove('hidden');
+                }
+            } else {
+                titleEl.textContent = 'Новая позиция каталога';
+                saveBtn.textContent = 'Сохранить';
+                deleteBtn.classList.add('hidden');
+                ['sku-original-input','sku-short-input','sku-brand-input','sku-character-input','sku-series-input','sku-link-input']
+                    .forEach(id => { document.getElementById(id).value = ''; });
+
+                document.getElementById('create-sku-modal').classList.remove('hidden');
+                document.getElementById('create-sku-modal').classList.add('flex');
+            }
         }
 
-        function closeCreateSkuModal() {
+        function closeSkuModal() {
             document.getElementById('create-sku-modal').classList.add('hidden');
             document.getElementById('create-sku-modal').classList.remove('flex');
         }
 
-        document.getElementById('create-sku-close').addEventListener('click', closeCreateSkuModal);
-        document.getElementById('create-sku-cancel').addEventListener('click', closeCreateSkuModal);
+        // В режиме create — автозаполняет форму заказа новой позицией (старое
+        // поведение). В режиме edit форму заказа НЕ трогаем — правка каталога
+        // не должна менять уже введённые данные заказа.
+        function applyCreatedOrEditedSku(value, label) {
+            if (skuModalMode === 'create') {
+                releaseSearch.value = value;
+                shortNameInput.value = label;
+                selectedReleaseId = value;
+            }
+        }
+
+        // Рисует выбор слияния прямо в модалке, когда сервер вернул status:'conflict'
+        function showMergeConflict(existing, incoming) {
+            document.getElementById('create-sku-save').classList.add('hidden');
+            const box = document.getElementById('sku-merge-conflict');
+            box.classList.remove('hidden');
+            box.innerHTML = `
+                <p class="text-xs text-amber-700 mb-2 px-1">Позиция «${escapeHtmlClient(incoming.original)}» уже есть в каталоге. Выберите, какую версию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
+                <div class="space-y-2">
+                  <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepExisting">
+                    <b>Оставить старую:</b> ${escapeHtmlClient(existing.shortName || existing.original)}
+                  </button>
+                  <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepNew">
+                    <b>Оставить новую версию:</b> ${escapeHtmlClient(incoming.shortName || incoming.original)}
+                  </button>
+                </div>
+            `;
+            box.querySelectorAll('.merge-choice-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const skuData = {
+                        original: document.getElementById('sku-original-input').value.trim(),
+                        shortName: document.getElementById('sku-short-input').value.trim(),
+                        brand: document.getElementById('sku-brand-input').value.trim(),
+                        character: document.getElementById('sku-character-input').value.trim(),
+                        series: document.getElementById('sku-series-input').value.trim(),
+                        link: document.getElementById('sku-link-input').value.trim()
+                    };
+                    try {
+                        const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
+                        applyCreatedOrEditedSku(result.value, result.label);
+                        closeSkuModal();
+                    } catch (error) {
+                        const errorText = document.getElementById('sku-error-text');
+                        errorText.textContent = error.message;
+                        errorText.classList.remove('hidden');
+                    }
+                });
+            });
+        }
+
+        document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
+        document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
+
+        document.getElementById('sku-delete-btn').addEventListener('click', async () => {
+            if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
+            if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
+
+            const errorText = document.getElementById('sku-error-text');
+            try {
+                await callServer('deleteSku', skuModalOldOriginal);
+                closeSkuModal();
+            } catch (error) {
+                errorText.textContent = error.message;
+                errorText.classList.remove('hidden');
+            }
+        });
 
         document.getElementById('create-sku-save').addEventListener('click', async () => {
             const original = document.getElementById('sku-original-input').value.trim();
             const errorText = document.getElementById('sku-error-text');
+            errorText.classList.add('hidden');
 
             if (original === '') {
                 errorText.textContent = 'Поле «Выпуск» обязательно для заполнения.';
@@ -688,18 +810,24 @@
             };
 
             try {
-                const created = await callServer('createSku', skuData);
-                // Автозаполнение формы заказа новой позицией — без повторного поиска
-                releaseSearch.value = created.value;
-                shortNameInput.value = created.label;
-                selectedReleaseId = created.value;
-                closeCreateSkuModal();
+                if (skuModalMode === 'create') {
+                    const created = await callServer('createSku', skuData);
+                    applyCreatedOrEditedSku(created.value, created.label);
+                    closeSkuModal();
+                } else {
+                    const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
+                    if (result.status === 'conflict') {
+                        showMergeConflict(result.existing, result.incoming);
+                    } else {
+                        applyCreatedOrEditedSku(result.value, result.label);
+                        closeSkuModal();
+                    }
+                }
             } catch (error) {
                 errorText.textContent = error.message;
                 errorText.classList.remove('hidden');
             }
         });
-
         // 4. Автозаполнение Телеграм Клиента
         const clientDropdown = document.getElementById('client-dropdown');
 
@@ -780,13 +908,22 @@
                     const li = document.createElement('li');
                     li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
                     li.innerHTML = templateFn(item);
-                    li.addEventListener('click', () => onSelect(item));
+                    li.addEventListener('click', (e) => {
+                        // Клик по карандашу — открыть редактирование SKU, не выбирать позицию
+                        const editBtn = e.target.closest('.sku-edit-icon');
+                        if (editBtn) {
+                            e.stopPropagation();
+                            openSkuModal('edit', editBtn.dataset.original);
+                            return;
+                        }
+                        onSelect(item);
+                    });
                     container.appendChild(li);
                 });
             }
             container.classList.add('active');
+            lucide.createIcons(); // отрисовать вновь добавленные иконки карандаша
         }
-
         // 5. Расчет суммы в рублей и комиссии
         let currentCurrency = 'Доллар'; // дефолт — USD, самый частый кейс
         let currentRates = {};
@@ -1009,3 +1146,6 @@
 </body>
 
 </html>
+
+
+
