@@ -71,13 +71,3 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
-
-/**
- * Минимальная защита от разметки в данных, вставляемых через innerHTML на клиенте
- * (имя клиента, короткое название SKU и т.п.). Общая точка для всех HTML-страниц
- * панели — раньше дублировалась только в orders.html.
- */
-function escapeHtmlClient(text) {
-  if (!text) return '';
-  return text.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

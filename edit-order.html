@@ -132,6 +132,7 @@
     </div>
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
         <!-- Примечание -->
@@ -266,6 +267,21 @@
           </div>
           <div class="flex-1 w-full">
             <input type="date" id="date-received-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+          </div>
+        </div>
+
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center shrink-0">
+              <i data-lucide="split" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Тип доставки СДЭК</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select id="sdek-type-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+              <option value="Коллективная">Коллективная</option>
+              <option value="Индивидуальная">Индивидуальная</option>
+            </select>
           </div>
         </div>
 
@@ -552,6 +568,7 @@
         cargo: document.querySelector('select[data-dict="cargo"]').value,
         dateOrder: dateInput.value,
         dateReceived: dateReceivedInput.value,
+        sdekDeliveryType: sdekTypeSelect.value,
         client: client,
         currency: document.getElementById('currency-select').value,
         amount: amountInput.value,
@@ -580,6 +597,8 @@
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
+    let sdekTypeSelect;
+    const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
 
     function initApp(dictionaries) {
       // Без orderId в URL редактировать нечего — сразу показываем заглушку
@@ -601,6 +620,7 @@
       totalPaymentInput = document.getElementById('total-payment-input');
       dateInput = document.getElementById('date-input');
       dateReceivedInput = document.getElementById('date-received-input');
+      sdekTypeSelect = document.getElementById('sdek-type-select');
       rateKztInput = document.getElementById('rate-kzt-input');
       rateRubInput = document.getElementById('rate-rub-input');
       weightSumInput = document.getElementById('weight-sum-input');
@@ -1019,6 +1039,7 @@
           : (details.client.name || details.client.username);
 
         document.getElementById('currency-select').value = details.currency || 'Доллар';
+        sdekTypeSelect.value = details.sdekDeliveryType || CONSTANTS_CLIENT.SDEK_TYPE_COLLECTIVE;
         amountInput.value = details.amount || '';
         rateKztInput.value = details.rateKztToCurrency;
         rateRubInput.value = details.rateRubToKzt;
@@ -1044,6 +1065,18 @@
         weightSumInput.value = details.payments.weight.sum || '';
         deliveryKzRfSumInput.value = details.payments.deliveryKzRf.sum || '';
         deliveryRfSumInput.value = details.payments.deliveryRf.sum || '';
+
+        if (details.client.telegramId) {
+          try {
+            const recs = await callServer('getShippingRecommendations');
+            const match = recs.find(r => r.telegramId === details.client.telegramId);
+            if (match) {
+              const banner = document.getElementById('individual-shipping-banner');
+              banner.textContent = `У этого клиента ${match.count} посылок едут к посреднику в КЗ — рассмотрите индивидуальную отправку.`;
+              banner.classList.remove('hidden');
+            }
+          } catch (e) { }
+        }
 
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('app-content').classList.remove('hidden');
