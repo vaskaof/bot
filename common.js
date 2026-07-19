@@ -71,3 +71,19 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
+
+/**
+ * Экранирует HTML-теги для безопасного вывода пользовательских данных.
+ * @param {string} unsafe Строка с потенциально опасными символами
+ * @returns {string} Безопасная строка
+ */
+function escapeHtmlClient(unsafe) {
+    if (unsafe === undefined || unsafe === null) return '';
+    return unsafe
+        .toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
