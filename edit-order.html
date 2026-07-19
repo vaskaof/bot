@@ -107,7 +107,8 @@
   <!-- Основной контент панели -->
   <div id="app-content" class="hidden">
     <!-- Шапка -->
-    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
+    <header
+      class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
       <a href="orders.html" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </a>
@@ -132,7 +133,8 @@
     </div>
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-      <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+      <div id="individual-shipping-banner"
+        class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
         <!-- Примечание -->
@@ -144,13 +146,16 @@
             <span class="text-sm font-medium text-gray-700">Примечание</span>
           </div>
           <div class="flex-1 w-full relative">
-            <textarea id="note-input" rows="2" class="w-full bg-transparent border-none outline-none text-[15px] resize-none placeholder-gray-400" placeholder="Введите примечание..." maxlength="300"></textarea>
+            <textarea id="note-input" rows="2"
+              class="w-full bg-transparent border-none outline-none text-[15px] resize-none placeholder-gray-400"
+              placeholder="Введите примечание..." maxlength="300"></textarea>
             <div class="text-right text-[10px] text-gray-400 mt-1" id="note-counter">0/300</div>
           </div>
         </div>
 
         <!-- Выпуск (Autocomplete) -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
               <i data-lucide="box" class="w-5 h-5"></i>
@@ -159,7 +164,9 @@
           </div>
           <div class="flex-1 w-full relative">
             <div class="flex items-center w-full">
-              <input type="text" id="release-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск выпуска..." autocomplete="off">
+              <input type="text" id="release-search"
+                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
+                placeholder="Поиск выпуска..." autocomplete="off">
               <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
             </div>
             <ul id="release-dropdown" class="dropdown-menu custom-scrollbar"></ul>
@@ -167,7 +174,8 @@
         </div>
 
         <!-- Короткое название RU (Readonly) -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
               <i data-lucide="tag" class="w-5 h-5"></i>
@@ -175,7 +183,9 @@
             <span class="text-sm font-medium text-gray-700">Название RU</span>
           </div>
           <div class="flex-1 w-full">
-            <input type="text" id="short-name-input" class="w-full bg-transparent border-none outline-none text-[15px] text-gray-500 py-1" readonly placeholder="Определяется автоматически из каталога">
+            <input type="text" id="short-name-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] text-gray-500 py-1" readonly
+              placeholder="Определяется автоматически из каталога">
           </div>
         </div>
 
@@ -188,7 +198,8 @@
             <span class="text-sm font-medium text-gray-700">Доставка</span>
           </div>
           <div class="flex-1 w-full">
-            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="statusDelivery"></select>
           </div>
         </div>
 
@@ -201,7 +212,8 @@
             <span class="text-sm font-medium text-gray-700">Статус заказа</span>
           </div>
           <div class="flex-1 w-full">
-            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800" data-dict="statusOrder"></select>
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800"
+              data-dict="statusOrder"></select>
           </div>
         </div>
 
@@ -214,7 +226,8 @@
             <span class="text-sm font-medium text-gray-700">Канал выкупа</span>
           </div>
           <div class="flex-1 w-full">
-            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseChannel"></select>
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="purchaseChannel"></select>
           </div>
         </div>
 
@@ -227,7 +240,8 @@
             <span class="text-sm font-medium text-gray-700">Аккаунт</span>
           </div>
           <div class="flex-1 w-full">
-            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseAccount"></select>
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="purchaseAccount"></select>
           </div>
         </div>
 
@@ -240,7 +254,8 @@
             <span class="text-sm font-medium text-gray-700">Карго</span>
           </div>
           <div class="flex-1 w-full">
-            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="cargo"></select>
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="cargo"></select>
           </div>
         </div>
 
@@ -253,7 +268,8 @@
             <span class="text-sm font-medium text-gray-700">Дата выкупа</span>
           </div>
           <div class="flex-1 w-full">
-            <input type="date" id="date-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+            <input type="date" id="date-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
           </div>
         </div>
 
@@ -266,7 +282,8 @@
             <span class="text-sm font-medium text-gray-700">Дата получения</span>
           </div>
           <div class="flex-1 w-full">
-            <input type="date" id="date-received-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+            <input type="date" id="date-received-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
           </div>
         </div>
 
@@ -278,15 +295,40 @@
             <span class="text-sm font-medium text-gray-700">Тип доставки СДЭК</span>
           </div>
           <div class="flex-1 w-full">
-            <select id="sdek-type-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+            <select id="sdek-type-select"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
               <option value="Коллективная">Коллективная</option>
               <option value="Индивидуальная">Индивидуальная</option>
             </select>
           </div>
         </div>
 
+        <!-- Коллективка -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+              <i data-lucide="package-2" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Коллективка</span>
+          </div>
+          <div class="flex-1 w-full relative">
+            <div class="flex items-center w-full gap-2">
+              <input type="text" id="collective-search"
+                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
+                placeholder="Поиск коллективки..." autocomplete="off">
+              <button type="button" id="collective-unassign-btn"
+                class="hidden p-1 text-gray-400 hover:text-red-500 shrink-0">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <ul id="collective-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          </div>
+        </div>
+
         <!-- Телеграм (клиент) Autocomplete -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0ea5e9] flex items-center justify-center shrink-0">
               <i data-lucide="send" class="w-5 h-5"></i>
@@ -295,7 +337,9 @@
           </div>
           <div class="flex-1 w-full relative">
             <div class="flex items-center w-full">
-              <input type="text" id="client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск клиента..." autocomplete="off">
+              <input type="text" id="client-search"
+                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
+                placeholder="Поиск клиента..." autocomplete="off">
               <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
             </div>
             <ul id="client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
@@ -303,7 +347,8 @@
         </div>
 
         <!-- Количество -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
               <i data-lucide="dollar-sign" class="w-5 h-5"></i>
@@ -312,12 +357,15 @@
           </div>
           <div class="flex-1 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div class="flex items-center gap-2 relative">
-              <select id="currency-select" class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
+              <select id="currency-select"
+                class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
                 <option value="Доллар">USD ($)</option>
                 <option value="Юань">CNY (¥)</option>
                 <option value="Евро">EUR (€)</option>
               </select>
-              <input type="number" id="amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
+              <input type="number" id="amount-input"
+                class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1"
+                placeholder="0.00" step="0.01">
             </div>
           </div>
         </div>
@@ -333,17 +381,20 @@
           <div class="flex-1 w-full flex items-center gap-3">
             <div class="flex-1">
               <label class="text-[10px] text-gray-400">Тенге к валюте</label>
-              <input type="text" id="rate-kzt-input" class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
+              <input type="text" id="rate-kzt-input"
+                class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
             </div>
             <div class="flex-1">
               <label class="text-[10px] text-gray-400">Тенге к рублю</label>
-              <input type="text" id="rate-rub-input" class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
+              <input type="text" id="rate-rub-input"
+                class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
             </div>
           </div>
         </div>
 
         <!-- Итог/Доход Руб -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
               <i data-lucide="calculator" class="w-5 h-5"></i>
@@ -366,23 +417,30 @@
           </div>
           <div class="flex-1 w-full flex items-center gap-4">
             <div class="flex items-baseline gap-1 flex-1 border-b border-dashed border-gray-300 pb-1">
-              <input type="number" id="fee-percent" class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0" step="0.1">
+              <input type="number" id="fee-percent"
+                class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0" step="0.1">
               <span class="text-sm text-gray-500 font-medium">%</span>
             </div>
             <i data-lucide="arrow-right-left" class="w-4 h-4 text-gray-300 shrink-0"></i>
             <div class="flex items-baseline gap-1 flex-1 border-b border-dashed border-gray-300 pb-1">
-              <input type="number" id="fee-rub" class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0" step="1">
+              <input type="number" id="fee-rub"
+                class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0" step="1">
               <span class="text-sm text-gray-500 font-medium">₽</span>
             </div>
             <div class="flex items-center gap-1 shrink-0 ml-auto" id="booking-paid-toggle" data-value="Нет">
-              <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-              <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
             </div>
           </div>
         </div>
 
         <!-- Основная оплата -->
-        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
               <i data-lucide="wallet" class="w-5 h-5"></i>
@@ -391,12 +449,16 @@
           </div>
           <div class="flex-1 w-full flex items-center justify-between gap-2">
             <div class="flex items-baseline gap-1">
-              <input type="number" id="total-payment-input" class="w-32 bg-transparent border-none outline-none text-lg font-bold text-gray-900 text-right sm:text-left placeholder-gray-300" placeholder="0.00" step="0.01">
+              <input type="number" id="total-payment-input"
+                class="w-32 bg-transparent border-none outline-none text-lg font-bold text-gray-900 text-right sm:text-left placeholder-gray-300"
+                placeholder="0.00" step="0.01">
               <span class="text-lg font-bold text-gray-900">₽</span>
             </div>
             <div class="flex items-center gap-1 shrink-0" id="main-paid-toggle" data-value="Нет">
-              <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-              <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
             </div>
           </div>
         </div>
@@ -411,12 +473,16 @@
           </div>
           <div class="flex-1 w-full flex items-center justify-between gap-2">
             <div class="flex items-baseline gap-1">
-              <input type="number" id="weight-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+              <input type="number" id="weight-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
               <span class="text-sm text-gray-500 font-medium">₽</span>
             </div>
             <div class="flex items-center gap-1 shrink-0" id="weight-paid-toggle" data-value="Нет">
-              <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-              <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
             </div>
           </div>
         </div>
@@ -431,12 +497,16 @@
           </div>
           <div class="flex-1 w-full flex items-center justify-between gap-2">
             <div class="flex items-baseline gap-1">
-              <input type="number" id="delivery-kzrf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+              <input type="number" id="delivery-kzrf-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
               <span class="text-sm text-gray-500 font-medium">₽</span>
             </div>
             <div class="flex items-center gap-1 shrink-0" id="delivery-kzrf-paid-toggle" data-value="Нет">
-              <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-              <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
             </div>
           </div>
         </div>
@@ -451,12 +521,16 @@
           </div>
           <div class="flex-1 w-full flex items-center justify-between gap-2">
             <div class="flex items-baseline gap-1">
-              <input type="number" id="delivery-rf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+              <input type="number" id="delivery-rf-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
               <span class="text-sm text-gray-500 font-medium">₽</span>
             </div>
             <div class="flex items-center gap-1 shrink-0" id="delivery-rf-paid-toggle" data-value="Нет">
-              <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-              <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
             </div>
           </div>
         </div>
@@ -477,27 +551,39 @@
       <div class="p-4 space-y-3">
         <div>
           <label class="text-xs font-medium text-gray-500">Выпуск *</label>
-          <input type="text" id="sku-original-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Полное название">
+          <input type="text" id="sku-original-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Полное название">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
-          <input type="text" id="sku-short-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+          <input type="text" id="sku-short-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Бренд</label>
-          <input type="text" id="sku-brand-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+          <input type="text" id="sku-brand-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Персонаж</label>
-          <input type="text" id="sku-character-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+          <input type="text" id="sku-character-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Серия</label>
-          <input type="text" id="sku-series-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+          <input type="text" id="sku-series-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Ссылка</label>
-          <input type="text" id="sku-link-input" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно">
+          <input type="text" id="sku-link-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
         </div>
         <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
         <div id="sku-merge-conflict" class="hidden"></div>
@@ -506,8 +592,10 @@
         <button id="sku-delete-btn" class="hidden px-3 py-2.5 rounded-xl border border-red-200 text-red-600">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
         </button>
-        <button id="create-sku-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
-        <button id="create-sku-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
+        <button id="create-sku-cancel"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="create-sku-save"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
       </div>
     </div>
   </div>
@@ -524,17 +612,24 @@
       <div class="p-4 space-y-3">
         <div>
           <label class="text-xs font-medium text-gray-500">Username (с @)</label>
-          <input type="text" id="manual-client-username" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="@username">
+          <input type="text" id="manual-client-username"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="@username">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Имя</label>
-          <input type="text" id="manual-client-name" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Имя клиента">
+          <input type="text" id="manual-client-name"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Имя клиента">
         </div>
-        <p class="text-xs text-gray-400">Telegram ID не подтверждён — привяжется автоматически при первом обращении клиента к боту.</p>
+        <p class="text-xs text-gray-400">Telegram ID не подтверждён — привяжется автоматически при первом обращении
+          клиента к боту.</p>
       </div>
       <div class="p-4 border-t border-gray-100 flex gap-2">
-        <button id="manual-client-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
-        <button id="manual-client-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Использовать</button>
+        <button id="manual-client-cancel"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="manual-client-save"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Использовать</button>
       </div>
     </div>
   </div>
@@ -597,6 +692,7 @@
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
+    let collectiveSearch, selectedCollectiveId = null;
     let sdekTypeSelect;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
 
@@ -626,6 +722,7 @@
       weightSumInput = document.getElementById('weight-sum-input');
       deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
       deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
+      collectiveSearch = document.getElementById('collective-search');
 
       _populateSelect('select[data-dict="statusDelivery"]', dictionaries.statusDelivery);
       _populateSelect('select[data-dict="statusOrder"]', dictionaries.statusOrder);
@@ -688,8 +785,8 @@
       const handleReleaseSearch = debounce(async (e) => {
         const query = e.target.value.trim();
         if (query.length < 2) { releaseDropdown.classList.remove('active'); return; }
-            const results = await searchReleaseStub(query);
-            renderDropdown(releaseDropdown, results, (item) => `
+        const results = await searchReleaseStub(query);
+        renderDropdown(releaseDropdown, results, (item) => `
                 <div class="flex items-center justify-between gap-2">
                   <div class="font-medium text-gray-800 text-sm">${item.label}</div>
                   <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
@@ -711,80 +808,80 @@
       releaseSearch.addEventListener('input', handleReleaseSearch);
       releaseSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) releaseDropdown.classList.add('active'); });
 
-        // Модальное окно создания/редактирования SKU. skuModalMode переключает
-        // поведение save/delete-обработчиков между createSku и updateSku.
-        let skuModalMode = 'create';
-        let skuModalOldOriginal = null;
+      // Модальное окно создания/редактирования SKU. skuModalMode переключает
+      // поведение save/delete-обработчиков между createSku и updateSku.
+      let skuModalMode = 'create';
+      let skuModalOldOriginal = null;
 
-        async function openSkuModal(mode, original) {
-            skuModalMode = mode;
-            skuModalOldOriginal = original || null;
+      async function openSkuModal(mode, original) {
+        skuModalMode = mode;
+        skuModalOldOriginal = original || null;
 
-            document.getElementById('sku-error-text').classList.add('hidden');
-            document.getElementById('sku-merge-conflict').classList.add('hidden');
-            document.getElementById('create-sku-save').classList.remove('hidden');
+        document.getElementById('sku-error-text').classList.add('hidden');
+        document.getElementById('sku-merge-conflict').classList.add('hidden');
+        document.getElementById('create-sku-save').classList.remove('hidden');
 
-            const titleEl = document.getElementById('sku-modal-title');
-            const deleteBtn = document.getElementById('sku-delete-btn');
-            const saveBtn = document.getElementById('create-sku-save');
+        const titleEl = document.getElementById('sku-modal-title');
+        const deleteBtn = document.getElementById('sku-delete-btn');
+        const saveBtn = document.getElementById('create-sku-save');
 
-            if (mode === 'edit') {
-                titleEl.textContent = 'Редактирование позиции';
-                saveBtn.textContent = 'Сохранить изменения';
-                deleteBtn.classList.remove('hidden');
+        if (mode === 'edit') {
+          titleEl.textContent = 'Редактирование позиции';
+          saveBtn.textContent = 'Сохранить изменения';
+          deleteBtn.classList.remove('hidden');
 
-                // Открываем модалку сразу, данные подгружаем асинхронно —
-                // не блокируем UI ожиданием ответа сервера
-                document.getElementById('create-sku-modal').classList.remove('hidden');
-                document.getElementById('create-sku-modal').classList.add('flex');
+          // Открываем модалку сразу, данные подгружаем асинхронно —
+          // не блокируем UI ожиданием ответа сервера
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
 
-                try {
-                    const details = await callServer('getSkuDetails', original);
-                    document.getElementById('sku-original-input').value = details.original;
-                    document.getElementById('sku-short-input').value = details.shortName;
-                    document.getElementById('sku-brand-input').value = details.brand;
-                    document.getElementById('sku-character-input').value = details.character;
-                    document.getElementById('sku-series-input').value = details.series;
-                    document.getElementById('sku-link-input').value = details.link;
-                } catch (error) {
-                    const errorText = document.getElementById('sku-error-text');
-                    errorText.textContent = error.message;
-                    errorText.classList.remove('hidden');
-                }
-            } else {
-                titleEl.textContent = 'Новая позиция каталога';
-                saveBtn.textContent = 'Сохранить';
-                deleteBtn.classList.add('hidden');
-                ['sku-original-input','sku-short-input','sku-brand-input','sku-character-input','sku-series-input','sku-link-input']
-                    .forEach(id => { document.getElementById(id).value = ''; });
+          try {
+            const details = await callServer('getSkuDetails', original);
+            document.getElementById('sku-original-input').value = details.original;
+            document.getElementById('sku-short-input').value = details.shortName;
+            document.getElementById('sku-brand-input').value = details.brand;
+            document.getElementById('sku-character-input').value = details.character;
+            document.getElementById('sku-series-input').value = details.series;
+            document.getElementById('sku-link-input').value = details.link;
+          } catch (error) {
+            const errorText = document.getElementById('sku-error-text');
+            errorText.textContent = error.message;
+            errorText.classList.remove('hidden');
+          }
+        } else {
+          titleEl.textContent = 'Новая позиция каталога';
+          saveBtn.textContent = 'Сохранить';
+          deleteBtn.classList.add('hidden');
+          ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input', 'sku-link-input']
+            .forEach(id => { document.getElementById(id).value = ''; });
 
-                document.getElementById('create-sku-modal').classList.remove('hidden');
-                document.getElementById('create-sku-modal').classList.add('flex');
-            }
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
         }
+      }
 
-        function closeSkuModal() {
-            document.getElementById('create-sku-modal').classList.add('hidden');
-            document.getElementById('create-sku-modal').classList.remove('flex');
+      function closeSkuModal() {
+        document.getElementById('create-sku-modal').classList.add('hidden');
+        document.getElementById('create-sku-modal').classList.remove('flex');
+      }
+
+      // В режиме create — автозаполняет форму заказа новой позицией (старое
+      // поведение). В режиме edit форму заказа НЕ трогаем — правка каталога
+      // не должна менять уже введённые данные заказа.
+      function applyCreatedOrEditedSku(value, label) {
+        if (skuModalMode === 'create') {
+          releaseSearch.value = value;
+          shortNameInput.value = label;
+          selectedReleaseId = value;
         }
+      }
 
-        // В режиме create — автозаполняет форму заказа новой позицией (старое
-        // поведение). В режиме edit форму заказа НЕ трогаем — правка каталога
-        // не должна менять уже введённые данные заказа.
-        function applyCreatedOrEditedSku(value, label) {
-            if (skuModalMode === 'create') {
-                releaseSearch.value = value;
-                shortNameInput.value = label;
-                selectedReleaseId = value;
-            }
-        }
-
-        // Рисует выбор слияния прямо в модалке, когда сервер вернул status:'conflict'
-        function showMergeConflict(existing, incoming) {
-            document.getElementById('create-sku-save').classList.add('hidden');
-            const box = document.getElementById('sku-merge-conflict');
-            box.classList.remove('hidden');
-            box.innerHTML = `
+      // Рисует выбор слияния прямо в модалке, когда сервер вернул status:'conflict'
+      function showMergeConflict(existing, incoming) {
+        document.getElementById('create-sku-save').classList.add('hidden');
+        const box = document.getElementById('sku-merge-conflict');
+        box.classList.remove('hidden');
+        box.innerHTML = `
                 <p class="text-xs text-amber-700 mb-2 px-1">Позиция «${escapeHtmlClient(incoming.original)}» уже есть в каталоге. Выберите, какую версию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
                 <div class="space-y-2">
                   <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepExisting">
@@ -795,85 +892,85 @@
                   </button>
                 </div>
             `;
-            box.querySelectorAll('.merge-choice-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const skuData = {
-                        original: document.getElementById('sku-original-input').value.trim(),
-                        shortName: document.getElementById('sku-short-input').value.trim(),
-                        brand: document.getElementById('sku-brand-input').value.trim(),
-                        character: document.getElementById('sku-character-input').value.trim(),
-                        series: document.getElementById('sku-series-input').value.trim(),
-                        link: document.getElementById('sku-link-input').value.trim()
-                    };
-                    try {
-                        const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
-                        applyCreatedOrEditedSku(result.value, result.label);
-                        closeSkuModal();
-                    } catch (error) {
-                        const errorText = document.getElementById('sku-error-text');
-                        errorText.textContent = error.message;
-                        errorText.classList.remove('hidden');
-                    }
-                });
-            });
+        box.querySelectorAll('.merge-choice-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const skuData = {
+              original: document.getElementById('sku-original-input').value.trim(),
+              shortName: document.getElementById('sku-short-input').value.trim(),
+              brand: document.getElementById('sku-brand-input').value.trim(),
+              character: document.getElementById('sku-character-input').value.trim(),
+              series: document.getElementById('sku-series-input').value.trim(),
+              link: document.getElementById('sku-link-input').value.trim()
+            };
+            try {
+              const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
+              applyCreatedOrEditedSku(result.value, result.label);
+              closeSkuModal();
+            } catch (error) {
+              const errorText = document.getElementById('sku-error-text');
+              errorText.textContent = error.message;
+              errorText.classList.remove('hidden');
+            }
+          });
+        });
+      }
+
+      document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
+      document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
+
+      document.getElementById('sku-delete-btn').addEventListener('click', async () => {
+        if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
+        if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
+
+        const errorText = document.getElementById('sku-error-text');
+        try {
+          await callServer('deleteSku', skuModalOldOriginal);
+          closeSkuModal();
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('create-sku-save').addEventListener('click', async () => {
+        const original = document.getElementById('sku-original-input').value.trim();
+        const errorText = document.getElementById('sku-error-text');
+        errorText.classList.add('hidden');
+
+        if (original === '') {
+          errorText.textContent = 'Поле «Выпуск» обязательно для заполнения.';
+          errorText.classList.remove('hidden');
+          return;
         }
 
-        document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
-        document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
+        const skuData = {
+          original: original,
+          shortName: document.getElementById('sku-short-input').value.trim(),
+          brand: document.getElementById('sku-brand-input').value.trim(),
+          character: document.getElementById('sku-character-input').value.trim(),
+          series: document.getElementById('sku-series-input').value.trim(),
+          link: document.getElementById('sku-link-input').value.trim()
+        };
 
-        document.getElementById('sku-delete-btn').addEventListener('click', async () => {
-            if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
-            if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
-
-            const errorText = document.getElementById('sku-error-text');
-            try {
-                await callServer('deleteSku', skuModalOldOriginal);
-                closeSkuModal();
-            } catch (error) {
-                errorText.textContent = error.message;
-                errorText.classList.remove('hidden');
+        try {
+          if (skuModalMode === 'create') {
+            const created = await callServer('createSku', skuData);
+            applyCreatedOrEditedSku(created.value, created.label);
+            closeSkuModal();
+          } else {
+            const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
+            if (result.status === 'conflict') {
+              showMergeConflict(result.existing, result.incoming);
+            } else {
+              applyCreatedOrEditedSku(result.value, result.label);
+              closeSkuModal();
             }
-        });
-
-        document.getElementById('create-sku-save').addEventListener('click', async () => {
-            const original = document.getElementById('sku-original-input').value.trim();
-            const errorText = document.getElementById('sku-error-text');
-            errorText.classList.add('hidden');
-
-            if (original === '') {
-                errorText.textContent = 'Поле «Выпуск» обязательно для заполнения.';
-                errorText.classList.remove('hidden');
-                return;
-            }
-
-            const skuData = {
-                original: original,
-                shortName: document.getElementById('sku-short-input').value.trim(),
-                brand: document.getElementById('sku-brand-input').value.trim(),
-                character: document.getElementById('sku-character-input').value.trim(),
-                series: document.getElementById('sku-series-input').value.trim(),
-                link: document.getElementById('sku-link-input').value.trim()
-            };
-
-            try {
-                if (skuModalMode === 'create') {
-                    const created = await callServer('createSku', skuData);
-                    applyCreatedOrEditedSku(created.value, created.label);
-                    closeSkuModal();
-                } else {
-                    const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
-                    if (result.status === 'conflict') {
-                        showMergeConflict(result.existing, result.incoming);
-                    } else {
-                        applyCreatedOrEditedSku(result.value, result.label);
-                        closeSkuModal();
-                    }
-                }
-            } catch (error) {
-                errorText.textContent = error.message;
-                errorText.classList.remove('hidden');
-            }
-        });
+          }
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
 
       // --- Автокомплит Клиента (идентичен index.html) ---
       const clientDropdown = document.getElementById('client-dropdown');
@@ -922,33 +1019,71 @@
       document.addEventListener('click', (e) => {
         if (!releaseSearch.contains(e.target) && !releaseDropdown.contains(e.target)) releaseDropdown.classList.remove('active');
         if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
+        if (!collectiveSearch.contains(e.target) && !collectiveDropdown.contains(e.target)) collectiveDropdown.classList.remove('active');
       });
 
-        function renderDropdown(container, items, templateFn, onSelect) {
-            container.innerHTML = '';
-            if (items.length === 0) {
-                container.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
-            } else {
-                items.forEach(item => {
-                    const li = document.createElement('li');
-                    li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
-                    li.innerHTML = templateFn(item);
-                    li.addEventListener('click', (e) => {
-                        // Клик по карандашу — открыть редактирование SKU, не выбирать позицию
-                        const editBtn = e.target.closest('.sku-edit-icon');
-                        if (editBtn) {
-                            e.stopPropagation();
-                            openSkuModal('edit', editBtn.dataset.original);
-                            return;
-                        }
-                        onSelect(item);
-                    });
-                    container.appendChild(li);
-                });
-            }
-            container.classList.add('active');
-            lucide.createIcons(); // отрисовать вновь добавленные иконки карандаша
+      function renderDropdown(container, items, templateFn, onSelect) {
+        container.innerHTML = '';
+        if (items.length === 0) {
+          container.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+        } else {
+          items.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
+            li.innerHTML = templateFn(item);
+            li.addEventListener('click', (e) => {
+              // Клик по карандашу — открыть редактирование SKU, не выбирать позицию
+              const editBtn = e.target.closest('.sku-edit-icon');
+              if (editBtn) {
+                e.stopPropagation();
+                openSkuModal('edit', editBtn.dataset.original);
+                return;
+              }
+              onSelect(item);
+            });
+            container.appendChild(li);
+          });
         }
+        container.classList.add('active');
+        lucide.createIcons(); // отрисовать вновь добавленные иконки карандаша
+      }
+
+      // --- Коллективка — назначение сразу при выборе, без ожидания кнопки "Сохранить" ---
+      const collectiveDropdown = document.getElementById('collective-dropdown');
+      const collectiveUnassignBtn = document.getElementById('collective-unassign-btn');
+
+      const handleCollectiveSearch = debounce(async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 1) { collectiveDropdown.classList.remove('active'); return; }
+
+        const results = await callServer('searchCollectives', query);
+        renderDropdown(collectiveDropdown, results, (item) => `<div class="font-medium text-gray-800 text-sm">${item.label}</div>`, async (item) => {
+          collectiveDropdown.classList.remove('active');
+          try {
+            await callServer('assignOrderToCollective', currentOrderId, item.value);
+            collectiveSearch.value = item.label;
+            selectedCollectiveId = item.value;
+            collectiveUnassignBtn.classList.remove('hidden');
+            showSaveToast(true, 'Заказ привязан к коллективке');
+          } catch (error) {
+            showSaveToast(false, `Не удалось привязать: ${error.message}`);
+          }
+        });
+      }, 300);
+      collectiveSearch.addEventListener('input', handleCollectiveSearch);
+      collectiveSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 1) collectiveDropdown.classList.add('active'); });
+
+      collectiveUnassignBtn.addEventListener('click', async () => {
+        try {
+          await callServer('unassignOrderFromCollective', currentOrderId);
+          collectiveSearch.value = '';
+          selectedCollectiveId = null;
+          collectiveUnassignBtn.classList.add('hidden');
+          showSaveToast(true, 'Заказ отвязан от коллективки');
+        } catch (error) {
+          showSaveToast(false, `Не удалось отвязать: ${error.message}`);
+        }
+      });
 
       // --- Треугольник Комиссия % / Комиссия ₽ / Основная оплата — та же математика,
       // что и в форме создания, НО базовая "сумма в рублях" (amountRub) здесь считается
@@ -1040,11 +1175,16 @@
 
         document.getElementById('currency-select').value = details.currency || 'Доллар';
         sdekTypeSelect.value = details.sdekDeliveryType || CONSTANTS_CLIENT.SDEK_TYPE_COLLECTIVE;
+        collectiveSearch.value = details.collectiveLabel || '';
+        selectedCollectiveId = details.collectiveId || null;
+        collectiveUnassignBtn.classList.toggle('hidden', !details.collectiveId);
         amountInput.value = details.amount || '';
         rateKztInput.value = details.rateKztToCurrency;
         rateRubInput.value = details.rateRubToKzt;
         document.getElementById('total-rub-display').textContent = details.totalRub !== '' ? details.totalRub : '—';
         document.getElementById('profit-rub-display').textContent = details.profitRub !== '' ? details.profitRub : '—';
+
+
 
         // База для треугольника комиссии — берём из уже сохранённых сумм заказа
         const mainSum = parseFloat(details.payments.main.sum) || 0;
@@ -1105,4 +1245,3 @@
 </body>
 
 </html>
-
