@@ -303,26 +303,18 @@
           </div>
         </div>
 
-        <!-- Коллективка -->
-        <div
-          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+        <!-- Коллективка: СТАЛО (обычный select) -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
           <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
             <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
               <i data-lucide="package-2" class="w-5 h-5"></i>
             </div>
             <span class="text-sm font-medium text-gray-700">Коллективка</span>
           </div>
-          <div class="flex-1 w-full relative">
-            <div class="flex items-center w-full gap-2">
-              <input type="text" id="collective-search"
-                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
-                placeholder="Поиск коллективки..." autocomplete="off">
-              <button type="button" id="collective-unassign-btn"
-                class="hidden p-1 text-gray-400 hover:text-red-500 shrink-0">
-                <i data-lucide="x" class="w-4 h-4"></i>
-              </button>
-            </div>
-            <ul id="collective-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          <div class="flex-1 w-full">
+            <select id="collective-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+              <option value="">— не привязано —</option>
+            </select>
           </div>
         </div>
 
@@ -692,11 +684,11 @@
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
-    let collectiveSearch, selectedCollectiveId = null;
+    let collectiveSelect; // СТАЛО
     let sdekTypeSelect;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
 
-    function initApp(dictionaries) {
+    async function initApp(dictionaries) { // СТАЛО: async
       // Без orderId в URL редактировать нечего — сразу показываем заглушку
       if (!currentOrderId) {
         document.getElementById('loading-screen').classList.add('hidden');
@@ -722,7 +714,6 @@
       weightSumInput = document.getElementById('weight-sum-input');
       deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
       deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
-      collectiveSearch = document.getElementById('collective-search');
 
       _populateSelect('select[data-dict="statusDelivery"]', dictionaries.statusDelivery);
       _populateSelect('select[data-dict="statusOrder"]', dictionaries.statusOrder);
@@ -1016,10 +1007,10 @@
         closeManualClientModal();
       });
 
+      // Изменен обработчик клика вне элементов (удалил старую коллективку)
       document.addEventListener('click', (e) => {
         if (!releaseSearch.contains(e.target) && !releaseDropdown.contains(e.target)) releaseDropdown.classList.remove('active');
         if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
-        if (!collectiveSearch.contains(e.target) && !collectiveDropdown.contains(e.target)) collectiveDropdown.classList.remove('active');
       });
 
       function renderDropdown(container, items, templateFn, onSelect) {
@@ -1048,42 +1039,36 @@
         lucide.createIcons(); // отрисовать вновь добавленные иконки карандаша
       }
 
-      // --- Коллективка — назначение сразу при выборе, без ожидания кнопки "Сохранить" ---
-      const collectiveDropdown = document.getElementById('collective-dropdown');
-      const collectiveUnassignBtn = document.getElementById('collective-unassign-btn');
-
-      const handleCollectiveSearch = debounce(async (e) => {
-        const query = e.target.value.trim();
-        if (query.length < 1) { collectiveDropdown.classList.remove('active'); return; }
-
-        const results = await callServer('searchCollectives', query);
-        renderDropdown(collectiveDropdown, results, (item) => `<div class="font-medium text-gray-800 text-sm">${item.label}</div>`, async (item) => {
-          collectiveDropdown.classList.remove('active');
-          try {
-            await callServer('assignOrderToCollective', currentOrderId, item.value);
-            collectiveSearch.value = item.label;
-            selectedCollectiveId = item.value;
-            collectiveUnassignBtn.classList.remove('hidden');
-            showSaveToast(true, 'Заказ привязан к коллективке');
-          } catch (error) {
-            showSaveToast(false, `Не удалось привязать: ${error.message}`);
-          }
-        });
-      }, 300);
-      collectiveSearch.addEventListener('input', handleCollectiveSearch);
-      collectiveSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 1) collectiveDropdown.classList.add('active'); });
-
-      collectiveUnassignBtn.addEventListener('click', async () => {
+      // --- Коллективка — выпадающий список, назначение сразу при выборе ---
+      collectiveSelect = document.getElementById('collective-select');
+      // Список коллективок немногочислен — загружаем целиком, без live-поиска
+      async function populateCollectiveSelect() {
         try {
-          await callServer('unassignOrderFromCollective', currentOrderId);
-          collectiveSearch.value = '';
-          selectedCollectiveId = null;
-          collectiveUnassignBtn.classList.add('hidden');
-          showSaveToast(true, 'Заказ отвязан от коллективки');
+          const list = await callServer('getCollectivesList');
+          const options = list.map(c => {
+            const trackPart = c.trackNumber ? ` (${c.trackNumber})` : '';
+            return `<option value="${c.collectiveId}">${c.collectiveId}${trackPart} — ${c.status}</option>`;
+          }).join('');
+          collectiveSelect.innerHTML = '<option value="">— не привязано —</option>' + options;
         } catch (error) {
-          showSaveToast(false, `Не удалось отвязать: ${error.message}`);
+          // Список коллективок не критичен для остальной формы — тихо игнорируем
+        }
+      }
+      collectiveSelect.addEventListener('change', async () => {
+        const newId = collectiveSelect.value;
+        try {
+          if (newId === '') {
+            await callServer('unassignOrderFromCollective', currentOrderId);
+            showSaveToast(true, 'Заказ отвязан от коллективки');
+          } else {
+            await callServer('assignOrderToCollective', currentOrderId, newId);
+            showSaveToast(true, 'Заказ привязан к коллективке');
+          }
+        } catch (error) {
+          showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
         }
       });
+      await populateCollectiveSelect();
 
       // --- Треугольник Комиссия % / Комиссия ₽ / Основная оплата — та же математика,
       // что и в форме создания, НО базовая "сумма в рублях" (amountRub) здесь считается
@@ -1175,9 +1160,7 @@
 
         document.getElementById('currency-select').value = details.currency || 'Доллар';
         sdekTypeSelect.value = details.sdekDeliveryType || CONSTANTS_CLIENT.SDEK_TYPE_COLLECTIVE;
-        collectiveSearch.value = details.collectiveLabel || '';
-        selectedCollectiveId = details.collectiveId || null;
-        collectiveUnassignBtn.classList.toggle('hidden', !details.collectiveId);
+        collectiveSelect.value = details.collectiveId || ''; // СТАЛО
         amountInput.value = details.amount || '';
         rateKztInput.value = details.rateKztToCurrency;
         rateRubInput.value = details.rateRubToKzt;
