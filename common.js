@@ -87,3 +87,47 @@ function escapeHtmlClient(unsafe) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
+/**
+ * Запрашивает контекст текущего пользователя (роль + личные данные).
+ * Единственный метод API, доступный ДО определения роли — используется
+ * точкой входа (app.html) для маршрутизации и клиентскими страницами
+ * для проверки доступа.
+ * @returns {Promise<{role: string, telegramId?: string, name?: string, username?: string}>}
+ */
+function fetchUserContext() {
+    return callServer('getUserContext');
+}
+
+/**
+ * Проверка доступа для клиентских страниц — аналог initAccessCheck() из
+ * админки, но вместо getDictionaries использует getUserContext (единственный
+ * метод, не требующий вхождения в CLIENT_ALLOWED_METHODS). Если роль не
+ * 'client' — показывает экран отказа тем же паттерном, что и в админке.
+ * Требует на странице те же элементы: #loading-screen, #access-denied-screen,
+ * #app-content, #debug-init-data.
+ * @param {Function} onSuccess Колбэк(context), context = {role, telegramId, name, username}
+ */
+function initClientAccess(onSuccess) {
+    const loadingScreen = document.getElementById('loading-screen');
+    const accessDeniedScreen = document.getElementById('access-denied-screen');
+    const appContent = document.getElementById('app-content');
+
+    (async function () {
+        try {
+            const context = await fetchUserContext();
+            if (context.role !== 'client') {
+                throw new Error('Доступ только для клиентов.');
+            }
+            loadingScreen.classList.add('hidden');
+            appContent.classList.remove('hidden');
+            onSuccess(context);
+        } catch (error) {
+            loadingScreen.classList.add('hidden');
+            accessDeniedScreen.classList.remove('hidden');
+            accessDeniedScreen.classList.add('flex');
+            document.getElementById('debug-init-data').textContent = 'Ошибка: ' + error.message;
+            console.error('Ошибка проверки клиентского доступа:', error);
+        }
+    })();
+}
