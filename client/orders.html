@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Мои заказы</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    body {
+      background-color: #f3f4f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 80px;
+    }
+  </style>
+</head>
+
+<body class="text-gray-800">
+  <div id="loading-screen" class="fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-50">
+    <div class="text-gray-400 text-sm">Загрузка...</div>
+  </div>
+
+  <div id="access-denied-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
+    <div class="text-center" style="font-family: monospace; font-size: 12px; word-break: break-all; text-align: left;">
+      <p><b>Доступ не подтверждён.</b></p>
+      <p id="debug-init-data"></p>
+    </div>
+  </div>
+
+  <div id="app-content" class="hidden">
+    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-center px-4">
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои заказы</h1>
+    </header>
+
+    <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center text-sm text-gray-400">
+        Список заказов появится здесь совсем скоро.
+      </div>
+    </main>
+
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 pb-2 h-full">
+        <i data-lucide="home" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Главная</span>
+      </a>
+      <a href="orders.html" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-indigo-600 pb-2 h-full">
+        <i data-lucide="package" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Заказы</span>
+      </a>
+      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 pb-2 h-full">
+        <i data-lucide="heart" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Вишлист</span>
+      </a>
+      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 pb-2 h-full">
+        <i data-lucide="user-circle" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Профиль</span>
+      </a>
+    </nav>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    initClientAccess(initApp);
+
+    function initApp(context) {
+      const greeting = document.getElementById('greeting');
+      greeting.textContent = context.name ? `Привет, ${context.name}!` : 'Привет!';
+    }
+  </script>
+</body>
+
+</html>

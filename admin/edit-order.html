@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Редактирование заказа</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    body {
+      background-color: #f3f4f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 40px;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #e5e7eb;
+      border-radius: 20px;
+    }
+
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      z-index: 50;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #f3f4f6;
+    }
+
+    .dropdown-menu.active {
+      display: block;
+    }
+
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right center;
+      background-size: 16px;
+      padding-right: 24px;
+    }
+
+    .field-row {
+      transition: background-color 0.2s;
+    }
+
+    @media (hover: hover) {
+      .field-row:hover {
+        background-color: #f9fafb;
+      }
+    }
+  </style>
+</head>
+
+<body class="text-gray-800">
+  <!-- Загрузочный экран -->
+  <div id="loading-screen" class="fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-50">
+    <div class="text-gray-400 text-sm">Загрузка...</div>
+  </div>
+
+  <!-- Заглушка для не-администраторов -->
+  <div id="access-denied-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
+    <div class="text-center" style="font-family: monospace; font-size: 12px; word-break: break-all; text-align: left;">
+      <p><b>Доступ не подтверждён.</b></p>
+      <p id="debug-tg-exists"></p>
+      <p id="debug-init-data"></p>
+    </div>
+  </div>
+
+  <!-- Заглушка на случай отсутствующего/неверного orderId в URL -->
+  <div id="order-not-found-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
+    <div class="text-center">
+      <p class="text-gray-500 text-sm mb-3">Заказ не найден.</p>
+      <a href="orders.html" class="text-indigo-600 text-sm font-medium">← Вернуться к списку заказов</a>
+    </div>
+  </div>
+
+  <!-- Основной контент панели -->
+  <div id="app-content" class="hidden">
+    <!-- Шапка -->
+    <header
+      class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
+      <a href="orders.html" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="arrow-left" class="w-6 h-6"></i>
+      </a>
+      <div class="flex flex-col items-center">
+        <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Редактирование</h1>
+        <span class="text-[11px] text-gray-400" id="order-id-display"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
+          <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+          Уведомить
+        </label>
+        <button id="save-order-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+          <i data-lucide="save" class="w-6 h-6"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Плашка результата сохранения -->
+    <div id="save-toast" class="fixed top-16 left-4 right-4 z-50 hidden">
+      <div id="save-toast-inner" class="rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md"></div>
+    </div>
+
+    <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <div id="individual-shipping-banner"
+        class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
+
+        <!-- Примечание -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+              <i data-lucide="sticky-note" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Примечание</span>
+          </div>
+          <div class="flex-1 w-full relative">
+            <textarea id="note-input" rows="2"
+              class="w-full bg-transparent border-none outline-none text-[15px] resize-none placeholder-gray-400"
+              placeholder="Введите примечание..." maxlength="300"></textarea>
+            <div class="text-right text-[10px] text-gray-400 mt-1" id="note-counter">0/300</div>
+          </div>
+        </div>
+
+        <!-- Выпуск (Autocomplete) -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <i data-lucide="box" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Выпуск</span>
+          </div>
+          <div class="flex-1 w-full relative">
+            <div class="flex items-center w-full">
+              <input type="text" id="release-search"
+                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
+                placeholder="Поиск выпуска..." autocomplete="off">
+              <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
+            </div>
+            <ul id="release-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          </div>
+        </div>
+
+        <!-- Короткое название RU (Readonly) -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+              <i data-lucide="tag" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Название RU</span>
+          </div>
+          <div class="flex-1 w-full">
+            <input type="text" id="short-name-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] text-gray-500 py-1" readonly
+              placeholder="Определяется автоматически из каталога">
+          </div>
+        </div>
+
+        <!-- Статус доставки -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
+              <i data-lucide="truck" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Доставка</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="statusDelivery"></select>
+          </div>
+        </div>
+
+        <!-- Статус заказа -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+              <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Статус заказа</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800"
+              data-dict="statusOrder"></select>
+          </div>
+        </div>
+
+        <!-- Канал выкупа -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
+              <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Канал выкупа</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="purchaseChannel"></select>
+          </div>
+        </div>
+
+        <!-- Аккаунт выкупа -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+              <i data-lucide="user" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Аккаунт</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="purchaseAccount"></select>
+          </div>
+        </div>
+
+        <!-- Карго -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+              <i data-lucide="package" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Карго</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer"
+              data-dict="cargo"></select>
+          </div>
+        </div>
+
+        <!-- Дата выкупа -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+              <i data-lucide="calendar" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Дата выкупа</span>
+          </div>
+          <div class="flex-1 w-full">
+            <input type="date" id="date-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+          </div>
+        </div>
+
+        <!-- Дата получения -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+              <i data-lucide="package-check" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Дата получения</span>
+          </div>
+          <div class="flex-1 w-full">
+            <input type="date" id="date-received-input"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+          </div>
+        </div>
+
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center shrink-0">
+              <i data-lucide="split" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Тип доставки СДЭК</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select id="sdek-type-select"
+              class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+              <option value="Коллективная">Коллективная</option>
+              <option value="Индивидуальная">Индивидуальная</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Коллективка: СТАЛО (обычный select) -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+              <i data-lucide="package-2" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Коллективка</span>
+          </div>
+          <div class="flex-1 w-full">
+            <select id="collective-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+              <option value="">— не привязано —</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Телеграм (клиент) Autocomplete -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0ea5e9] flex items-center justify-center shrink-0">
+              <i data-lucide="send" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Телеграм</span>
+          </div>
+          <div class="flex-1 w-full relative">
+            <div class="flex items-center w-full">
+              <input type="text" id="client-search"
+                class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1"
+                placeholder="Поиск клиента..." autocomplete="off">
+              <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
+            </div>
+            <ul id="client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          </div>
+        </div>
+
+        <!-- Количество -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <i data-lucide="dollar-sign" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Количество</span>
+          </div>
+          <div class="flex-1 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex items-center gap-2 relative">
+              <select id="currency-select"
+                class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
+                <option value="Доллар">USD ($)</option>
+                <option value="Юань">CNY (¥)</option>
+                <option value="Евро">EUR (€)</option>
+              </select>
+              <input type="number" id="amount-input"
+                class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1"
+                placeholder="0.00" step="0.01">
+            </div>
+          </div>
+        </div>
+
+        <!-- Зафиксированные курсы — RAW -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+              <i data-lucide="landmark" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Курсы (штамп)</span>
+          </div>
+          <div class="flex-1 w-full flex items-center gap-3">
+            <div class="flex-1">
+              <label class="text-[10px] text-gray-400">Тенге к валюте</label>
+              <input type="text" id="rate-kzt-input"
+                class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
+            </div>
+            <div class="flex-1">
+              <label class="text-[10px] text-gray-400">Тенге к рублю</label>
+              <input type="text" id="rate-rub-input"
+                class="w-full bg-transparent border-none outline-none text-[14px] text-gray-700 py-0.5">
+            </div>
+          </div>
+        </div>
+
+        <!-- Итог/Доход Руб -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-gray-50/50">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+              <i data-lucide="calculator" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Итог / Доход</span>
+          </div>
+          <div class="flex-1 w-full flex items-center gap-4 text-sm text-gray-500">
+            <span>Итог Руб: <b id="total-rub-display" class="text-gray-800">—</b></span>
+            <span>Доход Руб: <b id="profit-rub-display" class="text-gray-800">—</b></span>
+          </div>
+        </div>
+
+        <!-- Бронь/комиссия -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+              <i data-lucide="percent" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Комиссия</span>
+          </div>
+          <div class="flex-1 w-full flex items-center gap-4">
+            <div class="flex items-baseline gap-1 flex-1 border-b border-dashed border-gray-300 pb-1">
+              <input type="number" id="fee-percent"
+                class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0" step="0.1">
+              <span class="text-sm text-gray-500 font-medium">%</span>
+            </div>
+            <i data-lucide="arrow-right-left" class="w-4 h-4 text-gray-300 shrink-0"></i>
+            <div class="flex items-baseline gap-1 flex-1 border-b border-dashed border-gray-300 pb-1">
+              <input type="number" id="fee-rub"
+                class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0" step="1">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0 ml-auto" id="booking-paid-toggle" data-value="Нет">
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Основная оплата -->
+        <div
+          class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+              <i data-lucide="wallet" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Основная оплата</span>
+          </div>
+          <div class="flex-1 w-full flex items-center justify-between gap-2">
+            <div class="flex items-baseline gap-1">
+              <input type="number" id="total-payment-input"
+                class="w-32 bg-transparent border-none outline-none text-lg font-bold text-gray-900 text-right sm:text-left placeholder-gray-300"
+                placeholder="0.00" step="0.01">
+              <span class="text-lg font-bold text-gray-900">₽</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0" id="main-paid-toggle" data-value="Нет">
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вес -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+              <i data-lucide="weight" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Вес</span>
+          </div>
+          <div class="flex-1 w-full flex items-center justify-between gap-2">
+            <div class="flex items-baseline gap-1">
+              <input type="number" id="weight-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0" id="weight-paid-toggle" data-value="Нет">
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Доставка КЗ→РФ -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
+              <i data-lucide="plane" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Доставка КЗ→РФ</span>
+          </div>
+          <div class="flex-1 w-full flex items-center justify-between gap-2">
+            <div class="flex items-baseline gap-1">
+              <input type="number" id="delivery-kzrf-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0" id="delivery-kzrf-paid-toggle" data-value="Нет">
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Доставка по РФ -->
+        <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 rounded-b-2xl">
+          <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <i data-lucide="truck" class="w-5 h-5"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-700">Доставка по РФ</span>
+          </div>
+          <div class="flex-1 w-full flex items-center justify-between gap-2">
+            <div class="flex items-baseline gap-1">
+              <input type="number" id="delivery-rf-sum-input"
+                class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300"
+                placeholder="0.00" step="0.01">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0" id="delivery-rf-paid-toggle" data-value="Нет">
+              <button type="button" data-toggle-value="Да"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+              <button type="button" data-toggle-value="Нет"
+                class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Модальное окно создания новой позиции каталога (тот же контракт createSku, что в index.html) -->
+  <div id="create-sku-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="sku-modal-title" class="text-base font-semibold text-gray-900">Новая позиция каталога</h2>
+        <button id="create-sku-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Выпуск *</label>
+          <input type="text" id="sku-original-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Полное название">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
+          <input type="text" id="sku-short-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Бренд</label>
+          <input type="text" id="sku-brand-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Персонаж</label>
+          <input type="text" id="sku-character-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Серия</label>
+          <input type="text" id="sku-series-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Ссылка</label>
+          <input type="text" id="sku-link-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
+        <div id="sku-merge-conflict" class="hidden"></div>
+      </div>
+      <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="sku-delete-btn" class="hidden px-3 py-2.5 rounded-xl border border-red-200 text-red-600">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+        <button id="create-sku-cancel"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="create-sku-save"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно ручного ввода клиента (тот же контракт, что в index.html) -->
+  <div id="manual-client-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">Клиент (без подтверждения)</h2>
+        <button id="manual-client-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Username (с @)</label>
+          <input type="text" id="manual-client-username"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="@username">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Имя</label>
+          <input type="text" id="manual-client-name"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Имя клиента">
+        </div>
+        <p class="text-xs text-gray-400">Telegram ID не подтверждён — привяжется автоматически при первом обращении
+          клиента к боту.</p>
+      </div>
+      <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="manual-client-cancel"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="manual-client-save"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Использовать</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    initAccessCheck(initApp);
+
+    // orderId читается из URL один раз при загрузке — без него нечего редактировать
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentOrderId = urlParams.get('orderId');
+
+    function searchReleaseStub(query) { return callServer('searchSku', query); }
+    function searchClientStub(query) { return callServer('searchClient', query); }
+
+    // Собирает ПОЛНЫЙ снимок формы и отправляет как обновление существующего заказа.
+    // В отличие от create-формы — передаёт rateKztToCurrency/rateRubToKzt (raw-текст,
+    // без пересчёта на фронте — решение 6) и dateReceived + флаги веса/доставки.
+    async function saveOrder() {
+      const client = manualClientData
+        ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
+        : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
+
+      const fields = {
+        remark: noteInput.value,
+        productOriginal: releaseSearch.value,
+        statusDelivery: document.querySelector('select[data-dict="statusDelivery"]').value,
+        statusOrder: document.querySelector('select[data-dict="statusOrder"]').value,
+        purchaseChannel: document.querySelector('select[data-dict="purchaseChannel"]').value,
+        purchaseAccount: document.querySelector('select[data-dict="purchaseAccount"]').value,
+        cargo: document.querySelector('select[data-dict="cargo"]').value,
+        dateOrder: dateInput.value,
+        dateReceived: dateReceivedInput.value,
+        sdekDeliveryType: sdekTypeSelect.value,
+        client: client,
+        currency: document.getElementById('currency-select').value,
+        amount: amountInput.value,
+        rateKztToCurrency: rateKztInput.value,
+        rateRubToKzt: rateRubInput.value,
+        bookingSum: feeRubInput.value,
+        bookingPaid: document.getElementById('booking-paid-toggle').dataset.value,
+        mainSum: totalPaymentInput.value,
+        mainPaid: document.getElementById('main-paid-toggle').dataset.value,
+        weightSum: weightSumInput.value,
+        weightPaid: document.getElementById('weight-paid-toggle').dataset.value,
+        deliveryKzRfSum: deliveryKzRfSumInput.value,
+        deliveryKzRfPaid: document.getElementById('delivery-kzrf-paid-toggle').dataset.value,
+        deliveryRfSum: deliveryRfSumInput.value,
+        deliveryRfPaid: document.getElementById('delivery-rf-paid-toggle').dataset.value,
+        notifyClient: document.getElementById('notify-client-checkbox').checked
+      };
+
+      return callServer('updateOrder', currentOrderId, fields);
+    }
+
+    // Глобальные ссылки на поля формы
+    let noteInput, noteCounter, releaseSearch, shortNameInput, selectedReleaseId = null;
+    let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
+    let manualClientData = null;
+    let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
+    let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
+    let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
+    let collectiveSelect; // СТАЛО
+    let sdekTypeSelect;
+    const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
+
+    async function initApp(dictionaries) { // СТАЛО: async
+      // Без orderId в URL редактировать нечего — сразу показываем заглушку
+      if (!currentOrderId) {
+        document.getElementById('loading-screen').classList.add('hidden');
+        document.getElementById('order-not-found-screen').classList.remove('hidden');
+        document.getElementById('order-not-found-screen').classList.add('flex');
+        return;
+      }
+
+      noteInput = document.getElementById('note-input');
+      noteCounter = document.getElementById('note-counter');
+      releaseSearch = document.getElementById('release-search');
+      shortNameInput = document.getElementById('short-name-input');
+      clientSearch = document.getElementById('client-search');
+      amountInput = document.getElementById('amount-input');
+      feePercentInput = document.getElementById('fee-percent');
+      feeRubInput = document.getElementById('fee-rub');
+      totalPaymentInput = document.getElementById('total-payment-input');
+      dateInput = document.getElementById('date-input');
+      dateReceivedInput = document.getElementById('date-received-input');
+      sdekTypeSelect = document.getElementById('sdek-type-select');
+      rateKztInput = document.getElementById('rate-kzt-input');
+      rateRubInput = document.getElementById('rate-rub-input');
+      weightSumInput = document.getElementById('weight-sum-input');
+      deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
+      deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
+
+      _populateSelect('select[data-dict="statusDelivery"]', dictionaries.statusDelivery);
+      _populateSelect('select[data-dict="statusOrder"]', dictionaries.statusOrder);
+      _populateSelect('select[data-dict="purchaseChannel"]', dictionaries.purchaseChannel);
+      _populateSelect('select[data-dict="purchaseAccount"]', dictionaries.purchaseAccount);
+      _populateSelect('select[data-dict="cargo"]', dictionaries.cargo);
+
+      function _populateSelect(selector, values) {
+        const select = document.querySelector(selector);
+        if (!select || !values) return;
+        const placeholder = '<option value="" disabled>— не выбрано —</option>';
+        select.innerHTML = placeholder + values.map(v => `<option value="${v}">${v}</option>`).join('');
+      }
+
+      // Универсальный обработчик тэг-переключателей Да/Нет — идентичен index.html
+      function initTagToggle(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const buttons = container.querySelectorAll('.toggle-btn');
+        buttons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const value = btn.dataset.toggleValue;
+            container.dataset.value = value;
+            buttons.forEach(b => {
+              const active = b.dataset.toggleValue === value;
+              b.classList.toggle('border-indigo-500', active);
+              b.classList.toggle('bg-indigo-50', active);
+              b.classList.toggle('text-indigo-600', active);
+              b.classList.toggle('border-gray-200', !active);
+              b.classList.toggle('text-gray-500', !active);
+            });
+          });
+        });
+      }
+
+      // Ставит тег-кнопку в состояние value программно (префилл из данных заказа)
+      function setTagToggle(containerId, value) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.dataset.value = value;
+        container.querySelectorAll('.toggle-btn').forEach(b => {
+          const active = b.dataset.toggleValue === value;
+          b.classList.toggle('border-indigo-500', active);
+          b.classList.toggle('bg-indigo-50', active);
+          b.classList.toggle('text-indigo-600', active);
+          b.classList.toggle('border-gray-200', !active);
+          b.classList.toggle('text-gray-500', !active);
+        });
+      }
+
+      ['booking-paid-toggle', 'main-paid-toggle', 'weight-paid-toggle', 'delivery-kzrf-paid-toggle', 'delivery-rf-paid-toggle']
+        .forEach(initTagToggle);
+
+      noteInput.addEventListener('input', (e) => {
+        noteCounter.textContent = `${e.target.value.length}/300`;
+      });
+
+      // --- Автокомплит Выпуска (идентичен index.html) ---
+      const releaseDropdown = document.getElementById('release-dropdown');
+      const handleReleaseSearch = debounce(async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 2) { releaseDropdown.classList.remove('active'); return; }
+        const results = await searchReleaseStub(query);
+        renderDropdown(releaseDropdown, results, (item) => `
+                <div class="flex items-center justify-between gap-2">
+                  <div class="font-medium text-gray-800 text-sm">${item.label}</div>
+                  <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
+                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                  </button>
+                </div>
+            `, (item) => {
+          releaseSearch.value = item.value;
+          shortNameInput.value = item.label;
+          selectedReleaseId = item.value;
+          releaseDropdown.classList.remove('active');
+        });
+        const addLi = document.createElement('li');
+        addLi.className = 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center';
+        addLi.textContent = '+ Добавить выпуск';
+        addLi.addEventListener('click', () => { releaseDropdown.classList.remove('active'); openSkuModal('create'); });
+        releaseDropdown.appendChild(addLi);
+      }, 300);
+      releaseSearch.addEventListener('input', handleReleaseSearch);
+      releaseSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) releaseDropdown.classList.add('active'); });
+
+      // Модальное окно создания/редактирования SKU. skuModalMode переключает
+      // поведение save/delete-обработчиков между createSku и updateSku.
+      let skuModalMode = 'create';
+      let skuModalOldOriginal = null;
+
+      async function openSkuModal(mode, original) {
+        skuModalMode = mode;
+        skuModalOldOriginal = original || null;
+
+        document.getElementById('sku-error-text').classList.add('hidden');
+        document.getElementById('sku-merge-conflict').classList.add('hidden');
+        document.getElementById('create-sku-save').classList.remove('hidden');
+
+        const titleEl = document.getElementById('sku-modal-title');
+        const deleteBtn = document.getElementById('sku-delete-btn');
+        const saveBtn = document.getElementById('create-sku-save');
+
+        if (mode === 'edit') {
+          titleEl.textContent = 'Редактирование позиции';
+          saveBtn.textContent = 'Сохранить изменения';
+          deleteBtn.classList.remove('hidden');
+
+          // Открываем модалку сразу, данные подгружаем асинхронно —
+          // не блокируем UI ожиданием ответа сервера
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
+
+          try {
+            const details = await callServer('getSkuDetails', original);
+            document.getElementById('sku-original-input').value = details.original;
+            document.getElementById('sku-short-input').value = details.shortName;
+            document.getElementById('sku-brand-input').value = details.brand;
+            document.getElementById('sku-character-input').value = details.character;
+            document.getElementById('sku-series-input').value = details.series;
+            document.getElementById('sku-link-input').value = details.link;
+          } catch (error) {
+            const errorText = document.getElementById('sku-error-text');
+            errorText.textContent = error.message;
+            errorText.classList.remove('hidden');
+          }
+        } else {
+          titleEl.textContent = 'Новая позиция каталога';
+          saveBtn.textContent = 'Сохранить';
+          deleteBtn.classList.add('hidden');
+          ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input', 'sku-link-input']
+            .forEach(id => { document.getElementById(id).value = ''; });
+
+          document.getElementById('create-sku-modal').classList.remove('hidden');
+          document.getElementById('create-sku-modal').classList.add('flex');
+        }
+      }
+
+      function closeSkuModal() {
+        document.getElementById('create-sku-modal').classList.add('hidden');
+        document.getElementById('create-sku-modal').classList.remove('flex');
+      }
+
+      // В режиме create — автозаполняет форму заказа новой позицией (старое
+      // поведение). В режиме edit форму заказа НЕ трогаем — правка каталога
+      // не должна менять уже введённые данные заказа.
+      function applyCreatedOrEditedSku(value, label) {
+        if (skuModalMode === 'create') {
+          releaseSearch.value = value;
+          shortNameInput.value = label;
+          selectedReleaseId = value;
+        }
+      }
+
+      // Рисует выбор слияния прямо в модалке, когда сервер вернул status:'conflict'
+      function showMergeConflict(existing, incoming) {
+        document.getElementById('create-sku-save').classList.add('hidden');
+        const box = document.getElementById('sku-merge-conflict');
+        box.classList.remove('hidden');
+        box.innerHTML = `
+                <p class="text-xs text-amber-700 mb-2 px-1">Позиция «${escapeHtmlClient(incoming.original)}» уже есть в каталоге. Выберите, какую версию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
+                <div class="space-y-2">
+                  <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepExisting">
+                    <b>Оставить старую:</b> ${escapeHtmlClient(existing.shortName || existing.original)}
+                  </button>
+                  <button type="button" class="merge-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-choice="keepNew">
+                    <b>Оставить новую версию:</b> ${escapeHtmlClient(incoming.shortName || incoming.original)}
+                  </button>
+                </div>
+            `;
+        box.querySelectorAll('.merge-choice-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const skuData = {
+              original: document.getElementById('sku-original-input').value.trim(),
+              shortName: document.getElementById('sku-short-input').value.trim(),
+              brand: document.getElementById('sku-brand-input').value.trim(),
+              character: document.getElementById('sku-character-input').value.trim(),
+              series: document.getElementById('sku-series-input').value.trim(),
+              link: document.getElementById('sku-link-input').value.trim()
+            };
+            try {
+              const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
+              applyCreatedOrEditedSku(result.value, result.label);
+              closeSkuModal();
+            } catch (error) {
+              const errorText = document.getElementById('sku-error-text');
+              errorText.textContent = error.message;
+              errorText.classList.remove('hidden');
+            }
+          });
+        });
+      }
+
+      document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
+      document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
+
+      document.getElementById('sku-delete-btn').addEventListener('click', async () => {
+        if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
+        if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
+
+        const errorText = document.getElementById('sku-error-text');
+        try {
+          await callServer('deleteSku', skuModalOldOriginal);
+          closeSkuModal();
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('create-sku-save').addEventListener('click', async () => {
+        const original = document.getElementById('sku-original-input').value.trim();
+        const errorText = document.getElementById('sku-error-text');
+        errorText.classList.add('hidden');
+
+        if (original === '') {
+          errorText.textContent = 'Поле «Выпуск» обязательно для заполнения.';
+          errorText.classList.remove('hidden');
+          return;
+        }
+
+        const skuData = {
+          original: original,
+          shortName: document.getElementById('sku-short-input').value.trim(),
+          brand: document.getElementById('sku-brand-input').value.trim(),
+          character: document.getElementById('sku-character-input').value.trim(),
+          series: document.getElementById('sku-series-input').value.trim(),
+          link: document.getElementById('sku-link-input').value.trim()
+        };
+
+        try {
+          if (skuModalMode === 'create') {
+            const created = await callServer('createSku', skuData);
+            applyCreatedOrEditedSku(created.value, created.label);
+            closeSkuModal();
+          } else {
+            const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
+            if (result.status === 'conflict') {
+              showMergeConflict(result.existing, result.incoming);
+            } else {
+              applyCreatedOrEditedSku(result.value, result.label);
+              closeSkuModal();
+            }
+          }
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+
+      // --- Автокомплит Клиента (идентичен index.html) ---
+      const clientDropdown = document.getElementById('client-dropdown');
+      const handleClientSearch = debounce(async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 2) { clientDropdown.classList.remove('active'); return; }
+        const results = await searchClientStub(query);
+        renderDropdown(clientDropdown, results, (item) => `<div class="font-medium text-gray-800 text-sm">${item.displayName}</div>`, (item) => {
+          clientSearch.value = item.displayName;
+          selectedClientId = item.telegramId;
+          selectedClientUsername = item.username;
+          selectedClientName = item.name;
+          manualClientData = null;
+          clientDropdown.classList.remove('active');
+        });
+        const addLi = document.createElement('li');
+        addLi.className = 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center';
+        addLi.textContent = '+ Ввести вручную';
+        addLi.addEventListener('click', () => { clientDropdown.classList.remove('active'); openManualClientModal(); });
+        clientDropdown.appendChild(addLi);
+      }, 300);
+      clientSearch.addEventListener('input', handleClientSearch);
+      clientSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) clientDropdown.classList.add('active'); });
+
+      function openManualClientModal() {
+        document.getElementById('manual-client-username').value = '';
+        document.getElementById('manual-client-name').value = '';
+        document.getElementById('manual-client-modal').classList.remove('hidden');
+        document.getElementById('manual-client-modal').classList.add('flex');
+      }
+      function closeManualClientModal() {
+        document.getElementById('manual-client-modal').classList.add('hidden');
+        document.getElementById('manual-client-modal').classList.remove('flex');
+      }
+      document.getElementById('manual-client-close').addEventListener('click', closeManualClientModal);
+      document.getElementById('manual-client-cancel').addEventListener('click', closeManualClientModal);
+      document.getElementById('manual-client-save').addEventListener('click', () => {
+        const username = document.getElementById('manual-client-username').value.trim();
+        const name = document.getElementById('manual-client-name').value.trim();
+        manualClientData = { username, name };
+        selectedClientId = '';
+        clientSearch.value = name !== '' ? `${name} (${username || 'без username'})` : (username || 'Без данных');
+        closeManualClientModal();
+      });
+
+      // Изменен обработчик клика вне элементов (удалил старую коллективку)
+      document.addEventListener('click', (e) => {
+        if (!releaseSearch.contains(e.target) && !releaseDropdown.contains(e.target)) releaseDropdown.classList.remove('active');
+        if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
+      });
+
+      function renderDropdown(container, items, templateFn, onSelect) {
+        container.innerHTML = '';
+        if (items.length === 0) {
+          container.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+        } else {
+          items.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
+            li.innerHTML = templateFn(item);
+            li.addEventListener('click', (e) => {
+              // Клик по карандашу — открыть редактирование SKU, не выбирать позицию
+              const editBtn = e.target.closest('.sku-edit-icon');
+              if (editBtn) {
+                e.stopPropagation();
+                openSkuModal('edit', editBtn.dataset.original);
+                return;
+              }
+              onSelect(item);
+            });
+            container.appendChild(li);
+          });
+        }
+        container.classList.add('active');
+        lucide.createIcons(); // отрисовать вновь добавленные иконки карандаша
+      }
+
+      // --- Коллективка — выпадающий список, назначение сразу при выборе ---
+      collectiveSelect = document.getElementById('collective-select');
+      // Список коллективок немногочислен — загружаем целиком, без live-поиска
+      async function populateCollectiveSelect() {
+        try {
+          const list = await callServer('getCollectivesList');
+          const options = list.map(c => {
+            const trackPart = c.trackNumber ? ` (${c.trackNumber})` : '';
+            return `<option value="${c.collectiveId}">${c.collectiveId}${trackPart} — ${c.status}</option>`;
+          }).join('');
+          collectiveSelect.innerHTML = '<option value="">— не привязано —</option>' + options;
+        } catch (error) {
+          // Список коллективок не критичен для остальной формы — тихо игнорируем
+        }
+      }
+      collectiveSelect.addEventListener('change', async () => {
+        const newId = collectiveSelect.value;
+        try {
+          if (newId === '') {
+            await callServer('unassignOrderFromCollective', currentOrderId);
+            showSaveToast(true, 'Заказ отвязан от коллективки');
+          } else {
+            await callServer('assignOrderToCollective', currentOrderId, newId);
+            showSaveToast(true, 'Заказ привязан к коллективке');
+          }
+        } catch (error) {
+          showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
+        }
+      });
+      await populateCollectiveSelect();
+
+      // --- Треугольник Комиссия % / Комиссия ₽ / Основная оплата — та же математика,
+      // что и в форме создания, НО базовая "сумма в рублях" (amountRub) здесь считается
+      // НЕ через live-курс с сервера, а из УЖЕ сохранённых значений заказа
+      // (mainSum - bookingSum), чтобы просто открытие формы не переписывало историю
+      // сделки свежим рыночным курсом (решение 6). Курс "Тенге к валюте"/"Тенге к рублю"
+      // в отдельных raw-полях выше — самостоятельные значения, треугольник их не трогает.
+      let amountRubBase = 0;
+
+      function updateTotalPayment() {
+        if (document.activeElement === totalPaymentInput) return;
+        const total = amountRubBase + (parseFloat(feeRubInput.value) || 0);
+        totalPaymentInput.value = total > 0 ? total.toFixed(2) : '';
+      }
+      function updateFeeRub() {
+        if (document.activeElement === feeRubInput) { updateTotalPayment(); return; }
+        const percent = parseFloat(feePercentInput.value) || 0;
+        const rubFee = amountRubBase * (percent / 100);
+        feeRubInput.value = rubFee > 0 ? rubFee.toFixed(2) : '';
+        updateTotalPayment();
+      }
+      function updateFeePercent() {
+        if (document.activeElement === feePercentInput) { updateTotalPayment(); return; }
+        const rubFee = parseFloat(feeRubInput.value) || 0;
+        feePercentInput.value = amountRubBase > 0 && rubFee > 0 ? ((rubFee / amountRubBase) * 100).toFixed(2) : '';
+        updateTotalPayment();
+      }
+      function updateFromTotalPayment() {
+        const feeRub = (parseFloat(totalPaymentInput.value) || 0) - amountRubBase;
+        feeRubInput.value = feeRub > 0 ? feeRub.toFixed(2) : '';
+        feePercentInput.value = amountRubBase > 0 && feeRub > 0 ? ((feeRub / amountRubBase) * 100).toFixed(2) : '';
+      }
+      function clampTotalPaymentOnBlur() {
+        const clamped = Math.max(parseFloat(totalPaymentInput.value) || 0, amountRubBase);
+        totalPaymentInput.value = clamped > 0 ? clamped.toFixed(2) : '';
+        updateFromTotalPayment();
+      }
+
+      feePercentInput.addEventListener('input', updateFeeRub);
+      feeRubInput.addEventListener('input', updateFeePercent);
+      totalPaymentInput.addEventListener('input', updateFromTotalPayment);
+      totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
+
+      function showSaveToast(success, message) {
+        const toast = document.getElementById('save-toast');
+        const inner = document.getElementById('save-toast-inner');
+        inner.textContent = message;
+        inner.className = success
+          ? 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-green-50 text-green-700 border border-green-200'
+          : 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-red-50 text-red-700 border border-red-200';
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 4000);
+      }
+
+      // --- Загрузка данных заказа и заполнение формы ---
+      async function loadOrder() {
+        let details;
+        try {
+          details = await callServer('getOrderDetails', currentOrderId);
+        } catch (error) {
+          document.getElementById('loading-screen').classList.add('hidden');
+          document.getElementById('order-not-found-screen').classList.remove('hidden');
+          document.getElementById('order-not-found-screen').classList.add('flex');
+          return;
+        }
+
+        document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}`;
+        noteInput.value = details.remark;
+        noteCounter.textContent = `${details.remark.length}/300`;
+        releaseSearch.value = details.productOriginal;
+        shortNameInput.value = details.productShort;
+        selectedReleaseId = details.productOriginal;
+
+        document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
+        document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;
+        document.querySelector('select[data-dict="purchaseChannel"]').value = details.purchaseChannel;
+        document.querySelector('select[data-dict="purchaseAccount"]').value = details.purchaseAccount;
+        document.querySelector('select[data-dict="cargo"]').value = details.cargo;
+
+        dateInput.value = details.dateOrder;
+        dateReceivedInput.value = details.dateReceived;
+
+        selectedClientId = details.client.telegramId;
+        selectedClientUsername = details.client.username;
+        selectedClientName = details.client.name;
+        clientSearch.value = details.client.name && details.client.username
+          ? `${details.client.name} (${details.client.username})`
+          : (details.client.name || details.client.username);
+
+        document.getElementById('currency-select').value = details.currency || 'Доллар';
+        sdekTypeSelect.value = details.sdekDeliveryType || CONSTANTS_CLIENT.SDEK_TYPE_COLLECTIVE;
+        collectiveSelect.value = details.collectiveId || ''; // СТАЛО
+        amountInput.value = details.amount || '';
+        rateKztInput.value = details.rateKztToCurrency;
+        rateRubInput.value = details.rateRubToKzt;
+        document.getElementById('total-rub-display').textContent = details.totalRub !== '' ? details.totalRub : '—';
+        document.getElementById('profit-rub-display').textContent = details.profitRub !== '' ? details.profitRub : '—';
+
+
+
+        // База для треугольника комиссии — берём из уже сохранённых сумм заказа
+        const mainSum = parseFloat(details.payments.main.sum) || 0;
+        const bookingSum = parseFloat(details.payments.booking.sum) || 0;
+        amountRubBase = mainSum - bookingSum;
+        if (amountRubBase < 0) amountRubBase = 0;
+
+        feeRubInput.value = bookingSum > 0 ? bookingSum.toFixed(2) : '';
+        totalPaymentInput.value = mainSum > 0 ? mainSum.toFixed(2) : '';
+        updateFeePercent();
+
+        setTagToggle('booking-paid-toggle', details.payments.booking.paid === 'Да' || details.payments.booking.paid === 'да' ? 'Да' : 'Нет');
+        setTagToggle('main-paid-toggle', details.payments.main.paid === 'Да' || details.payments.main.paid === 'да' ? 'Да' : 'Нет');
+        setTagToggle('weight-paid-toggle', details.payments.weight.paid === 'Да' || details.payments.weight.paid === 'да' ? 'Да' : 'Нет');
+        setTagToggle('delivery-kzrf-paid-toggle', details.payments.deliveryKzRf.paid === 'Да' || details.payments.deliveryKzRf.paid === 'да' ? 'Да' : 'Нет');
+        setTagToggle('delivery-rf-paid-toggle', details.payments.deliveryRf.paid === 'Да' || details.payments.deliveryRf.paid === 'да' ? 'Да' : 'Нет');
+
+        weightSumInput.value = details.payments.weight.sum || '';
+        deliveryKzRfSumInput.value = details.payments.deliveryKzRf.sum || '';
+        deliveryRfSumInput.value = details.payments.deliveryRf.sum || '';
+
+        if (details.client.telegramId) {
+          try {
+            const recs = await callServer('getShippingRecommendations');
+            const match = recs.find(r => r.telegramId === details.client.telegramId);
+            if (match) {
+              const banner = document.getElementById('individual-shipping-banner');
+              banner.textContent = `У этого клиента ${match.count} посылок едут к посреднику в КЗ — рассмотрите индивидуальную отправку.`;
+              banner.classList.remove('hidden');
+            }
+          } catch (e) { }
+        }
+
+        document.getElementById('loading-screen').classList.add('hidden');
+        document.getElementById('app-content').classList.remove('hidden');
+      }
+
+      document.getElementById('save-order-btn').addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (!releaseSearch.value.trim()) {
+          showSaveToast(false, 'Не получилось сохранить: не заполнено поле «Выпуск»');
+          return;
+        }
+        try {
+          const result = await saveOrder();
+          showSaveToast(true, 'Изменения сохранены');
+          if (result.notifyWarning) {
+            setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);
+          }
+        } catch (error) {
+          showSaveToast(false, `Не получилось сохранить: ${error.message}`);
+        }
+      });
+
+      loadOrder();
+    }
+  </script>
+</body>
+
+</html>
