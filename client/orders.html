@@ -71,7 +71,6 @@
     function initApp(context) {
       const greeting = document.getElementById('greeting');
       greeting.textContent = context.name ? `Привет, ${context.name}!` : 'Привет!';
-      callServer('getOrdersList').then(r => alert('УТЕЧКА: ' + JSON.stringify(r))).catch(e => alert('OK, заблокировано: ' + e.message));
     }
   </script>
 </body>
