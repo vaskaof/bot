@@ -33,14 +33,30 @@
   </div>
 
   <div id="app-content" class="hidden">
-    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-center px-4">
+    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои заказы</h1>
+      <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      </button>
     </header>
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
       <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center text-sm text-gray-400">
-        Список заказов появится здесь совсем скоро.
+
+      <!-- Блок активных заказов -->
+      <div id="active-section">
+        <div class="text-[11px] text-gray-400 px-1 mb-2">Активные</div>
+        <div id="active-list"></div>
+      </div>
+
+      <!-- Блок завершённых — визуально ниже активных, отдельным заголовком -->
+      <div id="completed-section" class="mt-6">
+        <div class="text-[11px] text-gray-400 px-1 mb-2">Завершённые</div>
+        <div id="completed-list"></div>
+      </div>
+
+      <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">
+        У вас пока нет заказов. Если вы уже оформляли заказ — напишите менеджеру.
       </div>
     </main>
 
@@ -69,8 +85,85 @@
     initClientAccess(initApp);
 
     function initApp(context) {
-      const greeting = document.getElementById('greeting');
-      greeting.textContent = context.name ? `Привет, ${context.name}!` : 'Привет!';
+      document.getElementById('greeting').textContent = context.name ? `Привет, ${context.name}!` : 'Привет!';
+
+      const activeList = document.getElementById('active-list');
+      const completedList = document.getElementById('completed-list');
+      const activeSection = document.getElementById('active-section');
+      const completedSection = document.getElementById('completed-section');
+      const emptyMessage = document.getElementById('empty-message');
+      const refreshBtn = document.getElementById('refresh-btn');
+
+      loadOrders();
+
+      refreshBtn.addEventListener('click', () => {
+        const icon = refreshBtn.querySelector('svg');
+        if (icon) icon.classList.add('animate-spin');
+        loadOrders().finally(() => {
+          const liveIcon = refreshBtn.querySelector('svg');
+          if (liveIcon) liveIcon.classList.remove('animate-spin');
+        });
+      });
+
+      async function loadOrders() {
+        activeList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+        completedList.innerHTML = '';
+        try {
+          const orders = await callServer('getClientOrdersList');
+          render(orders);
+        } catch (error) {
+          activeList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
+        }
+      }
+
+      // Дефолтная сортировка: сначала блок активных, затем завершённых;
+      // внутри каждого блока — по дате (новые сверху). Разделение на блоки
+      // само по себе не даёт старому активному заказу "потеряться" среди
+      // завершённых — отдельная сортировка по статусам не нужна
+      function render(orders) {
+        const active = orders.filter(o => !o.isCompleted).sort((a, b) => b.dateOrderSort - a.dateOrderSort);
+        const completed = orders.filter(o => o.isCompleted).sort((a, b) => b.dateOrderSort - a.dateOrderSort);
+
+        if (orders.length === 0) {
+          activeSection.classList.add('hidden');
+          completedSection.classList.add('hidden');
+          emptyMessage.classList.remove('hidden');
+          return;
+        }
+        emptyMessage.classList.add('hidden');
+
+        activeSection.classList.toggle('hidden', active.length === 0);
+        completedSection.classList.toggle('hidden', completed.length === 0);
+
+        activeList.innerHTML = '';
+        active.forEach(o => activeList.appendChild(buildCard(o)));
+
+        completedList.innerHTML = '';
+        completed.forEach(o => completedList.appendChild(buildCard(o)));
+      }
+
+      function buildCard(o) {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors';
+        card.addEventListener('click', () => {
+          window.location.href = `order-details.html?orderId=${encodeURIComponent(o.orderId)}`;
+        });
+
+        const debtColor = o.debtSummary === 'Оплачено' ? 'text-green-600' : (o.debtSummary.startsWith('К оплате') ? 'text-red-500' : 'text-amber-500');
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
+              ${o.productOriginal ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+            </div>
+            <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
+          </div>
+          ${o.statusDelivery ? `<span class="inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+          <div class="text-[13px] font-medium mt-2 ${debtColor}">${escapeHtmlClient(o.debtSummary)}</div>
+        `;
+        return card;
+      }
     }
   </script>
 </body>
