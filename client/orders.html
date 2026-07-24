@@ -42,7 +42,9 @@
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
       <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
-
+      <button type="button" onclick="callServer('getClientOrderDetails', '5B1E23').then(r => alert(JSON.stringify(r))).catch(e => alert(e.message))">
+      Получить детали заказа
+      </button>
       <!-- Блок активных заказов -->
       <div id="active-section">
         <div class="text-[11px] text-gray-400 px-1 mb-2">Активные</div>

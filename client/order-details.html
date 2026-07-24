@@ -20,10 +20,6 @@
   </style>
 </head>
 
-<button type="button" onclick="callServer('getClientOrderDetails', '5B1E23').then(r => alert(JSON.stringify(r))).catch(e => alert(e.message))">
-  Получить детали заказа
-</button>
-
 <body class="text-gray-800">
   <div id="loading-screen" class="fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-50">
     <div class="text-gray-400 text-sm">Загрузка...</div>
