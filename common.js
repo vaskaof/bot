@@ -8,21 +8,24 @@
 const GAS_API_URL = APP_CONFIG.GAS_API_URL;
 
 /**
- * Единая обёртка над fetch() к GAS API — заменяет google.script.run,
- * так как фронтенд хостится отдельно (GitHub Pages), не внутри GAS.
- * Автоматически прикладывает initData к каждому запросу — сервер
- * проверяет подпись и роль централизованно на каждый вызов.
+ * Единая обёртка над fetch() к GAS API. При СЕТЕВОМ сбое (обрыв соединения,
+ * не ответ сервера) делает один автоматический повтор — мобильные сети и
+ * Telegram WebView иногда обрывают первый запрос. НЕ повторяет вызов, если
+ * сервер ответил (в том числе с ошибкой success:false) — это осознанный
+ * ответ, а не сбой связи, повторять его нельзя (может задублировать запись).
  */
 function callServer(methodName, ...args) {
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     const initData = tg ? tg.initData : "";
 
-    return fetch(GAS_API_URL, {
+    const doFetch = () => fetch(GAS_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ method: methodName, args: args, initData: initData })
-    })
-        .then(response => response.json())
+    }).then(response => response.json());
+
+    return doFetch()
+        .catch(networkError => doFetch()) // один повтор только при сбое самого fetch
         .then(response => {
             if (response.success) return response.data;
             throw new Error(response.error);
