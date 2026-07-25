@@ -40,7 +40,8 @@
   </div>
 
   <div id="app-content" class="hidden">
-    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center px-4">
+    <header
+      class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center px-4">
       <a href="orders.html" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </a>
@@ -60,13 +61,19 @@
           <div id="d-date-received-row" class="hidden">Дата получения: <span id="d-date-received"></span></div>
           <div id="d-duration-row" class="hidden">Доставка заняла: <span id="d-duration"></span></div>
         </div>
-        <div id="d-collective-row" class="hidden mt-3 p-3 rounded-xl bg-sky-50 border border-sky-100 text-sky-800 text-sm"></div>
+        <div id="d-collective-row"
+          class="hidden mt-3 p-3 rounded-xl bg-sky-50 border border-sky-100 text-sky-800 text-sm"></div>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
         <div class="text-sm font-semibold text-gray-700 mb-2">Оплаты</div>
         <div id="d-payments-list" class="space-y-2"></div>
       </div>
+
+      <button id="ask-question-btn" type="button"
+        class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-medium">
+        Задать вопрос по заказу
+      </button>
     </main>
   </div>
 
@@ -148,7 +155,104 @@
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('app-content').classList.remove('hidden');
     }
+    // --- Форма "Вопрос по заказу" ---
+    const questionModal = document.getElementById('question-modal');
+    const questionTextInput = document.getElementById('question-text-input');
+    const questionCounter = document.getElementById('question-counter');
+    const questionErrorText = document.getElementById('question-error-text');
+    const rateLimitPopup = document.getElementById('rate-limit-popup');
+
+    document.getElementById('ask-question-btn').addEventListener('click', () => {
+      questionTextInput.value = '';
+      questionCounter.textContent = '0/300';
+      questionErrorText.classList.add('hidden');
+      questionModal.classList.remove('hidden');
+      questionModal.classList.add('flex');
+    });
+
+    function closeQuestionModal() {
+      questionModal.classList.add('hidden');
+      questionModal.classList.remove('flex');
+    }
+    document.getElementById('question-modal-close').addEventListener('click', closeQuestionModal);
+    document.getElementById('question-cancel-btn').addEventListener('click', closeQuestionModal);
+
+    questionTextInput.addEventListener('input', (e) => {
+      questionCounter.textContent = `${e.target.value.length}/300`;
+    });
+
+    document.getElementById('question-send-btn').addEventListener('click', async () => {
+      const text = questionTextInput.value.trim();
+      questionErrorText.classList.add('hidden');
+
+      if (text === '') {
+        questionErrorText.textContent = 'Введите текст вопроса.';
+        questionErrorText.classList.remove('hidden');
+        return;
+      }
+
+      // Свой requestId на каждую НОВУЮ попытку отправки — защищает именно
+      // от повторной отправки ОДНОГО И ТОГО ЖЕ ввода (сетевой автоповтор в
+      // callServer, случайный двойной клик), не от двух разных вопросов подряд
+      const requestId = generateRequestId();
+
+      try {
+        await callServer('submitOrderQuestion', currentOrderId, text, requestId);
+        closeQuestionModal();
+      } catch (error) {
+        if (error.message === 'RATE_LIMIT') {
+          closeQuestionModal();
+          rateLimitPopup.classList.remove('hidden');
+          rateLimitPopup.classList.add('flex');
+        } else {
+          questionErrorText.textContent = error.message;
+          questionErrorText.classList.remove('hidden');
+        }
+      }
+    });
+
+    document.getElementById('rate-limit-ok-btn').addEventListener('click', () => {
+      rateLimitPopup.classList.add('hidden');
+      rateLimitPopup.classList.remove('flex');
+    });
   </script>
+
+  <!-- Модальное окно вопроса — добавить перед </body> -->
+  <div id="question-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">Вопрос по заказу</h2>
+        <button id="question-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4">
+        <textarea id="question-text-input" rows="4" maxlength="300"
+          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
+          placeholder="Опишите ваш вопрос..."></textarea>
+        <div class="text-right text-[10px] text-gray-400 mt-1" id="question-counter">0/300</div>
+        <div id="question-error-text" class="text-xs text-red-500 hidden mt-1"></div>
+      </div>
+      <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="question-cancel-btn"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="question-send-btn"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Простое всплывающее окно для rate-limit — отдельно от общей модалки,
+     т.к. должно быть видно и когда основная модалка уже закрыта -->
+  <div id="rate-limit-popup" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-6">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 text-center">
+      <p class="text-sm text-gray-700 mb-4">Вы уже отправляли вопрос недавно. Подождите немного перед следующей
+        отправкой.</p>
+      <button id="rate-limit-ok-btn"
+        class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Понятно</button>
+    </div>
+  </div>
+
 </body>
 
 </html>
