@@ -134,3 +134,15 @@ function initClientAccess(onSuccess) {
         }
     })();
 }
+
+/**
+ * Генерирует client-side ID запроса — защита от дублирования записи при
+ * повторной отправке (обрыв связи + автоповтор в callServer, двойной клик).
+ * crypto.randomUUID может отсутствовать в старых WebView Telegram — фолбэк.
+ */
+function generateRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
