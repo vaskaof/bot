@@ -48,6 +48,10 @@
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Заказ</h1>
     </header>
 
+    <div id="save-toast" class="fixed top-16 left-4 right-4 z-50 hidden">
+      <div id="save-toast-inner" class="rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md"></div>
+    </div>
+
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
         <div id="d-product" class="font-semibold text-gray-900 text-lg"></div>
@@ -93,22 +97,15 @@
         <div class="text-right text-[10px] text-gray-400 mt-1" id="question-counter">0/300</div>
         <div id="question-error-text" class="text-xs text-red-500 hidden mt-1"></div>
       </div>
+      
+      <div id="question-rate-limit-banner" class="hidden mx-4 mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs"></div>
+      
       <div class="p-4 border-t border-gray-100 flex gap-2">
         <button id="question-cancel-btn"
           class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
         <button id="question-send-btn"
           class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Окно предупреждения о лимите -->
-  <div id="rate-limit-popup" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-6">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 text-center">
-      <p class="text-sm text-gray-700 mb-4">Вы уже отправляли вопрос недавно. Подождите немного перед следующей
-        отправкой.</p>
-      <button id="rate-limit-ok-btn"
-        class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Понятно</button>
     </div>
   </div>
 
@@ -192,17 +189,28 @@
       document.getElementById('app-content').classList.remove('hidden');
     }
 
+    function showSaveToast(success, message) {
+      const toast = document.getElementById('save-toast');
+      const inner = document.getElementById('save-toast-inner');
+      inner.textContent = message;
+      inner.className = success
+        ? 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-green-50 text-green-700 border border-green-200'
+        : 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-red-50 text-red-700 border border-red-200';
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 4000);
+    }
+
     // --- Форма "Вопрос по заказу" ---
     const questionModal = document.getElementById('question-modal');
     const questionTextInput = document.getElementById('question-text-input');
     const questionCounter = document.getElementById('question-counter');
     const questionErrorText = document.getElementById('question-error-text');
-    const rateLimitPopup = document.getElementById('rate-limit-popup');
 
     document.getElementById('ask-question-btn').addEventListener('click', () => {
       questionTextInput.value = '';
       questionCounter.textContent = '0/300';
       questionErrorText.classList.add('hidden');
+      document.getElementById('question-rate-limit-banner').classList.add('hidden');
       questionModal.classList.remove('hidden');
       questionModal.classList.add('flex');
     });
@@ -221,6 +229,7 @@
     document.getElementById('question-send-btn').addEventListener('click', async () => {
       const text = questionTextInput.value.trim();
       questionErrorText.classList.add('hidden');
+      document.getElementById('question-rate-limit-banner').classList.add('hidden');
 
       if (text === '') {
         questionErrorText.textContent = 'Введите текст вопроса.';
@@ -233,21 +242,19 @@
       try {
         await callServer('submitOrderQuestion', currentOrderId, text, requestId);
         closeQuestionModal();
+        showSaveToast(true, 'Вопрос отправлен');
       } catch (error) {
         if (error.message === 'RATE_LIMIT') {
-          closeQuestionModal();
-          rateLimitPopup.classList.remove('hidden');
-          rateLimitPopup.classList.add('flex');
+          // Модалка НЕ закрывается, текст НЕ стирается — клиент не теряет
+          // написанное, просто ждёт и повторяет отправку той же кнопкой
+          const banner = document.getElementById('question-rate-limit-banner');
+          banner.textContent = 'Вы уже отправляли вопрос недавно — повторите через 30 секунд.';
+          banner.classList.remove('hidden');
         } else {
           questionErrorText.textContent = error.message;
           questionErrorText.classList.remove('hidden');
         }
       }
-    });
-
-    document.getElementById('rate-limit-ok-btn').addEventListener('click', () => {
-      rateLimitPopup.classList.add('hidden');
-      rateLimitPopup.classList.remove('flex');
     });
   </script>
 

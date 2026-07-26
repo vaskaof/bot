@@ -33,7 +33,8 @@
   </div>
 
   <div id="app-content" class="hidden">
-    <header class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
+    <header
+      class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои заказы</h1>
       <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
@@ -42,7 +43,7 @@
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
       <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
-      
+
       <!-- Блок активных заказов -->
       <div id="active-section">
         <div class="text-[11px] text-gray-400 px-1 mb-2">Активные</div>
@@ -60,7 +61,8 @@
       </div>
     </main>
 
-    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+    <nav
+      class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
       <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 pb-2 h-full">
         <i data-lucide="home" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Главная</span>
@@ -73,9 +75,11 @@
         <i data-lucide="heart" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Вишлист</span>
       </a>
-      <a href="#" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 pb-2 h-full">
-        <i data-lucide="user-circle" class="w-[22px] h-[22px]"></i>
-        <span class="text-[10px] font-medium leading-none">Профиль</span>
+      <!-- СТАЛО -->
+      <a href="questions.html"
+        class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="help-circle" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Вопросы</span>
       </a>
     </nav>
   </div>
