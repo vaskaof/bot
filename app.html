@@ -35,9 +35,9 @@
       try {
         const context = await fetchUserContext();
         if (context.role === 'admin') {
-          window.location.replace('admin/index.html');
+          window.location.replace('admin/news.html');
         } else {
-          window.location.replace('client/orders.html');
+          window.location.replace('client/news.html');
         }
       } catch (error) {
         document.getElementById('entry-status').textContent =
