@@ -51,6 +51,12 @@
     </div>
 
     <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <div id="audience-filter" class="flex gap-1.5 mb-2 overflow-x-auto pb-1">
+        <button type="button" data-filter="__all__" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Все записи</button>
+        <button type="button" data-filter="Админ" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Админам</button>
+        <button type="button" data-filter="Клиент" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Клиентам</button>
+        <button type="button" data-filter="Все" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Только «Всем»</button>
+      </div>
       <div class="text-[11px] text-gray-400 px-1 mb-2" id="news-count"></div>
       <div id="news-list"></div>
       <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Новостей пока нет.</div>
@@ -140,6 +146,10 @@
       const emptyMessage = document.getElementById('empty-message');
       const countLabel = document.getElementById('news-count');
       const refreshBtn = document.getElementById('refresh-btn');
+      const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+
+      let allNews = [];
+      let currentFilter = '__all__';
 
       loadNews();
       reloadNews = loadNews;
@@ -152,18 +162,37 @@
         if (liveIcon) liveIcon.classList.remove('animate-spin');
       });
 
+      filterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentFilter = btn.dataset.filter;
+          updateFilterStyles();
+          render();
+        });
+      });
+
+      function updateFilterStyles() {
+        filterButtons.forEach(btn => {
+          const active = btn.dataset.filter === currentFilter;
+          btn.className = `filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0 ${active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`;
+        });
+      }
+      updateFilterStyles();
+
       async function loadNews() {
         listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
         try {
-          const news = await callServer('getNewsList');
-          render(news);
+          allNews = await callServer('getNewsList');
+          render();
         } catch (error) {
           listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
         }
       }
 
-      function render(news) {
-        countLabel.textContent = `Всего: ${news.length}`;
+      function render() {
+        const news = currentFilter === '__all__' ? allNews : allNews.filter(n => n.audience === currentFilter);
+        countLabel.textContent = currentFilter === '__all__'
+          ? `Всего: ${allNews.length}`
+          : `Показано: ${news.length} из ${allNews.length}`;
         listContainer.innerHTML = '';
 
         if (news.length === 0) {
