@@ -255,7 +255,8 @@
     document.getElementById('proof-modal-close').addEventListener('click', closeProofModal);
     document.getElementById('proof-modal-cancel').addEventListener('click', closeProofModal);
 
-    document.getElementById('proof-modal-save').addEventListener('click', async () => {
+    const proofModalSaveBtn = document.getElementById('proof-modal-save');
+    proofModalSaveBtn.addEventListener('click', async () => {
       proofErrorText.classList.add('hidden');
       const text = proofTextInput.value.trim();
       if (text === '') {
@@ -264,6 +265,8 @@
         return;
       }
 
+      // Блокируем кнопку на время запроса — защита от повторного клика/медленной сети.
+      proofModalSaveBtn.disabled = true;
       try {
         await callServer('submitTaskProof', submittingTaskId, text);
         closeProofModal();
@@ -272,6 +275,8 @@
       } catch (error) {
         proofErrorText.textContent = error.message;
         proofErrorText.classList.remove('hidden');
+      } finally {
+        proofModalSaveBtn.disabled = false;
       }
     });
 

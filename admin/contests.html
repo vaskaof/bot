@@ -392,7 +392,8 @@
     document.getElementById('task-modal-close').addEventListener('click', closeTaskModal);
     document.getElementById('task-modal-cancel').addEventListener('click', closeTaskModal);
 
-    document.getElementById('task-modal-save').addEventListener('click', async () => {
+    const taskModalSaveBtn = document.getElementById('task-modal-save');
+    taskModalSaveBtn.addEventListener('click', async () => {
       errorText.classList.add('hidden');
       const title = titleInput.value.trim();
       const description = descriptionInput.value.trim();
@@ -411,6 +412,10 @@
         return;
       }
 
+      // Блокируем кнопку на время запроса — без этого быстрый повторный клик
+      // (или просто медленный ответ сети) отправляет createTask/updateTask
+      // дважды и создаёт дубль задания (баг найден VASY 01.08.2026).
+      taskModalSaveBtn.disabled = true;
       try {
         if (editingTaskId) {
           await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward));
@@ -423,6 +428,8 @@
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
+      } finally {
+        taskModalSaveBtn.disabled = false;
       }
     });
 
