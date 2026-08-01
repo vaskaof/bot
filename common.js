@@ -103,6 +103,43 @@ function fetchUserContext() {
 }
 
 /**
+ * Кэш контекста клиента внутри одной сессии браузера/WebView (sessionStorage,
+ * не переживает закрытие Mini App). Устраняет повторный getUserContext на
+ * КАЖДОМ переходе между client/*.html — каждый такой вызов на бэкенде дёргает
+ * registerUser() (полный скан Bot_Data) и upsertClientByTelegramId() (захват
+ * общего LockService.getScriptLock() + скан Индекс_Клиентов), даже когда
+ * писать нечего. TTL 15 минут — компромисс: заказ, привязанный менеджером по
+ * username ПОКА клиентская сессия уже открыта, попадёт в индекс с задержкой
+ * до TTL вместо немедленной привязки (тот же класс задержки, что и сейчас
+ * между двумя открытиями приложения, просто с явной верхней границей).
+ * Полноценное решение — вызывать getUserContext один раз за открытие
+ * приложения на уровне SPA-каркаса (Phase 2), это временная мера до него.
+ */
+const CLIENT_CONTEXT_CACHE_KEY = 'clientContextCache';
+const CLIENT_CONTEXT_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function _readCachedClientContext() {
+    try {
+        const raw = sessionStorage.getItem(CLIENT_CONTEXT_CACHE_KEY);
+        if (!raw) return null;
+        const { context, ts } = JSON.parse(raw);
+        if (!context || typeof ts !== 'number') return null;
+        if (Date.now() - ts > CLIENT_CONTEXT_CACHE_TTL_MS) return null;
+        return context;
+    } catch (error) {
+        return null; // повреждённая запись — не блокируем доступ, просто перезапросим
+    }
+}
+
+function _writeCachedClientContext(context) {
+    try {
+        sessionStorage.setItem(CLIENT_CONTEXT_CACHE_KEY, JSON.stringify({ context, ts: Date.now() }));
+    } catch (error) {
+        // sessionStorage недоступен/переполнен — не критично, просто не кэшируем
+    }
+}
+
+/**
  * Проверка доступа для клиентских страниц — аналог initAccessCheck() из
  * админки, но вместо getDictionaries использует getUserContext (единственный
  * метод, не требующий вхождения в CLIENT_ALLOWED_METHODS). Если роль не
@@ -118,10 +155,12 @@ function initClientAccess(onSuccess) {
 
     (async function () {
         try {
-            const context = await fetchUserContext();
+            const cached = _readCachedClientContext();
+            const context = cached || await fetchUserContext();
             if (context.role !== 'client') {
                 throw new Error('Доступ только для клиентов.');
             }
+            if (!cached) _writeCachedClientContext(context);
             loadingScreen.classList.add('hidden');
             appContent.classList.remove('hidden');
             onSuccess(context);

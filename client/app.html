@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Кнопка</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="../config.js?v=4"></script>
+  <script src="../common.js?v=4"></script>
+  <script src="router.js?v=2"></script>
+  <script src="screens/orders.js?v=2"></script>
+  <script src="screens/order-details.js?v=2"></script>
+  <script src="screens/news.js?v=2"></script>
+  <script src="screens/wishlist.js?v=2"></script>
+  <script src="screens/questions.js?v=2"></script>
+  <script src="screens/contests.js?v=2"></script>
+  <style>
+    body {
+      background-color: #f3f4f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 80px;
+    }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      z-index: 50;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #f3f4f6;
+    }
+    .dropdown-menu.active { display: block; }
+    .toggle-switch {
+      width: 40px;
+      height: 24px;
+      border-radius: 9999px;
+      background: #e5e7eb;
+      position: relative;
+      transition: background-color 0.2s;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle-switch.on { background: #4f46e5; }
+    .toggle-switch .knob {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      border-radius: 9999px;
+      background: white;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch.on .knob { transform: translateX(16px); }
+  </style>
+</head>
+
+<body class="text-gray-800">
+  <div id="loading-screen" class="fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-50">
+    <div class="text-gray-400 text-sm">Загрузка...</div>
+  </div>
+
+  <div id="access-denied-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
+    <div class="text-center" style="font-family: monospace; font-size: 12px; word-break: break-all; text-align: left;">
+      <p><b>Доступ не подтверждён.</b></p>
+      <p id="debug-init-data"></p>
+    </div>
+  </div>
+
+  <div id="app-content" class="hidden">
+    <!-- Общая шапка — живёт в шелле, НЕ пересоздаётся при смене экрана
+         (иначе виден "мигание/перезагрузка" верха при каждом переходе,
+         см. PROJECT_STATE.md 02.08.2026). Экран заполняет только
+         #header-left/#header-actions внутри render(), не весь <header>. -->
+    <header id="screen-header" class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
+      <div id="header-left" class="flex items-center min-w-0"></div>
+      <div id="header-actions" class="flex items-center gap-1 shrink-0"></div>
+    </header>
+
+    <div id="save-toast" class="fixed top-16 left-4 right-4 z-50 hidden">
+      <div id="save-toast-inner" class="rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md"></div>
+    </div>
+
+    <!-- Каждый экран владеет своим main/модалками — вставляется/заменяется
+         router.renderRoute() при смене hash. Шапка — отдельно, см. выше. -->
+    <div id="screen-root"></div>
+
+    <nav id="bottom-nav"
+      class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <button type="button" data-nav-key="news" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="home" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Главная</span>
+      </button>
+      <button type="button" data-nav-key="questions" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="help-circle" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Вопросы</span>
+      </button>
+      <button type="button" data-nav-key="wishlist" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="heart" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Вишлист</span>
+      </button>
+      <button type="button" data-nav-key="orders" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="package" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Заказы</span>
+      </button>
+      <button type="button" data-nav-key="contests" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="gift" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Конкурсы</span>
+      </button>
+    </nav>
+  </div>
+
+  <script>
+    startClientRouter();
+  </script>
+</body>
+
+</html>
