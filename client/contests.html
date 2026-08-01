@@ -135,6 +135,28 @@
     </div>
   </div>
 
+  <!-- Модальное окно доски ячеек (Тип1) -->
+  <div id="board-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="board-modal-title" class="text-base font-semibold text-gray-900">Доска ячеек</h2>
+        <button id="board-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="flex items-center gap-3 text-[11px] text-gray-500 flex-wrap">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 border border-gray-200 inline-block"></span>Свободна</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-400 inline-block"></span>Занята</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span>Ваша</span>
+        </div>
+        <div id="board-error-text" class="text-xs text-red-500 hidden"></div>
+        <div id="board-grid" class="grid grid-cols-6 gap-1.5"></div>
+      </div>
+      <div class="p-4"></div>
+    </div>
+  </div>
+
   <script>
     lucide.createIcons();
     initClientAccess(initApp);
@@ -197,14 +219,39 @@
             `).join('')
           : '<div class="text-[12px] text-gray-400">Без условий — вход всем</div>';
 
+        const isType1 = l.type === 'Тип1';
+        const countLine = isType1
+          ? `Забронировано: ${l.bookedCount} из ${l.totalCells} · Ваших ячеек: ${l.myCellCount}/${l.maxCellsPerClient}`
+          : `Участников: ${l.participantCount}`;
+
         card.innerHTML = `
           <div class="flex items-start justify-between gap-2">
-            <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(l.title)}</div>
+            <div class="flex items-center gap-1.5">
+              <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(l.title)}</div>
+              ${isType1 ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 shrink-0">Премиум</span>' : ''}
+            </div>
           </div>
           ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
           <div class="mt-2 space-y-0.5">${conditionsHtml}</div>
-          <div class="text-[12px] text-gray-400 mt-2">Участников: ${l.participantCount}</div>
+          <div class="text-[12px] text-gray-400 mt-2">${countLine}</div>
         `;
+
+        if (isType1) {
+          if (!l.conditionMet) {
+            const hint = document.createElement('div');
+            hint.className = 'mt-3 text-[12px] text-gray-500';
+            hint.textContent = 'Сначала выполните условия выше, отмеченные точкой.';
+            card.appendChild(hint);
+          } else {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mt-3 w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium';
+            btn.textContent = 'Открыть доску';
+            btn.addEventListener('click', () => openBoardModal(l));
+            card.appendChild(btn);
+          }
+          return card;
+        }
 
         if (l.alreadyJoined) {
           const badge = document.createElement('div');
@@ -360,6 +407,66 @@
       } finally {
         proofModalSaveBtn.disabled = false;
       }
+    });
+
+    // --- Модалка доски ячеек (Тип1) ---
+    const boardModal = document.getElementById('board-modal');
+    const boardGrid = document.getElementById('board-grid');
+    const boardErrorText = document.getElementById('board-error-text');
+    let boardLotteryId = null;
+
+    async function openBoardModal(l) {
+      boardLotteryId = l.lotteryId;
+      boardErrorText.classList.add('hidden');
+      document.getElementById('board-modal-title').textContent = l.title;
+      boardModal.classList.remove('hidden');
+      boardModal.classList.add('flex');
+      await refreshBoardModal();
+    }
+
+    async function refreshBoardModal() {
+      boardGrid.innerHTML = '<div class="col-span-6 text-center text-xs text-gray-400 py-6">Загрузка...</div>';
+      try {
+        const board = await callServer('getLotteryBoard', boardLotteryId);
+        boardGrid.innerHTML = '';
+        board.cells.forEach(c => {
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          let style = 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+          if (c.mine) style = 'bg-green-500 text-white';
+          else if (c.taken) style = 'bg-gray-400 text-white cursor-not-allowed';
+          cell.className = `aspect-square rounded-lg flex items-center justify-center text-[11px] font-medium ${style}`;
+          cell.textContent = c.cell;
+          cell.disabled = c.taken;
+          cell.addEventListener('click', () => bookCell(c.cell));
+          boardGrid.appendChild(cell);
+        });
+      } catch (error) {
+        boardGrid.innerHTML = `<div class="col-span-6 text-center text-xs text-red-500 py-6">Ошибка загрузки: ${error.message}</div>`;
+      }
+    }
+
+    async function bookCell(cellNumber) {
+      boardErrorText.classList.add('hidden');
+      if (!confirm(`Забронировать ячейку №${cellNumber} за 1 билет?`)) return;
+
+      try {
+        await callServer('bookLotteryCell', boardLotteryId, cellNumber);
+        showSaveToast(true, `Ячейка №${cellNumber} забронирована`);
+        await refreshBoardModal();
+        if (reloadAll) reloadAll();
+      } catch (error) {
+        boardErrorText.textContent = error.message;
+        boardErrorText.classList.remove('hidden');
+        await refreshBoardModal(); // могли проиграть гонку — обновляем доску, чтобы не давать давить на уже занятую ячейку
+      }
+    }
+
+    document.getElementById('board-modal-close').addEventListener('click', () => {
+      boardModal.classList.add('hidden');
+      boardModal.classList.remove('flex');
+      boardLotteryId = null;
+      if (reloadAll) reloadAll();
     });
 
     document.getElementById('copy-referral-btn').addEventListener('click', async () => {
