@@ -55,6 +55,7 @@
         <button type="button" data-tab="moderation" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
           Модерация <span id="pending-count-badge"></span>
         </button>
+        <button type="button" data-tab="lotteries" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Лотереи</button>
       </div>
 
       <div id="tasks-tab">
@@ -65,6 +66,11 @@
       <div id="moderation-tab" class="hidden">
         <div id="moderation-list"></div>
         <div id="moderation-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
+      </div>
+
+      <div id="lotteries-tab" class="hidden">
+        <div id="lotteries-list"></div>
+        <div id="lotteries-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Лотерей пока нет.</div>
       </div>
     </main>
 
@@ -153,13 +159,92 @@
     </div>
   </div>
 
+  <!-- Модальное окно создания/редактирования лотереи -->
+  <div id="lottery-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="lottery-modal-title" class="text-base font-semibold text-gray-900">Новая лотерея</h2>
+        <button id="lottery-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Название *</label>
+          <input type="text" id="lottery-title-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Например: Розыгрыш куклы к 1 сентября">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Приз</label>
+          <input type="text" id="lottery-prize-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Необязательно">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Условие входа</label>
+          <select id="lottery-task-input"
+            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
+            <option value="">Без условия — вход всем</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="lottery-error-text" class="px-4 text-xs text-red-500 hidden"></div>
+
+      <div class="p-4 border-t border-gray-100 flex gap-2">
+        <button id="lottery-modal-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+        <button id="lottery-modal-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно розыгрыша -->
+  <div id="draw-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="draw-modal-title" class="text-base font-semibold text-gray-900">Розыгрыш</h2>
+        <button id="draw-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <div id="draw-participant-count" class="text-sm text-gray-600"></div>
+        <div id="draw-participants-list" class="max-h-40 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-50"></div>
+
+        <button id="draw-auto-btn" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">
+          Выбрать случайно
+        </button>
+
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+          <div class="flex-1 h-px bg-gray-100"></div>или по номеру из внешнего рандомайзера<div class="flex-1 h-px bg-gray-100"></div>
+        </div>
+
+        <div class="flex gap-2">
+          <input type="number" id="draw-manual-number-input" min="1"
+            class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+            placeholder="Номер участника">
+          <button id="draw-manual-btn" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium">Выбрать</button>
+        </div>
+      </div>
+
+      <div id="draw-error-text" class="px-4 text-xs text-red-500 hidden"></div>
+      <div class="p-4"></div>
+    </div>
+  </div>
+
   <script>
     lucide.createIcons();
     initAccessCheck(initApp);
 
     let editingTaskId = null;
+    let editingLotteryId = null;
+    let drawingLotteryId = null;
     let reloadTasks = null;
     let reloadModeration = null;
+    let reloadLotteries = null;
     let currentTab = 'tasks';
 
     function initApp() {
@@ -167,13 +252,17 @@
       const tasksEmpty = document.getElementById('tasks-empty-message');
       const moderationList = document.getElementById('moderation-list');
       const moderationEmpty = document.getElementById('moderation-empty-message');
+      const lotteriesList = document.getElementById('lotteries-list');
+      const lotteriesEmpty = document.getElementById('lotteries-empty-message');
       const refreshBtn = document.getElementById('refresh-btn');
       const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
 
       loadTasks();
       loadModeration();
+      loadLotteries();
       reloadTasks = loadTasks;
       reloadModeration = loadModeration;
+      reloadLotteries = loadLotteries;
 
       tabButtons.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -189,13 +278,15 @@
         });
         document.getElementById('tasks-tab').classList.toggle('hidden', currentTab !== 'tasks');
         document.getElementById('moderation-tab').classList.toggle('hidden', currentTab !== 'moderation');
+        document.getElementById('lotteries-tab').classList.toggle('hidden', currentTab !== 'lotteries');
+        document.getElementById('add-task-btn').classList.toggle('hidden', currentTab === 'moderation');
       }
       updateTabStyles();
 
       refreshBtn.addEventListener('click', async () => {
         const icon = refreshBtn.querySelector('svg');
         if (icon) icon.classList.add('animate-spin');
-        await Promise.all([loadTasks(), loadModeration()]);
+        await Promise.all([loadTasks(), loadModeration(), loadLotteries()]);
         const liveIcon = refreshBtn.querySelector('svg');
         if (liveIcon) liveIcon.classList.remove('animate-spin');
       });
@@ -335,7 +426,116 @@
         return card;
       }
 
-      document.getElementById('add-task-btn').addEventListener('click', () => openModalForCreate());
+      async function loadLotteries() {
+        lotteriesList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+        try {
+          const lotteries = await callServer('getAdminLotteriesList');
+          renderLotteries(lotteries);
+        } catch (error) {
+          lotteriesList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
+        }
+      }
+
+      function renderLotteries(lotteries) {
+        lotteriesList.innerHTML = '';
+        if (lotteries.length === 0) {
+          lotteriesEmpty.classList.remove('hidden');
+          return;
+        }
+        lotteriesEmpty.classList.add('hidden');
+        lotteries.forEach(l => lotteriesList.appendChild(buildLotteryCard(l)));
+        lucide.createIcons();
+      }
+
+      const statusStyles = {
+        'Черновик': 'bg-gray-100 text-gray-500',
+        'Активна': 'bg-green-50 text-green-700',
+        'Завершена': 'bg-indigo-50 text-indigo-600',
+        'Отменена': 'bg-red-50 text-red-500',
+      };
+
+      function buildLotteryCard(l) {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(l.title)}</div>
+            <span class="text-[10px] px-2 py-0.5 rounded-full ${statusStyles[l.status] || 'bg-gray-100 text-gray-500'} shrink-0">${escapeHtmlClient(l.status)}</span>
+          </div>
+          ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
+          <div class="text-[12px] text-gray-500 mt-2">
+            ${l.taskTitle ? `Условие: ${escapeHtmlClient(l.taskTitle)} · ` : 'Без условия входа · '}Участников: ${l.participantCount}
+            ${l.status === 'Завершена' && l.winnerId ? ` · Победитель: ${escapeHtmlClient(l.winnerId)}` : ''}
+          </div>
+          <div class="flex items-center gap-2 mt-3 flex-wrap"></div>
+        `;
+
+        const actions = card.querySelector('.flex-wrap');
+
+        if (l.status === 'Черновик') {
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'p-2 text-gray-400 hover:text-indigo-600';
+          editBtn.innerHTML = '<i data-lucide="pencil" class="w-4 h-4"></i>';
+          editBtn.addEventListener('click', () => openLotteryModalForEdit(l));
+          actions.appendChild(editBtn);
+
+          const publishBtn = document.createElement('button');
+          publishBtn.type = 'button';
+          publishBtn.className = 'flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium';
+          publishBtn.textContent = 'Опубликовать';
+          publishBtn.addEventListener('click', async () => {
+            publishBtn.disabled = true;
+            try {
+              await callServer('publishLottery', l.lotteryId);
+              showSaveToast(true, 'Лотерея опубликована');
+              loadLotteries();
+            } catch (error) {
+              publishBtn.disabled = false;
+              showSaveToast(false, `Не удалось опубликовать: ${error.message}`);
+            }
+          });
+          actions.appendChild(publishBtn);
+        }
+
+        if (l.status === 'Активна') {
+          const drawBtn = document.createElement('button');
+          drawBtn.type = 'button';
+          drawBtn.className = 'flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium';
+          drawBtn.textContent = 'Разыграть';
+          drawBtn.addEventListener('click', () => openDrawModal(l));
+          actions.appendChild(drawBtn);
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.className = 'py-2 px-3 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium';
+          cancelBtn.textContent = 'Отменить';
+          cancelBtn.addEventListener('click', async () => {
+            if (!confirm('Отменить лотерею? Действие необратимо.')) return;
+            cancelBtn.disabled = true;
+            try {
+              await callServer('cancelLottery', l.lotteryId);
+              showSaveToast(true, 'Лотерея отменена');
+              loadLotteries();
+            } catch (error) {
+              cancelBtn.disabled = false;
+              showSaveToast(false, `Не удалось отменить: ${error.message}`);
+            }
+          });
+          actions.appendChild(cancelBtn);
+        }
+
+        return card;
+      }
+
+      document.getElementById('add-task-btn').addEventListener('click', () => {
+        if (currentTab === 'lotteries') {
+          openLotteryModalForCreate();
+        } else {
+          openModalForCreate();
+        }
+      });
     }
 
     // --- Модалка создания/редактирования задания ---
@@ -443,6 +643,166 @@
       toast.classList.remove('hidden');
       setTimeout(() => toast.classList.add('hidden'), 4000);
     }
+
+    // --- Модалка создания/редактирования лотереи ---
+    const lotteryModal = document.getElementById('lottery-modal');
+    const lotteryTitleInput = document.getElementById('lottery-title-input');
+    const lotteryPrizeInput = document.getElementById('lottery-prize-input');
+    const lotteryTaskInput = document.getElementById('lottery-task-input');
+    const lotteryErrorText = document.getElementById('lottery-error-text');
+
+    async function populateLotteryTaskOptions(selectedTaskId) {
+      lotteryTaskInput.innerHTML = '<option value="">Без условия — вход всем</option>';
+      try {
+        const tasks = await callServer('getAdminTasksList');
+        tasks.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.taskId;
+          opt.textContent = t.title;
+          lotteryTaskInput.appendChild(opt);
+        });
+      } catch (error) {
+        // Список заданий не критичен для открытия модалки — молча оставляем
+        // только вариант "без условия", ошибка не мешает создать лотерею.
+      }
+      lotteryTaskInput.value = selectedTaskId || '';
+    }
+
+    function resetLotteryModalState() {
+      editingLotteryId = null;
+      lotteryTitleInput.value = '';
+      lotteryPrizeInput.value = '';
+      lotteryErrorText.classList.add('hidden');
+    }
+
+    async function openLotteryModalForCreate() {
+      resetLotteryModalState();
+      document.getElementById('lottery-modal-title').textContent = 'Новая лотерея';
+      await populateLotteryTaskOptions('');
+      lotteryModal.classList.remove('hidden');
+      lotteryModal.classList.add('flex');
+    }
+
+    async function openLotteryModalForEdit(l) {
+      resetLotteryModalState();
+      editingLotteryId = l.lotteryId;
+      document.getElementById('lottery-modal-title').textContent = 'Редактировать лотерею';
+      lotteryTitleInput.value = l.title;
+      lotteryPrizeInput.value = l.prize;
+      await populateLotteryTaskOptions(l.taskId);
+      lotteryModal.classList.remove('hidden');
+      lotteryModal.classList.add('flex');
+    }
+
+    function closeLotteryModal() {
+      lotteryModal.classList.add('hidden');
+      lotteryModal.classList.remove('flex');
+    }
+    document.getElementById('lottery-modal-close').addEventListener('click', closeLotteryModal);
+    document.getElementById('lottery-modal-cancel').addEventListener('click', closeLotteryModal);
+
+    const lotteryModalSaveBtn = document.getElementById('lottery-modal-save');
+    lotteryModalSaveBtn.addEventListener('click', async () => {
+      lotteryErrorText.classList.add('hidden');
+      const title = lotteryTitleInput.value.trim();
+      const prize = lotteryPrizeInput.value.trim();
+      const taskId = lotteryTaskInput.value;
+
+      if (title === '') {
+        lotteryErrorText.textContent = 'Введите название лотереи.';
+        lotteryErrorText.classList.remove('hidden');
+        return;
+      }
+
+      // Блокируем кнопку на время запроса — тот же класс бага, что и с
+      // заданиями (см. task-modal-save), защита от дублей при повторном клике.
+      lotteryModalSaveBtn.disabled = true;
+      try {
+        if (editingLotteryId) {
+          await callServer('updateLottery', editingLotteryId, title, prize, taskId);
+        } else {
+          await callServer('createLottery', title, prize, taskId);
+        }
+        closeLotteryModal();
+        showSaveToast(true, editingLotteryId ? 'Лотерея обновлена' : 'Лотерея создана (черновик)');
+        if (reloadLotteries) reloadLotteries();
+      } catch (error) {
+        lotteryErrorText.textContent = error.message;
+        lotteryErrorText.classList.remove('hidden');
+      } finally {
+        lotteryModalSaveBtn.disabled = false;
+      }
+    });
+
+    // --- Модалка розыгрыша ---
+    const drawModal = document.getElementById('draw-modal');
+    const drawParticipantCount = document.getElementById('draw-participant-count');
+    const drawParticipantsList = document.getElementById('draw-participants-list');
+    const drawAutoBtn = document.getElementById('draw-auto-btn');
+    const drawManualNumberInput = document.getElementById('draw-manual-number-input');
+    const drawManualBtn = document.getElementById('draw-manual-btn');
+    const drawErrorText = document.getElementById('draw-error-text');
+
+    async function openDrawModal(l) {
+      drawingLotteryId = l.lotteryId;
+      drawErrorText.classList.add('hidden');
+      drawManualNumberInput.value = '';
+      document.getElementById('draw-modal-title').textContent = `Розыгрыш: ${l.title}`;
+      drawParticipantCount.textContent = 'Загрузка участников...';
+      drawParticipantsList.innerHTML = '';
+      drawModal.classList.remove('hidden');
+      drawModal.classList.add('flex');
+
+      try {
+        const participants = await callServer('getLotteryParticipants', l.lotteryId);
+        drawParticipantCount.textContent = `Участников: ${participants.length}`;
+        drawParticipantsList.innerHTML = participants
+          .map(p => `<div class="px-3 py-1.5 text-xs text-gray-600 flex justify-between"><span>№${p.number}</span><span>${escapeHtmlClient(p.telegramId)}</span></div>`)
+          .join('') || '<div class="px-3 py-2 text-xs text-gray-400">Участников нет</div>';
+      } catch (error) {
+        drawParticipantCount.textContent = '';
+        drawParticipantsList.innerHTML = `<div class="px-3 py-2 text-xs text-red-500">Ошибка загрузки: ${error.message}</div>`;
+      }
+    }
+
+    function closeDrawModal() {
+      drawModal.classList.add('hidden');
+      drawModal.classList.remove('flex');
+      drawingLotteryId = null;
+    }
+    document.getElementById('draw-modal-close').addEventListener('click', closeDrawModal);
+
+    async function runDraw(mode, winnerNumber) {
+      drawErrorText.classList.add('hidden');
+      if (!confirm('Провести розыгрыш? Действие необратимо, лотерея завершится.')) return;
+
+      drawAutoBtn.disabled = true;
+      drawManualBtn.disabled = true;
+      try {
+        const result = await callServer('drawLotteryWinner', drawingLotteryId, mode, winnerNumber);
+        showSaveToast(true, `Победитель определён: ${result.winnerTelegramId}`);
+        closeDrawModal();
+        if (reloadLotteries) reloadLotteries();
+      } catch (error) {
+        drawErrorText.textContent = error.message;
+        drawErrorText.classList.remove('hidden');
+      } finally {
+        drawAutoBtn.disabled = false;
+        drawManualBtn.disabled = false;
+      }
+    }
+
+    drawAutoBtn.addEventListener('click', () => runDraw('auto', undefined));
+
+    drawManualBtn.addEventListener('click', () => {
+      const num = Number(drawManualNumberInput.value);
+      if (!drawManualNumberInput.value || num < 1) {
+        drawErrorText.textContent = 'Введите номер участника (1 и более).';
+        drawErrorText.classList.remove('hidden');
+        return;
+      }
+      runDraw('manual', num);
+    });
   </script>
 </body>
 
