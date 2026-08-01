@@ -188,11 +188,21 @@
         const card = document.createElement('div');
         card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
 
+        const conditionsHtml = l.conditions && l.conditions.length > 0
+          ? l.conditions.map(c => `
+              <div class="text-[12px] ${c.done ? 'text-green-600' : 'text-gray-500'} flex items-start gap-1">
+                <span>${c.done ? '✓' : '•'}</span>
+                <span>${escapeHtmlClient(c.title)}${c.description ? ` — ${escapeHtmlClient(c.description)}` : ''}</span>
+              </div>
+            `).join('')
+          : '<div class="text-[12px] text-gray-400">Без условий — вход всем</div>';
+
         card.innerHTML = `
           <div class="flex items-start justify-between gap-2">
             <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(l.title)}</div>
           </div>
           ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
+          <div class="mt-2 space-y-0.5">${conditionsHtml}</div>
           <div class="text-[12px] text-gray-400 mt-2">Участников: ${l.participantCount}</div>
         `;
 
@@ -221,7 +231,7 @@
         } else {
           const hint = document.createElement('div');
           hint.className = 'mt-3 text-[12px] text-gray-500';
-          hint.textContent = l.taskTitle ? `Сначала выполните задание: «${l.taskTitle}»` : 'Условие входа пока не выполнено.';
+          hint.textContent = 'Сначала выполните условия выше, отмеченные точкой.';
           card.appendChild(hint);
         }
 

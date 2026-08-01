@@ -183,11 +183,8 @@
             placeholder="Необязательно">
         </div>
         <div>
-          <label class="text-xs font-medium text-gray-500">Условие входа</label>
-          <select id="lottery-task-input"
-            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
-            <option value="">Без условия — вход всем</option>
-          </select>
+          <label class="text-xs font-medium text-gray-500">Условия входа (нужны ВСЕ отмеченные, ничего не отмечено — вход всем)</label>
+          <div id="lottery-task-checklist" class="mt-1 max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-50"></div>
         </div>
       </div>
 
@@ -458,15 +455,20 @@
         const card = document.createElement('div');
         card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
 
+        const conditionsHtml = l.conditions && l.conditions.length > 0
+          ? l.conditions.map(c => `<div class="text-[12px] text-gray-500">• ${escapeHtmlClient(c.title)}${c.description ? ` — ${escapeHtmlClient(c.description)}` : ''}</div>`).join('')
+          : '<div class="text-[12px] text-gray-400">Без условий — вход всем</div>';
+
         card.innerHTML = `
           <div class="flex items-start justify-between gap-2">
             <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(l.title)}</div>
             <span class="text-[10px] px-2 py-0.5 rounded-full ${statusStyles[l.status] || 'bg-gray-100 text-gray-500'} shrink-0">${escapeHtmlClient(l.status)}</span>
           </div>
           ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
+          <div class="mt-2 space-y-0.5">${conditionsHtml}</div>
           <div class="text-[12px] text-gray-500 mt-2">
-            ${l.taskTitle ? `Условие: ${escapeHtmlClient(l.taskTitle)} · ` : 'Без условия входа · '}Участников: ${l.participantCount}
-            ${l.status === 'Завершена' && l.winnerId ? ` · Победитель: ${escapeHtmlClient(l.winnerId)}` : ''}
+            Участников: ${l.participantCount}
+            ${l.status === 'Завершена' && l.winnerDisplayName ? ` · Победитель: ${escapeHtmlClient(l.winnerDisplayName)}` : ''}
           </div>
           <div class="flex items-center gap-2 mt-3 flex-wrap"></div>
         `;
@@ -648,24 +650,40 @@
     const lotteryModal = document.getElementById('lottery-modal');
     const lotteryTitleInput = document.getElementById('lottery-title-input');
     const lotteryPrizeInput = document.getElementById('lottery-prize-input');
-    const lotteryTaskInput = document.getElementById('lottery-task-input');
+    const lotteryTaskChecklist = document.getElementById('lottery-task-checklist');
     const lotteryErrorText = document.getElementById('lottery-error-text');
 
-    async function populateLotteryTaskOptions(selectedTaskId) {
-      lotteryTaskInput.innerHTML = '<option value="">Без условия — вход всем</option>';
+    async function populateLotteryTaskChecklist(selectedTaskIds) {
+      const selected = selectedTaskIds || [];
+      lotteryTaskChecklist.innerHTML = '<div class="p-3 text-xs text-gray-400">Загрузка заданий...</div>';
       try {
         const tasks = await callServer('getAdminTasksList');
+        if (tasks.length === 0) {
+          lotteryTaskChecklist.innerHTML = '<div class="p-3 text-xs text-gray-400">Заданий пока нет — лотерея будет без условий входа.</div>';
+          return;
+        }
+        lotteryTaskChecklist.innerHTML = '';
         tasks.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = t.taskId;
-          opt.textContent = t.title;
-          lotteryTaskInput.appendChild(opt);
+          const row = document.createElement('label');
+          row.className = 'flex items-start gap-2 p-2 text-sm cursor-pointer';
+          row.innerHTML = `
+            <input type="checkbox" value="${escapeHtmlClient(t.taskId)}" class="lottery-task-checkbox mt-0.5">
+            <span>
+              <span class="block text-gray-900">${escapeHtmlClient(t.title)}</span>
+              ${t.description ? `<span class="block text-xs text-gray-400">${escapeHtmlClient(t.description)}</span>` : ''}
+            </span>
+          `;
+          const checkbox = row.querySelector('input');
+          checkbox.checked = selected.includes(t.taskId);
+          lotteryTaskChecklist.appendChild(row);
         });
       } catch (error) {
-        // Список заданий не критичен для открытия модалки — молча оставляем
-        // только вариант "без условия", ошибка не мешает создать лотерею.
+        lotteryTaskChecklist.innerHTML = `<div class="p-3 text-xs text-red-500">Не удалось загрузить задания: ${error.message}</div>`;
       }
-      lotteryTaskInput.value = selectedTaskId || '';
+    }
+
+    function getSelectedLotteryTaskIds() {
+      return Array.from(lotteryTaskChecklist.querySelectorAll('.lottery-task-checkbox:checked')).map(cb => cb.value);
     }
 
     function resetLotteryModalState() {
@@ -678,7 +696,7 @@
     async function openLotteryModalForCreate() {
       resetLotteryModalState();
       document.getElementById('lottery-modal-title').textContent = 'Новая лотерея';
-      await populateLotteryTaskOptions('');
+      await populateLotteryTaskChecklist([]);
       lotteryModal.classList.remove('hidden');
       lotteryModal.classList.add('flex');
     }
@@ -689,7 +707,7 @@
       document.getElementById('lottery-modal-title').textContent = 'Редактировать лотерею';
       lotteryTitleInput.value = l.title;
       lotteryPrizeInput.value = l.prize;
-      await populateLotteryTaskOptions(l.taskId);
+      await populateLotteryTaskChecklist(l.taskIds || []);
       lotteryModal.classList.remove('hidden');
       lotteryModal.classList.add('flex');
     }
@@ -706,7 +724,7 @@
       lotteryErrorText.classList.add('hidden');
       const title = lotteryTitleInput.value.trim();
       const prize = lotteryPrizeInput.value.trim();
-      const taskId = lotteryTaskInput.value;
+      const taskIds = getSelectedLotteryTaskIds();
 
       if (title === '') {
         lotteryErrorText.textContent = 'Введите название лотереи.';
@@ -719,9 +737,9 @@
       lotteryModalSaveBtn.disabled = true;
       try {
         if (editingLotteryId) {
-          await callServer('updateLottery', editingLotteryId, title, prize, taskId);
+          await callServer('updateLottery', editingLotteryId, title, prize, taskIds);
         } else {
-          await callServer('createLottery', title, prize, taskId);
+          await callServer('createLottery', title, prize, taskIds);
         }
         closeLotteryModal();
         showSaveToast(true, editingLotteryId ? 'Лотерея обновлена' : 'Лотерея создана (черновик)');
@@ -757,7 +775,7 @@
         const participants = await callServer('getLotteryParticipants', l.lotteryId);
         drawParticipantCount.textContent = `Участников: ${participants.length}`;
         drawParticipantsList.innerHTML = participants
-          .map(p => `<div class="px-3 py-1.5 text-xs text-gray-600 flex justify-between"><span>№${p.number}</span><span>${escapeHtmlClient(p.telegramId)}</span></div>`)
+          .map(p => `<div class="px-3 py-1.5 text-xs text-gray-600 flex justify-between gap-2"><span>№${p.number}</span><span class="truncate">${escapeHtmlClient(p.displayName || p.telegramId)}</span></div>`)
           .join('') || '<div class="px-3 py-2 text-xs text-gray-400">Участников нет</div>';
       } catch (error) {
         drawParticipantCount.textContent = '';
