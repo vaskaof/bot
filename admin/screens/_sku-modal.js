@@ -12,6 +12,28 @@
  *   skuModal.open('create');           // новая позиция
  *   skuModal.open('edit', original);   // редактирование существующей
  */
+
+// Слой 5 плана дедупликации каталога (03.08.2026, опционально) — авто-
+// подсказка Бренда по словарю известных франшиз коллекционных кукол. Только
+// подсказка: никогда не перезаписывает уже заполненное поле, чистый клиентский
+// keyword-matching без AI и без обращения к серверу — дёшево и достаточно для
+// закрытого списка известных брендов (в отличие от Персонажа/Серии — открытый
+// список имён, туда эта эвристика не годится).
+const SKU_MODAL_KNOWN_BRANDS = [
+  'Monster High', 'Bratzillaz', 'Bratz', 'Rainbow High', 'Barbie', 'Ever After High',
+  'Equestria Girls', 'My Little Pony', 'L.O.L. Surprise', 'LOL Surprise', 'Na! Na! Na! Surprise',
+  'Enchantimals', 'Winx Club', 'Shopkins', 'Disney Princess', 'Disney', 'Polly Pocket',
+  'American Girl', 'Cry Babies', 'Baby Alive', 'Novi Stars', 'Project Mc2'
+];
+
+function skuModalGuessBrand(title) {
+  const lower = title.toLowerCase();
+  for (const brand of SKU_MODAL_KNOWN_BRANDS) {
+    if (lower.includes(brand.toLowerCase())) return brand;
+  }
+  return null;
+}
+
 window.SkuModal = {
   html() {
     return `
@@ -118,6 +140,21 @@ window.SkuModal = {
         // Подсказки — удобство, не критичная функциональность; тихо не показываем при сбое.
       }
     })();
+
+    // Слой 5 (опционально) — авто-подстановка Бренда по словарю известных
+    // франшиз, только если поле Бренд ещё пусто (никогда не перезаписывает
+    // то, что менеджер уже ввёл сам). Срабатывает по уходу с поля "Выпуск" —
+    // не на каждый символ, чтобы не дёргать поле во время набора текста.
+    document.getElementById('sku-original-input').addEventListener('blur', () => {
+      const brandInput = document.getElementById('sku-brand-input');
+      if (brandInput.value.trim() !== '') return;
+
+      const title = document.getElementById('sku-original-input').value.trim();
+      if (title === '') return;
+
+      const guessed = skuModalGuessBrand(title);
+      if (guessed) brandInput.value = guessed;
+    });
 
     async function open(mode, original) {
       skuModalMode = mode;
