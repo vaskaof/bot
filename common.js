@@ -9,10 +9,16 @@ const GAS_API_URL = APP_CONFIG.GAS_API_URL;
 
 /**
  * Единая обёртка над fetch() к GAS API. При СЕТЕВОМ сбое (обрыв соединения,
- * не ответ сервера) делает один автоматический повтор — мобильные сети и
- * Telegram WebView иногда обрывают первый запрос. НЕ повторяет вызов, если
- * сервер ответил (в том числе с ошибкой success:false) — это осознанный
- * ответ, а не сбой связи, повторять его нельзя (может задублировать запись).
+ * не ответ сервера) делает автоматические повторы с небольшой паузой — Web App
+ * от GAS отвечает через редирект на script.googleusercontent.com, и если этот
+ * второй "прыжок" в моменте не проходит (мобильная сеть, Telegram WebView),
+ * fetch() бросает "Failed to fetch", хотя сам скрипт на бэкенде уже успешно
+ * отработал (видно по Executions — там в этот момент "Выполнение завершено") —
+ * это не серверная ошибка, а разовая сетевая заминка на клиенте (найдено и
+ * исправлено 03.08.2026 по репорту VASY "иногда долго грузит/ошибка"). НЕ
+ * повторяет вызов, если сервер ответил (в том числе с ошибкой success:false) —
+ * это осознанный ответ, а не сбой связи, повторять его нельзя (может
+ * задублировать запись).
  */
 function callServer(methodName, ...args) {
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -24,8 +30,23 @@ function callServer(methodName, ...args) {
         body: JSON.stringify({ method: methodName, args: args, initData: initData })
     }).then(response => response.json());
 
-    return doFetch()
-        .catch(networkError => doFetch()) // один повтор только при сбое самого fetch
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    async function withRetries() {
+        const delaysMs = [0, 300, 800]; // 1-я попытка сразу, потом 2 повтора с паузой
+        let lastError;
+        for (const delay of delaysMs) {
+            if (delay > 0) await sleep(delay);
+            try {
+                return await doFetch();
+            } catch (networkError) {
+                lastError = networkError;
+            }
+        }
+        throw lastError;
+    }
+
+    return withRetries()
         .then(response => {
             if (response.success) return response.data;
             throw new Error(response.error);
