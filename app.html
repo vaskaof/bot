@@ -35,7 +35,7 @@
       try {
         const context = await fetchUserContext();
         if (context.role === 'admin') {
-          window.location.replace('admin/news.html');
+          window.location.replace('admin/app.html#/news');
         } else {
           window.location.replace('client/app.html#/news');
         }
