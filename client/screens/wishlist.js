@@ -53,14 +53,31 @@ window.Screens.wishlist = {
             <div class="relative">
               <input type="text" id="item-search"
                 class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Поиск куклы в каталоге..." autocomplete="off">
+                placeholder="Поиск куклы в каталоге или вставьте ссылку" autocomplete="off">
               <ul id="item-search-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+            </div>
+            <div id="url-hint-block" class="hidden p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-sm text-indigo-800 flex items-center justify-between gap-2">
+              <span>Похоже на ссылку на товар</span>
+              <button type="button" id="url-hint-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium">Распознать</button>
             </div>
             <div id="selected-sku-display" class="hidden p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-sm text-indigo-800"></div>
             <button type="button" id="switch-to-manual-btn" class="text-xs text-indigo-600 font-medium">Не нашли? Добавить вручную</button>
           </div>
 
           <div id="manual-mode-block" class="hidden p-4 space-y-3">
+            <div>
+              <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
+              <div class="flex gap-2 mt-1">
+                <input type="text" id="manual-url-input"
+                  class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Вставьте ссылку — можно распознать автоматически">
+                <button type="button" id="resolve-link-btn" disabled
+                  class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  Распознать
+                </button>
+              </div>
+            </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Название *</label>
               <input type="text" id="manual-title-input" maxlength="150"
@@ -72,19 +89,6 @@ window.Screens.wishlist = {
               <textarea id="manual-description-input" maxlength="300" rows="2"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
                 placeholder="Необязательно"></textarea>
-            </div>
-            <div>
-              <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
-              <div class="flex gap-2 mt-1">
-                <input type="text" id="manual-url-input"
-                  class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                  placeholder="Необязательно">
-                <button type="button" id="resolve-link-btn" disabled
-                  class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1">
-                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                  Распознать
-                </button>
-              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылка на изображение</label>
@@ -167,24 +171,26 @@ window.Screens.wishlist = {
 
     function buildCard(item) {
       const card = document.createElement('div');
-      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex gap-3';
 
       const isPurchased = item.status === 'Куплено';
 
       card.innerHTML = `
-        <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
-        ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
-        ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
-        <div class="flex flex-wrap gap-3 mt-1">
-          ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
-          ${item.rawImageUrl ? `<a href="${escapeHtmlClient(item.rawImageUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Фото</a>` : ''}
-        </div>
-        <div class="flex items-center gap-2 mt-3">
-          <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isPurchased ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
-            ${isPurchased ? 'Вернуть в «Хочу»' : 'Отметить купленным'}
-          </button>
-          ${item.isUnknown ? '<button type="button" class="edit-item-btn p-2 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>' : ''}
-          <button type="button" class="delete-item-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        ${item.rawImageUrl ? `<img src="${escapeHtmlClient(item.rawImageUrl)}" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
+          ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
+          ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
+          <div class="flex flex-wrap gap-3 mt-1">
+            ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
+          </div>
+          <div class="flex items-center gap-2 mt-3">
+            <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isPurchased ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
+              ${isPurchased ? 'Вернуть в «Хочу»' : 'Отметить купленным'}
+            </button>
+            ${item.isUnknown ? '<button type="button" class="edit-item-btn p-2 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>' : ''}
+            <button type="button" class="delete-item-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </div>
         </div>
       `;
 
@@ -232,6 +238,12 @@ window.Screens.wishlist = {
     const manualTitleInput = document.getElementById('manual-title-input');
     const manualDescriptionInput = document.getElementById('manual-description-input');
     const manualImageInput = document.getElementById('manual-image-input');
+    const urlHintBlock = document.getElementById('url-hint-block');
+    const urlHintResolveBtn = document.getElementById('url-hint-resolve-btn');
+
+    function looksLikeUrl(value) {
+      return /^https?:\/\//i.test(value.trim());
+    }
 
     function resetModalState() {
       selectedSkuValue = null;
@@ -239,6 +251,7 @@ window.Screens.wishlist = {
       itemSearch.value = '';
       selectedSkuDisplay.classList.add('hidden');
       itemSearchDropdown.classList.remove('active');
+      urlHintBlock.classList.add('hidden');
       document.getElementById('manual-title-input').value = '';
       document.getElementById('manual-description-input').value = '';
       document.getElementById('manual-url-input').value = '';
@@ -292,15 +305,9 @@ window.Screens.wishlist = {
 
     // Авто-распознавание товара по ссылке (Phase A: OG-теги/JSON-LD, без AI —
     // см. LinkResolverService.js). Перезаписывает поля формы результатом,
-    // пользователь видит и может поправить перед Сохранить.
-    manualUrlInput.addEventListener('input', () => {
-      resolveLinkBtn.disabled = manualUrlInput.value.trim() === '';
-    });
-
-    resolveLinkBtn.addEventListener('click', async () => {
-      const url = manualUrlInput.value.trim();
-      if (url === '') return;
-
+    // пользователь видит и может поправить перед Сохранить. Общая функция —
+    // вызывается и с кнопки в ручном режиме, и с подсказки над поиском по каталогу.
+    async function performLinkResolve(url) {
       errorText.classList.add('hidden');
       resolveLinkBtn.disabled = true;
       const icon = resolveLinkBtn.querySelector('svg');
@@ -318,11 +325,35 @@ window.Screens.wishlist = {
         resolveLinkBtn.disabled = false;
         if (icon) icon.classList.remove('animate-spin');
       }
+    }
+
+    manualUrlInput.addEventListener('input', () => {
+      resolveLinkBtn.disabled = manualUrlInput.value.trim() === '';
+    });
+
+    resolveLinkBtn.addEventListener('click', () => {
+      const url = manualUrlInput.value.trim();
+      if (url === '') return;
+      performLinkResolve(url);
+    });
+
+    // Вставка ссылки прямо в строку поиска каталога — подсказка вместо
+    // бессмысленного поиска по каталогу текстом ссылки.
+    urlHintResolveBtn.addEventListener('click', () => {
+      const url = itemSearch.value.trim();
+      urlHintBlock.classList.add('hidden');
+      itemSearch.value = '';
+      searchBlock.classList.add('hidden');
+      manualBlock.classList.remove('hidden');
+      manualUrlInput.value = url;
+      resolveLinkBtn.disabled = false;
+      performLinkResolve(url);
     });
 
     // Автокомплит поиска по каталогу — тот же паттерн debounce/dropdown, что в edit-order.html
     const handleItemSearch = debounce(async (e) => {
       const query = e.target.value.trim();
+      if (looksLikeUrl(query)) { itemSearchDropdown.classList.remove('active'); return; }
       if (query.length < 2) { itemSearchDropdown.classList.remove('active'); return; }
 
       const results = await callServer('searchSkuForClient', query);
@@ -347,6 +378,9 @@ window.Screens.wishlist = {
       itemSearchDropdown.classList.add('active');
     }, 300);
     itemSearch.addEventListener('input', handleItemSearch);
+    itemSearch.addEventListener('input', (e) => {
+      urlHintBlock.classList.toggle('hidden', !looksLikeUrl(e.target.value));
+    });
 
     document.addEventListener('click', (e) => {
       if (!itemSearch.contains(e.target) && !itemSearchDropdown.contains(e.target)) {
