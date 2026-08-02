@@ -204,6 +204,73 @@ window.SkuModal = {
       });
     }
 
+    // Слой 2 плана дедупликации каталога (03.08.2026) — сервер нашёл ПОХОЖУЮ,
+    // но не идентичную позицию (опечатка/пунктуация). Не блокирует — три пути:
+    // использовать одну из найденных похожих, объединить с ней (переиграть
+    // сохранение с её точным именем — превращается в обычный конфликт выше),
+    // либо всё равно сохранить как отдельную (forceCreate/forceUpdate).
+    function showPossibleDuplicateWarning(candidates, skuData) {
+      document.getElementById('create-sku-save').classList.add('hidden');
+      const box = document.getElementById('sku-merge-conflict');
+      box.classList.remove('hidden');
+
+      const candidatesHtml = candidates.map((c, idx) => `
+        <button type="button" class="duplicate-choice-btn w-full text-left p-2.5 border border-gray-200 rounded-xl text-xs hover:border-indigo-400" data-idx="${idx}">
+          <b>${escapeHtmlClient(c.shortName || c.original)}</b><br>
+          <span class="text-gray-400">${escapeHtmlClient(c.original)}</span>
+        </button>
+      `).join('');
+
+      box.innerHTML = `
+        <p class="text-xs text-amber-700 mb-2 px-1">Похоже, такая позиция уже есть в каталоге. Использовать существующую или сохранить как отдельную?</p>
+        <div class="space-y-2">${candidatesHtml}</div>
+        <button type="button" id="duplicate-force-btn" class="w-full text-center p-2.5 mt-2 border border-gray-200 rounded-xl text-xs text-gray-600 hover:border-indigo-400">
+          Всё равно сохранить как отдельную позицию
+        </button>
+      `;
+
+      box.querySelectorAll('.duplicate-choice-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const candidate = candidates[parseInt(btn.dataset.idx, 10)];
+          if (skuModalMode === 'create') {
+            closeSkuModal();
+            onSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create');
+          } else {
+            // Подставляем точное имя кандидата и переигрываем сохранение —
+            // дальше это уже обычный точный конфликт с готовым merge-флоу выше.
+            document.getElementById('sku-original-input').value = candidate.original;
+            box.classList.add('hidden');
+            document.getElementById('create-sku-save').classList.remove('hidden');
+            document.getElementById('create-sku-save').click();
+          }
+        });
+      });
+
+      document.getElementById('duplicate-force-btn').addEventListener('click', async () => {
+        const errorText = document.getElementById('sku-error-text');
+        try {
+          if (skuModalMode === 'create') {
+            const result = await callServer('createSku', skuData, true);
+            closeSkuModal();
+            onSaved(result, 'create');
+          } else {
+            const result = await callServer('updateSku', skuModalOldOriginal, skuData, null, true);
+            if (result.status === 'conflict') {
+              showMergeConflict(result.existing, result.incoming);
+            } else {
+              closeSkuModal();
+              onSaved(result, 'update');
+            }
+          }
+        } catch (error) {
+          box.classList.add('hidden');
+          document.getElementById('create-sku-save').classList.remove('hidden');
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      });
+    }
+
     document.getElementById('create-sku-close').addEventListener('click', closeSkuModal);
     document.getElementById('create-sku-cancel').addEventListener('click', closeSkuModal);
 
@@ -245,12 +312,18 @@ window.SkuModal = {
       try {
         if (skuModalMode === 'create') {
           const result = await callServer('createSku', skuData);
-          closeSkuModal();
-          onSaved(result, 'create');
+          if (result.status === 'possible_duplicate') {
+            showPossibleDuplicateWarning(result.candidates, skuData);
+          } else {
+            closeSkuModal();
+            onSaved(result, 'create');
+          }
         } else {
           const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
           if (result.status === 'conflict') {
             showMergeConflict(result.existing, result.incoming);
+          } else if (result.status === 'possible_duplicate') {
+            showPossibleDuplicateWarning(result.candidates, skuData);
           } else {
             closeSkuModal();
             onSaved(result, 'update');
