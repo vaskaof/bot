@@ -38,21 +38,24 @@ window.SkuModal = {
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Бренд</label>
-              <input type="text" id="sku-brand-input"
+              <input type="text" id="sku-brand-input" list="sku-brand-datalist"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
+                placeholder="Необязательно" autocomplete="off">
+              <datalist id="sku-brand-datalist"></datalist>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Персонаж</label>
-              <input type="text" id="sku-character-input"
+              <input type="text" id="sku-character-input" list="sku-character-datalist"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
+                placeholder="Необязательно" autocomplete="off">
+              <datalist id="sku-character-datalist"></datalist>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Серия</label>
-              <input type="text" id="sku-series-input"
+              <input type="text" id="sku-series-input" list="sku-series-datalist"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
+                placeholder="Необязательно" autocomplete="off">
+              <datalist id="sku-series-datalist"></datalist>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылка</label>
@@ -95,6 +98,26 @@ window.SkuModal = {
       document.getElementById('create-sku-modal').classList.add('hidden');
       document.getElementById('create-sku-modal').classList.remove('flex');
     }
+
+    // Автоподсказки Бренд/Персонаж/Серия из уже использованных значений
+    // (слой 1 плана дедупликации каталога, 03.08.2026) — снижает разнобой
+    // написания одного и того же тега. Не блокирует свободный ввод нового
+    // значения — обычный HTML5 datalist, просто подсказка. Загружается один
+    // раз при монтировании экрана, не на каждое открытие модалки.
+    (async function loadTagDatalists() {
+      try {
+        const tags = await callServer('getCatalogTagValues');
+        const fill = (listId, values) => {
+          document.getElementById(listId).innerHTML =
+            values.map(v => `<option value="${escapeHtmlClient(v)}">`).join('');
+        };
+        fill('sku-brand-datalist', tags.brands);
+        fill('sku-character-datalist', tags.characters);
+        fill('sku-series-datalist', tags.series);
+      } catch (error) {
+        // Подсказки — удобство, не критичная функциональность; тихо не показываем при сбое.
+      }
+    })();
 
     async function open(mode, original) {
       skuModalMode = mode;
