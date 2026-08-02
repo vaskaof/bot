@@ -75,9 +75,16 @@ window.Screens.wishlist = {
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
-              <input type="text" id="manual-url-input"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
+              <div class="flex gap-2 mt-1">
+                <input type="text" id="manual-url-input"
+                  class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Необязательно">
+                <button type="button" id="resolve-link-btn" disabled
+                  class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  Распознать
+                </button>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылка на изображение</label>
@@ -220,6 +227,11 @@ window.Screens.wishlist = {
     const itemSearchDropdown = document.getElementById('item-search-dropdown');
     const selectedSkuDisplay = document.getElementById('selected-sku-display');
     const errorText = document.getElementById('item-error-text');
+    const resolveLinkBtn = document.getElementById('resolve-link-btn');
+    const manualUrlInput = document.getElementById('manual-url-input');
+    const manualTitleInput = document.getElementById('manual-title-input');
+    const manualDescriptionInput = document.getElementById('manual-description-input');
+    const manualImageInput = document.getElementById('manual-image-input');
 
     function resetModalState() {
       selectedSkuValue = null;
@@ -234,6 +246,7 @@ window.Screens.wishlist = {
       errorText.classList.add('hidden');
       searchBlock.classList.remove('hidden');
       manualBlock.classList.add('hidden');
+      resolveLinkBtn.disabled = true;
     }
 
     function openModalForCreate() {
@@ -254,6 +267,7 @@ window.Screens.wishlist = {
       document.getElementById('manual-description-input').value = item.rawDescription;
       document.getElementById('manual-url-input').value = item.sourceUrl;
       document.getElementById('manual-image-input').value = item.rawImageUrl;
+      resolveLinkBtn.disabled = item.sourceUrl.trim() === '';
       searchBlock.classList.add('hidden');
       manualBlock.classList.remove('hidden');
       itemModal.classList.remove('hidden');
@@ -274,6 +288,36 @@ window.Screens.wishlist = {
     document.getElementById('switch-to-search-btn').addEventListener('click', () => {
       manualBlock.classList.add('hidden');
       searchBlock.classList.remove('hidden');
+    });
+
+    // Авто-распознавание товара по ссылке (Phase A: OG-теги/JSON-LD, без AI —
+    // см. LinkResolverService.js). Перезаписывает поля формы результатом,
+    // пользователь видит и может поправить перед Сохранить.
+    manualUrlInput.addEventListener('input', () => {
+      resolveLinkBtn.disabled = manualUrlInput.value.trim() === '';
+    });
+
+    resolveLinkBtn.addEventListener('click', async () => {
+      const url = manualUrlInput.value.trim();
+      if (url === '') return;
+
+      errorText.classList.add('hidden');
+      resolveLinkBtn.disabled = true;
+      const icon = resolveLinkBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+
+      try {
+        const result = await callServer('resolveWishlistLink', url);
+        manualTitleInput.value = result.title.slice(0, 150);
+        manualDescriptionInput.value = result.description.slice(0, 300);
+        if (result.imageUrl) manualImageInput.value = result.imageUrl;
+      } catch (error) {
+        errorText.textContent = error.message;
+        errorText.classList.remove('hidden');
+      } finally {
+        resolveLinkBtn.disabled = false;
+        if (icon) icon.classList.remove('animate-spin');
+      }
     });
 
     // Автокомплит поиска по каталогу — тот же паттерн debounce/dropdown, что в edit-order.html
