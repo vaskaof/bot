@@ -71,10 +71,14 @@ window.Screens.orderEdit = {
             </div>
             <div class="flex-1 w-full relative">
               <div class="flex items-center w-full">
-                <input type="text" id="release-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск выпуска..." autocomplete="off">
+                <input type="text" id="release-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск выпуска или вставьте ссылку" autocomplete="off">
                 <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
               </div>
               <ul id="release-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              <div id="release-url-hint" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
+                <span>Похоже на ссылку на товар</span>
+                <button type="button" id="release-url-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Распознать</button>
+              </div>
             </div>
           </div>
 
@@ -396,6 +400,9 @@ window.Screens.orderEdit = {
     let collectiveSelect, sdekTypeSelect;
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
+    // Ссылка на источник покупки, вставленная/распознанная в поле "Выпуск"
+    // (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) — см. order-new.js.
+    let pendingPurchaseLink = '';
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -431,7 +438,8 @@ window.Screens.orderEdit = {
         deliveryKzRfPaid: document.getElementById('delivery-kzrf-paid-toggle').dataset.value,
         deliveryRfSum: deliveryRfSumInput.value,
         deliveryRfPaid: document.getElementById('delivery-rf-paid-toggle').dataset.value,
-        notifyClient: document.getElementById('notify-client-checkbox').checked
+        notifyClient: document.getElementById('notify-client-checkbox').checked,
+        purchaseLink: pendingPurchaseLink
       };
 
       return callServer('updateOrder', currentOrderId, fields);
@@ -479,11 +487,20 @@ window.Screens.orderEdit = {
     const releaseDropdown = document.getElementById('release-dropdown');
 
     const skuModal = SkuModal.init({
-      onSaved: (result, action) => {
+      onSaved: (result, action, context) => {
         // Только режим create автозаполняет форму заказа новой позицией —
         // правка каталога (update/merge) форму заказа НЕ трогает (см. исходный
         // edit-order.html: applyCreatedOrEditedSku проверяла skuModalMode).
-        if (action === 'create') applyCreatedOrEditedSku(result.value, result.label);
+        if (action === 'create') {
+          applyCreatedOrEditedSku(result.value, result.label);
+          // Ссылка, вставленная в поле "Выпуск" и не найденная в каталоге
+          // (Фаза 3, 03.08.2026, resolveOrderProductLink status:'unmatched') —
+          // после создания новой позиции через модалку она должна попасть в
+          // orderData.purchaseLink точно так же, как при мгновенном совпадении.
+          if (context && context.pendingLink) {
+            pendingPurchaseLink = context.pendingLink;
+          }
+        }
       }
     });
 
@@ -506,8 +523,59 @@ window.Screens.orderEdit = {
       setReleaseThumbnail(null); // createSku/updateSku возвращают только value/label, фото подтянется при следующем поиске/открытии
     }
 
+    // --- "Похоже на ссылку -> Распознать" (Фаза 3 интеграции Вишлист/Каталог/
+    // Заказы, 03.08.2026) — тот же UX-паттерн, что уже есть в client/screens/
+    // wishlist.js и order-new.js.
+    function looksLikeReleaseUrl(value) {
+      return /^https?:\/\//i.test(value.trim());
+    }
+
+    const releaseUrlHint = document.getElementById('release-url-hint');
+    const releaseUrlResolveBtn = document.getElementById('release-url-resolve-btn');
+
+    async function performReleaseLinkResolve(url) {
+      releaseUrlResolveBtn.disabled = true;
+      try {
+        const result = await callServer('resolveOrderProductLink', url);
+        if (result.status === 'matched') {
+          const sku = result.sku;
+          releaseSearch.value = sku.original;
+          shortNameInput.value = sku.shortName || sku.original;
+          selectedReleaseId = sku.original;
+          setReleaseThumbnail(sku.imageUrl);
+          pendingPurchaseLink = url;
+          releaseUrlHint.classList.add('hidden');
+        } else {
+          const resolved = result.resolved;
+          releaseUrlHint.classList.add('hidden');
+          skuModal.open(
+            'create', null,
+            { original: resolved.title, description: resolved.description, imageUrl: resolved.imageUrl },
+            { pendingLink: url }
+          );
+        }
+      } catch (error) {
+        showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
+      } finally {
+        releaseUrlResolveBtn.disabled = false;
+      }
+    }
+
+    releaseUrlResolveBtn.addEventListener('click', () => {
+      const url = releaseSearch.value.trim();
+      if (url === '') return;
+      performReleaseLinkResolve(url);
+    });
+
+    releaseSearch.addEventListener('input', (e) => {
+      releaseUrlHint.classList.toggle('hidden', !looksLikeReleaseUrl(e.target.value));
+    });
+
     const handleReleaseSearch = debounce(async (e) => {
       const query = e.target.value.trim();
+      // Похоже на ссылку — обычный текстовый поиск по каталогу бессмысленен,
+      // распознавание запускается отдельно кнопкой в release-url-hint.
+      if (looksLikeReleaseUrl(query)) { releaseDropdown.classList.remove('active'); return; }
       if (query.length < 2) { releaseDropdown.classList.remove('active'); return; }
 
       const results = await searchReleaseStub(query);
@@ -531,6 +599,10 @@ window.Screens.orderEdit = {
         shortNameInput.value = item.label;
         selectedReleaseId = item.value;
         setReleaseThumbnail(item.imageUrl);
+        // Обычный выбор позиции из поиска по названию — не связан со
+        // ссылкой, вставленной ранее в это же поле (если была).
+        pendingPurchaseLink = '';
+        releaseUrlHint.classList.add('hidden');
         releaseDropdown.classList.remove('active');
       });
 
@@ -539,7 +611,12 @@ window.Screens.orderEdit = {
       addLi.textContent = '+ Добавить выпуск';
       addLi.addEventListener('click', () => {
         releaseDropdown.classList.remove('active');
-        skuModal.open('create');
+        // Ручное добавление без распознавания ссылки — сбрасываем ранее
+        // накопленную pendingPurchaseLink (см. order-new.js).
+        pendingPurchaseLink = '';
+        // Прокидываем то, что менеджер уже успел напечатать в поле "Выпуск" —
+        // вместо всегда пустой формы (Фаза 3, 03.08.2026).
+        skuModal.open('create', null, { original: releaseSearch.value.trim() });
       });
       releaseDropdown.appendChild(addLi);
     }, 300);

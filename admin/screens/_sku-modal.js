@@ -11,6 +11,10 @@
  *   const skuModal = SkuModal.init({ onSaved: () => reload() });
  *   skuModal.open('create');           // новая позиция
  *   skuModal.open('edit', original);   // редактирование существующей
+ *   // prefill/context — необязательные (Фаза 3 интеграции Вишлист/Каталог/
+ *   // Заказы, 03.08.2026), нужны order-new.js/order-edit.js для сценария
+ *   // "вставили ссылку в поле Выпуск":
+ *   skuModal.open('create', null, { original, description, imageUrl }, { pendingLink: url });
  */
 
 // Слой 5 плана дедупликации каталога (03.08.2026, опционально) — авто-
@@ -126,17 +130,22 @@ window.SkuModal = {
 
   /**
    * Подключает обработчики к уже вставленной в DOM разметке (см. html()).
-   * @param {{ onSaved: (result:Object|null, action:'create'|'update'|'merge'|'delete') => void }} options
+   * @param {{ onSaved: (result:Object|null, action:'create'|'update'|'merge'|'delete', context?:Object|null) => void }} options
    *   onSaved вызывается после успешного create/update/delete/merge. result —
    *   ответ сервера (есть value/label для create/update/merge — нужно
    *   order-new.js/order-edit.js, чтобы подставить в поле "Выпуск" после
-   *   создания/правки прямо из формы заказа), null для delete. catalog.js
-   *   свои аргументы игнорирует, просто перезагружает список.
-   * @returns {{ open: (mode:'create'|'edit', original?:string) => void }}
+   *   создания/правки прямо из формы заказа), null для delete. context —
+   *   объект, переданный четвёртым параметром в open() (Фаза 3 интеграции
+   *   Вишлист/Каталог/Заказы, 03.08.2026) — прокидывается насквозь без
+   *   изменений, null, если open() вызван без него. catalog.js/уже
+   *   существующие вызовы order-new.js/order-edit.js его не передают и не
+   *   читают — обратная совместимость не нарушена.
+   * @returns {{ open: (mode:'create'|'edit', original?:string, prefill?:Object|null, context?:Object|null) => void }}
    */
   init({ onSaved }) {
     let skuModalMode = 'create';
     let skuModalOldOriginal = null;
+    let skuModalContext = null;
 
     function closeSkuModal() {
       document.getElementById('create-sku-modal').classList.add('hidden');
@@ -388,9 +397,10 @@ window.SkuModal = {
       }
     });
 
-    async function open(mode, original) {
+    async function open(mode, original, prefill, context) {
       skuModalMode = mode;
       skuModalOldOriginal = original || null;
+      skuModalContext = context || null;
 
       document.getElementById('sku-error-text').classList.add('hidden');
       document.getElementById('sku-merge-conflict').classList.add('hidden');
@@ -432,6 +442,18 @@ window.SkuModal = {
         ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input',
           'sku-image-input', 'sku-description-input', 'sku-link-add-input']
           .forEach(id => { document.getElementById(id).value = ''; });
+
+        // Prefill (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
+        // форма заказа передаёт сюда то, что менеджер уже напечатал в поле
+        // "Выпуск", либо то, что удалось распознать по вставленной ссылке
+        // (resolveOrderProductLink, status:'unmatched') — вместо всегда
+        // пустой формы. Никогда не применяется в режиме edit.
+        if (prefill) {
+          if (prefill.original) document.getElementById('sku-original-input').value = prefill.original;
+          if (prefill.description) document.getElementById('sku-description-input').value = prefill.description;
+          if (prefill.imageUrl) document.getElementById('sku-image-input').value = prefill.imageUrl;
+        }
+
         updateImagePreview();
         pendingLinks = [];
         renderLinksList(pendingLinks, true);
@@ -472,7 +494,7 @@ window.SkuModal = {
           try {
             const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
             closeSkuModal();
-            onSaved(result, 'merge');
+            onSaved(result, 'merge', skuModalContext);
           } catch (error) {
             const errorText = document.getElementById('sku-error-text');
             errorText.textContent = error.message;
@@ -516,7 +538,7 @@ window.SkuModal = {
             // здесь намеренно не переносятся (та же логика уже применяется к
             // остальным полям формы — Бренд/Персонаж и т.п. тоже не переносятся).
             closeSkuModal();
-            onSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create');
+            onSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create', skuModalContext);
           } else {
             // Подставляем точное имя кандидата и переигрываем сохранение —
             // дальше это уже обычный точный конфликт с готовым merge-флоу выше.
@@ -535,14 +557,14 @@ window.SkuModal = {
             const result = await callServer('createSku', skuData, true);
             await flushPendingLinks(result.value);
             closeSkuModal();
-            onSaved(result, 'create');
+            onSaved(result, 'create', skuModalContext);
           } else {
             const result = await callServer('updateSku', skuModalOldOriginal, skuData, null, true);
             if (result.status === 'conflict') {
               showMergeConflict(result.existing, result.incoming);
             } else {
               closeSkuModal();
-              onSaved(result, 'update');
+              onSaved(result, 'update', skuModalContext);
             }
           }
         } catch (error) {
@@ -565,7 +587,7 @@ window.SkuModal = {
       try {
         await callServer('deleteSku', skuModalOldOriginal);
         closeSkuModal();
-        onSaved(null, 'delete');
+        onSaved(null, 'delete', skuModalContext);
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
@@ -606,7 +628,7 @@ window.SkuModal = {
           } else {
             await flushPendingLinks(result.value);
             closeSkuModal();
-            onSaved(result, 'create');
+            onSaved(result, 'create', skuModalContext);
           }
         } else {
           const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
@@ -616,7 +638,7 @@ window.SkuModal = {
             showPossibleDuplicateWarning(result.candidates, skuData);
           } else {
             closeSkuModal();
-            onSaved(result, 'update');
+            onSaved(result, 'update', skuModalContext);
           }
         }
       } catch (error) {
