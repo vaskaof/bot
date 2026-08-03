@@ -243,11 +243,15 @@ window.SkuModal = {
 
     // Раздел "Ссылки" (Фаза 2 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
     // заменяет прежнее единственное поле "Ссылка". В режиме edit позиция уже
-    // существует — добавление/удаление ссылки уходит на сервер СРАЗУ по клику
-    // (addCatalogLink/deleteCatalogLink), список тут же перезагружается. В
-    // режиме create позиции ещё нет — ссылки копятся в pendingLinks локально и
-    // отправляются по очереди ПОСЛЕ успешного createSku (см. flushPendingLinks).
+    // существует — добавление/удаление ссылки уходит на сервер СРАЗУ по клику,
+    // но список ПОСЛЕ этого обновляется ЛОКАЛЬНО (currentLinks), без второго
+    // round-trip'а — по фидбеку VASY 03.08.2026 ("добавляется очень долго"):
+    // раньше добавление делало ДВА последовательных запроса подряд (записать +
+    // перезагрузить весь список), что и ощущалось медленно. В режиме create
+    // позиции ещё нет — ссылки копятся в pendingLinks локально и отправляются
+    // по очереди ПОСЛЕ успешного createSku (см. flushPendingLinks).
     let pendingLinks = [];
+    let currentLinks = [];
 
     function renderLinksList(links, pending) {
       const container = document.getElementById('sku-links-list');
@@ -273,9 +277,11 @@ window.SkuModal = {
             pendingLinks.splice(idx, 1);
             renderLinksList(pendingLinks, true);
           } else {
+            const linkId = links[idx].linkId;
             try {
-              await callServer('deleteCatalogLink', links[idx].linkId);
-              await loadLinksForEdit();
+              await callServer('deleteCatalogLink', linkId);
+              currentLinks = currentLinks.filter(l => l.linkId !== linkId);
+              renderLinksList(currentLinks, false);
             } catch (error) {
               const errorText = document.getElementById('sku-error-text');
               errorText.textContent = error.message;
@@ -287,8 +293,8 @@ window.SkuModal = {
     }
 
     async function loadLinksForEdit() {
-      const links = await callServer('getCatalogLinksForSku', skuModalOldOriginal);
-      renderLinksList(links, false);
+      currentLinks = await callServer('getCatalogLinksForSku', skuModalOldOriginal);
+      renderLinksList(currentLinks, false);
     }
 
     async function flushPendingLinks(skuOriginal) {
@@ -304,26 +310,62 @@ window.SkuModal = {
       pendingLinks = [];
     }
 
+    // Автозаполнение Фото/Описание, если они ещё пустые — никогда не
+    // перезаписывает то, что уже видно на экране (тот же принцип, что
+    // авто-подстановка Бренда). Используется в обоих режимах.
+    function applyResolvedFields(imageUrl, description) {
+      const imageInput = document.getElementById('sku-image-input');
+      const descriptionInput = document.getElementById('sku-description-input');
+      if (imageInput.value.trim() === '' && imageUrl) {
+        imageInput.value = imageUrl;
+        updateImagePreview();
+      }
+      if (descriptionInput.value.trim() === '' && description) {
+        descriptionInput.value = description;
+      }
+    }
+
     document.getElementById('sku-link-add-btn').addEventListener('click', async () => {
       const input = document.getElementById('sku-link-add-input');
+      const addBtn = document.getElementById('sku-link-add-btn');
       const url = input.value.trim();
       if (url === '') return;
 
       if (skuModalMode === 'edit') {
         const errorText = document.getElementById('sku-error-text');
+        addBtn.disabled = true;
         try {
-          await callServer('addCatalogLink', skuModalOldOriginal, url, 'Каталог');
+          // Один запрос вместо двух — addCatalogLinkWithResolve одновременно
+          // привязывает ссылку И (лучшим усилием) подтягивает Фото/Описание,
+          // если они ещё пустые (backend решает это сам, без второго round-trip'а).
+          const result = await callServer('addCatalogLinkWithResolve', skuModalOldOriginal, url, 'Каталог');
           input.value = '';
           errorText.classList.add('hidden');
-          await loadLinksForEdit();
+          currentLinks = [result.link, ...currentLinks];
+          renderLinksList(currentLinks, false);
+          applyResolvedFields(result.imageUrl, result.description);
         } catch (error) {
           errorText.textContent = error.message;
           errorText.classList.remove('hidden');
+        } finally {
+          addBtn.disabled = false;
         }
       } else {
         pendingLinks.push({ url, source: 'Каталог' });
         input.value = '';
         renderLinksList(pendingLinks, true);
+
+        // Позиции ещё нет — сохранять на сервер нечего, только подтягиваем
+        // Фото/Описание в форму (если ещё пустые). Не блокирует добавление
+        // ссылки в список — оно уже произошло выше.
+        if (document.getElementById('sku-image-input').value.trim() === ''
+          || document.getElementById('sku-description-input').value.trim() === '') {
+          callServer('resolveProductLinkForAdmin', url)
+            .then(result => applyResolvedFields(result.imageUrl, result.description))
+            .catch(() => {
+              // Распознавание — удобство, не критичная функциональность; тихо не показываем при сбое.
+            });
+        }
       }
     });
 
