@@ -356,10 +356,12 @@ window.SkuModal = {
         renderLinksList(pendingLinks, true);
 
         // Позиции ещё нет — сохранять на сервер нечего, только подтягиваем
-        // Фото/Описание в форму (если ещё пустые). Не блокирует добавление
-        // ссылки в список — оно уже произошло выше.
+        // Фото/Описание в форму. Не блокирует добавление ссылки в список —
+        // оно уже произошло выше. Запускается ТОЛЬКО если пусты ОБА поля (по
+        // фидбеку VASY 03.08.2026) — если данные уже есть хотя бы с одной
+        // ссылки, повторный парсинг для следующей — трата лимита без пользы.
         if (document.getElementById('sku-image-input').value.trim() === ''
-          || document.getElementById('sku-description-input').value.trim() === '') {
+          && document.getElementById('sku-description-input').value.trim() === '') {
           callServer('resolveProductLinkForAdmin', url)
             .then(result => applyResolvedFields(result.imageUrl, result.description))
             .catch(() => {
