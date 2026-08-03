@@ -49,6 +49,22 @@ window.Screens.orderNew = {
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="link-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Ссылка на покупку</span>
+            </div>
+            <div class="flex-1 w-full relative">
+              <input type="text" id="purchase-link-input" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Вставьте ссылку на товар" autocomplete="off">
+              <div id="purchase-link-hint" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
+                <span>Похоже на ссылку на товар</span>
+                <button type="button" id="purchase-link-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Распознать</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
                 <i data-lucide="box" class="w-5 h-5"></i>
               </div>
@@ -56,14 +72,10 @@ window.Screens.orderNew = {
             </div>
             <div class="flex-1 w-full relative">
               <div class="flex items-center w-full">
-                <input type="text" id="release-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск выпуска или вставьте ссылку" autocomplete="off">
+                <input type="text" id="release-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск выпуска" autocomplete="off">
                 <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
               </div>
               <ul id="release-dropdown" class="dropdown-menu custom-scrollbar"></ul>
-              <div id="release-url-hint" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
-                <span>Похоже на ссылку на товар</span>
-                <button type="button" id="release-url-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Распознать</button>
-              </div>
             </div>
           </div>
 
@@ -258,12 +270,7 @@ window.Screens.orderNew = {
     let currentCurrency = 'Доллар';
     let currentRates = {};
     let currentRate = 0;
-    // Ссылка на источник покупки, вставленная/распознанная в поле "Выпуск"
-    // (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) — попадает в
-    // orderData.purchaseLink независимо от того, совпала ли она сразу с уже
-    // привязанной позицией каталога, или потребовалось создать новую через
-    // SkuModal (см. skuModal.init ниже, context.pendingLink).
-    let pendingPurchaseLink = '';
+    let purchaseLinkInput, purchaseLinkHint, purchaseLinkResolveBtn;
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -292,7 +299,7 @@ window.Screens.orderNew = {
         mainSum: totalPaymentInput.value,
         mainPaid: document.getElementById('main-paid-toggle').dataset.value,
         notifyClient: document.getElementById('notify-client-checkbox').checked,
-        purchaseLink: pendingPurchaseLink
+        purchaseLink: purchaseLinkInput.value.trim()
       };
       return callServer('createOrder', orderData);
     }
@@ -314,6 +321,9 @@ window.Screens.orderNew = {
     rateDisplay = document.getElementById('rate-display');
     refreshRateBtn = document.getElementById('refresh-rate');
     dateInput = document.getElementById('date-input');
+    purchaseLinkInput = document.getElementById('purchase-link-input');
+    purchaseLinkHint = document.getElementById('purchase-link-hint');
+    purchaseLinkResolveBtn = document.getElementById('purchase-link-resolve-btn');
 
     const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     dateInput.value = todayFormatter.format(new Date());
@@ -341,13 +351,10 @@ window.Screens.orderNew = {
         // зафиксированное в исходном index.html).
         if (action === 'create') {
           applyCreatedOrEditedSku(result.value, result.label);
-          // Ссылка, вставленная в поле "Выпуск" и не найденная в каталоге
-          // (Фаза 3, 03.08.2026, resolveOrderProductLink status:'unmatched') —
-          // после создания новой позиции через модалку она должна попасть в
-          // orderData.purchaseLink точно так же, как при мгновенном совпадении.
-          if (context && context.pendingLink) {
-            pendingPurchaseLink = context.pendingLink;
-          }
+          // Тост нужен и при создании через распознанную ссылку, и при обычном
+          // ручном добавлении ("+ Добавить выпуск") — раньше оба сценария были
+          // "тихими", из-за чего менеджер не понимал, что позиция сохранена.
+          showSaveToast(true, `Позиция «${result.label || result.value}» создана и добавлена в каталог`);
         }
       }
     });
@@ -372,17 +379,14 @@ window.Screens.orderNew = {
     }
 
     // --- "Похоже на ссылку -> Распознать" (Фаза 3 интеграции Вишлист/Каталог/
-    // Заказы, 03.08.2026) — тот же UX-паттерн, что уже есть в client/screens/
-    // wishlist.js для поля добавления в вишлист.
-    function looksLikeReleaseUrl(value) {
+    // Заказы, редизайн 04.08.2026) — отдельное постоянное поле "Ссылка на
+    // покупку", поле "Выпуск" теперь чистый поиск без URL-логики.
+    function looksLikeUrl(value) {
       return /^https?:\/\//i.test(value.trim());
     }
 
-    const releaseUrlHint = document.getElementById('release-url-hint');
-    const releaseUrlResolveBtn = document.getElementById('release-url-resolve-btn');
-
-    async function performReleaseLinkResolve(url) {
-      releaseUrlResolveBtn.disabled = true;
+    async function performPurchaseLinkResolve(url) {
+      purchaseLinkResolveBtn.disabled = true;
       try {
         const result = await callServer('resolveOrderProductLink', url);
         if (result.status === 'matched') {
@@ -391,11 +395,10 @@ window.Screens.orderNew = {
           shortNameInput.value = sku.shortName || sku.original;
           selectedReleaseId = sku.original;
           setReleaseThumbnail(sku.imageUrl);
-          pendingPurchaseLink = url;
-          releaseUrlHint.classList.add('hidden');
+          purchaseLinkHint.classList.add('hidden');
         } else {
           const resolved = result.resolved;
-          releaseUrlHint.classList.add('hidden');
+          purchaseLinkHint.classList.add('hidden');
           skuModal.open(
             'create', null,
             { original: resolved.title, description: resolved.description, imageUrl: resolved.imageUrl },
@@ -405,25 +408,22 @@ window.Screens.orderNew = {
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
       } finally {
-        releaseUrlResolveBtn.disabled = false;
+        purchaseLinkResolveBtn.disabled = false;
       }
     }
 
-    releaseUrlResolveBtn.addEventListener('click', () => {
-      const url = releaseSearch.value.trim();
-      if (url === '') return;
-      performReleaseLinkResolve(url);
+    purchaseLinkInput.addEventListener('input', (e) => {
+      purchaseLinkHint.classList.toggle('hidden', !looksLikeUrl(e.target.value));
     });
 
-    releaseSearch.addEventListener('input', (e) => {
-      releaseUrlHint.classList.toggle('hidden', !looksLikeReleaseUrl(e.target.value));
+    purchaseLinkResolveBtn.addEventListener('click', () => {
+      const url = purchaseLinkInput.value.trim();
+      if (url === '') return;
+      performPurchaseLinkResolve(url);
     });
 
     const handleReleaseSearch = debounce(async (e) => {
       const query = e.target.value.trim();
-      // Похоже на ссылку — обычный текстовый поиск по каталогу бессмысленен,
-      // распознавание запускается отдельно кнопкой в release-url-hint.
-      if (looksLikeReleaseUrl(query)) { releaseDropdown.classList.remove('active'); return; }
       if (query.length < 2) { releaseDropdown.classList.remove('active'); return; }
 
       const results = await searchReleaseStub(query);
@@ -447,10 +447,6 @@ window.Screens.orderNew = {
         shortNameInput.value = item.label;
         selectedReleaseId = item.value;
         setReleaseThumbnail(item.imageUrl);
-        // Обычный выбор позиции из поиска по названию — не связан со
-        // ссылкой, вставленной ранее в это же поле (если была).
-        pendingPurchaseLink = '';
-        releaseUrlHint.classList.add('hidden');
         releaseDropdown.classList.remove('active');
       });
 
@@ -459,10 +455,6 @@ window.Screens.orderNew = {
       addLi.textContent = '+ Добавить выпуск';
       addLi.addEventListener('click', () => {
         releaseDropdown.classList.remove('active');
-        // Ручное добавление без распознавания ссылки — сбрасываем ранее
-        // накопленную pendingPurchaseLink (если менеджер сначала пробовал
-        // распознать другую ссылку, затем передумал и жмёт "+ Добавить").
-        pendingPurchaseLink = '';
         // Прокидываем то, что менеджер уже успел напечатать в поле "Выпуск" —
         // вместо всегда пустой формы (Фаза 3, 03.08.2026).
         skuModal.open('create', null, { original: releaseSearch.value.trim() });
@@ -645,8 +637,8 @@ window.Screens.orderNew = {
       shortNameInput.value = '';
       selectedReleaseId = null;
       setReleaseThumbnail(null);
-      pendingPurchaseLink = '';
-      releaseUrlHint.classList.add('hidden');
+      purchaseLinkInput.value = '';
+      purchaseLinkHint.classList.add('hidden');
       clientSearch.value = '';
       selectedClientId = null;
       selectedClientUsername = '';

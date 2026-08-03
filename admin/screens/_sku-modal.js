@@ -456,6 +456,14 @@ window.SkuModal = {
 
         updateImagePreview();
         pendingLinks = [];
+        // Ссылка, по которой распознали позицию (Фаза 3, resolveOrderProductLink
+        // status:'unmatched') — раньше нигде не отображалась в самой модалке,
+        // хотя реально уйдёт на сервер при сохранении заказа. Добавляем её в
+        // pendingLinks, чтобы она была видна в разделе "Ссылки" уже на этапе
+        // создания позиции.
+        if (context && context.pendingLink) {
+          pendingLinks.push({ url: context.pendingLink, source: 'Заказ' });
+        }
         renderLinksList(pendingLinks, true);
 
         document.getElementById('create-sku-modal').classList.remove('hidden');
