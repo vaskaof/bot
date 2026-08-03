@@ -15,6 +15,9 @@ window.Screens.catalog = {
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Каталог</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
+      <button id="refresh-catalog-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      </button>
       <button id="find-duplicates-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy-check" class="w-6 h-6"></i>
       </button>
@@ -69,15 +72,28 @@ window.Screens.catalog = {
 
     loadCatalog();
 
-    async function loadCatalog() {
+    // forceRefresh — сбрасывает 15-минутный кэш каталога на бэкенде
+    // (WebAppApi.refreshCatalogList), не просто перечитывает тот же кэш —
+    // кнопка "Обновить" по фидбеку VASY 03.08.2026.
+    async function loadCatalog(forceRefresh) {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка каталога...</div>';
       try {
-        allSku = await callServer('getCatalogList');
+        allSku = await callServer(forceRefresh ? 'refreshCatalogList' : 'getCatalogList');
         render();
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
     }
+
+    document.getElementById('refresh-catalog-btn').addEventListener('click', () => {
+      const btn = document.getElementById('refresh-catalog-btn');
+      const icon = btn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+      loadCatalog(true).finally(() => {
+        const liveIcon = btn.querySelector('svg');
+        if (liveIcon) liveIcon.classList.remove('animate-spin');
+      });
+    });
 
     const handleSearch = debounce(() => render(), 250);
     searchInput.addEventListener('input', handleSearch);

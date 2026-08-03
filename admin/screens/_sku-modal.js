@@ -48,9 +48,12 @@ window.SkuModal = {
           <div class="p-4 space-y-3">
             <div>
               <label class="text-xs font-medium text-gray-500">Выпуск *</label>
-              <input type="text" id="sku-original-input"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Полное название">
+              <div class="relative">
+                <input type="text" id="sku-original-input" autocomplete="off"
+                  class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Полное название">
+                <ul id="sku-original-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
@@ -154,6 +157,49 @@ window.SkuModal = {
 
       const guessed = skuModalGuessBrand(title);
       if (guessed) brandInput.value = guessed;
+    });
+
+    // Живой поиск по каталогу прямо в поле "Выпуск" (по фидбеку VASY
+    // 03.08.2026 — окончательная проверка на дубли раньше срабатывала только
+    // по нажатию "Сохранить", менеджер не видел совпадений по ходу набора
+    // текста). Клик по найденной позиции переключает модалку в редактирование
+    // именно её — тот же принцип, что "Объединить" в инструменте поиска дублей.
+    const originalInput = document.getElementById('sku-original-input');
+    const originalDropdown = document.getElementById('sku-original-dropdown');
+
+    const handleOriginalSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { originalDropdown.classList.remove('active'); return; }
+
+      const results = (await callServer('searchSku', query))
+        .filter(item => item.value.toLowerCase() !== (skuModalOldOriginal || '').toLowerCase());
+
+      originalDropdown.innerHTML = '';
+      if (results.length === 0) {
+        originalDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+      } else {
+        results.forEach(item => {
+          const li = document.createElement('li');
+          li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
+          li.innerHTML = `
+            <div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.label)}</div>
+            ${item.label !== item.value ? `<div class="text-[11px] text-gray-400">${escapeHtmlClient(item.value)}</div>` : ''}
+          `;
+          // mousedown, не click — срабатывает РАНЬШЕ blur инпута ниже, иначе
+          // дропдаун успевает скрыться до того, как долетит клик по пункту.
+          li.addEventListener('mousedown', () => {
+            originalDropdown.classList.remove('active');
+            open('edit', item.value);
+          });
+          originalDropdown.appendChild(li);
+        });
+      }
+      originalDropdown.classList.add('active');
+    }, 300);
+
+    originalInput.addEventListener('input', handleOriginalSearch);
+    originalInput.addEventListener('blur', () => {
+      setTimeout(() => originalDropdown.classList.remove('active'), 150);
     });
 
     async function open(mode, original) {
