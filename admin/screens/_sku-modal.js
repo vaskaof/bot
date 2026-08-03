@@ -147,6 +147,22 @@ window.SkuModal = {
     let skuModalOldOriginal = null;
     let skuModalContext = null;
 
+    // Обёртка над onSaved (Фаза 4 интеграции Вишлист/Каталог/Заказы, 04.08.2026) —
+    // если модалка была открыта из "Спрос клиентов" (context.wishlistId), после
+    // успешного create/update/merge позиция вишлиста молча привязывается к
+    // сохранённому SKU. delete исключён явно — там result === null, привязывать
+    // нечего. Сбой привязки не блокирует уже сохранённый SKU — только логируется.
+    async function handleSaved(result, action, context) {
+      if (context && context.wishlistId && action !== 'delete') {
+        try {
+          await callServer('linkWishlistItemToSku', context.wishlistId, result.value);
+        } catch (error) {
+          console.error('Не удалось привязать позицию вишлиста к каталогу:', error);
+        }
+      }
+      onSaved(result, action, context);
+    }
+
     function closeSkuModal() {
       document.getElementById('create-sku-modal').classList.add('hidden');
       document.getElementById('create-sku-modal').classList.remove('flex');
@@ -462,7 +478,12 @@ window.SkuModal = {
         // pendingLinks, чтобы она была видна в разделе "Ссылки" уже на этапе
         // создания позиции.
         if (context && context.pendingLink) {
-          pendingLinks.push({ url: context.pendingLink, source: 'Заказ' });
+          // pendingLinkSource — Фаза 4 интеграции Вишлист/Каталог/Заказы
+          // (04.08.2026): источник ссылки должен отражать, откуда она реально
+          // пришла (вишлист → "Вишлист"), не всегда "Заказ". order-new.js/
+          // order-edit.js не передают этот параметр — фоллбэк на "Заказ"
+          // сохраняет их поведение неизменным.
+          pendingLinks.push({ url: context.pendingLink, source: context.pendingLinkSource || 'Заказ' });
         }
         renderLinksList(pendingLinks, true);
 
@@ -502,7 +523,7 @@ window.SkuModal = {
           try {
             const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
             closeSkuModal();
-            onSaved(result, 'merge', skuModalContext);
+            handleSaved(result, 'merge', skuModalContext);
           } catch (error) {
             const errorText = document.getElementById('sku-error-text');
             errorText.textContent = error.message;
@@ -546,7 +567,7 @@ window.SkuModal = {
             // здесь намеренно не переносятся (та же логика уже применяется к
             // остальным полям формы — Бренд/Персонаж и т.п. тоже не переносятся).
             closeSkuModal();
-            onSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create', skuModalContext);
+            handleSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create', skuModalContext);
           } else {
             // Подставляем точное имя кандидата и переигрываем сохранение —
             // дальше это уже обычный точный конфликт с готовым merge-флоу выше.
@@ -565,14 +586,14 @@ window.SkuModal = {
             const result = await callServer('createSku', skuData, true);
             await flushPendingLinks(result.value);
             closeSkuModal();
-            onSaved(result, 'create', skuModalContext);
+            handleSaved(result, 'create', skuModalContext);
           } else {
             const result = await callServer('updateSku', skuModalOldOriginal, skuData, null, true);
             if (result.status === 'conflict') {
               showMergeConflict(result.existing, result.incoming);
             } else {
               closeSkuModal();
-              onSaved(result, 'update', skuModalContext);
+              handleSaved(result, 'update', skuModalContext);
             }
           }
         } catch (error) {
@@ -595,7 +616,7 @@ window.SkuModal = {
       try {
         await callServer('deleteSku', skuModalOldOriginal);
         closeSkuModal();
-        onSaved(null, 'delete', skuModalContext);
+        handleSaved(null, 'delete', skuModalContext);
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
@@ -636,7 +657,7 @@ window.SkuModal = {
           } else {
             await flushPendingLinks(result.value);
             closeSkuModal();
-            onSaved(result, 'create', skuModalContext);
+            handleSaved(result, 'create', skuModalContext);
           }
         } else {
           const result = await callServer('updateSku', skuModalOldOriginal, skuData, null);
@@ -646,7 +667,7 @@ window.SkuModal = {
             showPossibleDuplicateWarning(result.candidates, skuData);
           } else {
             closeSkuModal();
-            onSaved(result, 'update', skuModalContext);
+            handleSaved(result, 'update', skuModalContext);
           }
         }
       } catch (error) {

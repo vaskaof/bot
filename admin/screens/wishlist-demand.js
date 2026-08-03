@@ -31,6 +31,7 @@ window.Screens.wishlistDemand = {
         <div id="unknown-list"></div>
         <div id="unknown-empty" class="hidden text-center text-sm text-gray-400 py-6">Таких позиций нет.</div>
       </main>
+      ${SkuModal.html()}
     `;
 
     const demandList = document.getElementById('demand-list');
@@ -38,6 +39,9 @@ window.Screens.wishlistDemand = {
     const unknownList = document.getElementById('unknown-list');
     const unknownEmpty = document.getElementById('unknown-empty');
     const refreshBtn = document.getElementById('refresh-btn');
+    // Фаза 4 интеграции Вишлист/Каталог/Заказы (04.08.2026) — "черновик SKU":
+    // перенос позиции вишлиста в каталог из раздела "Не найдено".
+    const skuModal = SkuModal.init({ onSaved: () => load() });
 
     load();
 
@@ -117,7 +121,17 @@ window.Screens.wishlistDemand = {
         ${u.rawDescription ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(u.rawDescription)}</div>` : ''}
         ${u.sourceUrl ? `<div class="text-[12px] text-indigo-500 mt-0.5 truncate"><a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener">${escapeHtmlClient(u.sourceUrl)}</a></div>` : ''}
         <div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} · ${escapeHtmlClient(u.createdAtDisplay)}</div>
+        <button type="button" class="add-to-catalog-btn mt-2 w-full text-center py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">
+          Добавить в каталог
+        </button>
       `;
+
+      row.querySelector('.add-to-catalog-btn').addEventListener('click', () => {
+        skuModal.open('create', null,
+          { original: u.rawTitle, description: u.rawDescription, imageUrl: u.rawImageUrl },
+          { wishlistId: u.wishlistId, pendingLink: u.sourceUrl, pendingLinkSource: 'Вишлист' });
+      });
+
       return row;
     }
   }
