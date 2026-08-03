@@ -341,8 +341,17 @@ window.SkuModal = {
           const result = await callServer('addCatalogLinkWithResolve', skuModalOldOriginal, url, 'Каталог');
           input.value = '';
           errorText.classList.add('hidden');
-          currentLinks = [result.link, ...currentLinks];
-          renderLinksList(currentLinks, false);
+          // wasExisting=true — сервер нашёл уже привязанную ссылку и НЕ создал
+          // новую запись (де-дуп по normalizeProductUrl); currentLinks её уже
+          // содержит — повторное добавление в список создавало ВИЗУАЛЬНЫЙ дубль
+          // (на сервере дубля не было, но менеджер видел два одинаковых пункта
+          // в списке до перезагрузки формы). Найдено 03.08.2026, репорт VASY.
+          if (result.link.wasExisting) {
+            showSaveToast(true, 'Такая ссылка уже привязана к этой позиции');
+          } else {
+            currentLinks = [result.link, ...currentLinks];
+            renderLinksList(currentLinks, false);
+          }
           applyResolvedFields(result.imageUrl, result.description);
         } catch (error) {
           errorText.textContent = error.message;
@@ -351,8 +360,16 @@ window.SkuModal = {
           addBtn.disabled = false;
         }
       } else {
-        pendingLinks.push({ url, source: 'Каталог' });
+        // Позиции ещё нет — сверяться с сервером не с чем, но хотя бы точное
+        // повторное нажатие на ту же ссылку не должно давать визуальный дубль
+        // в локальном списке (та же категория бага, что и в режиме edit).
+        const alreadyPending = pendingLinks.some(l => l.url === url);
         input.value = '';
+        if (alreadyPending) {
+          showSaveToast(true, 'Такая ссылка уже добавлена');
+          return;
+        }
+        pendingLinks.push({ url, source: 'Каталог' });
         renderLinksList(pendingLinks, true);
 
         // Позиции ещё нет — сохранять на сервер нечего, только подтягиваем
