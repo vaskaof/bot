@@ -85,7 +85,8 @@ window.Screens.orderEdit = {
               </div>
               <span class="text-sm font-medium text-gray-700">Название RU</span>
             </div>
-            <div class="flex-1 w-full">
+            <div class="flex-1 w-full flex items-center gap-2">
+              <img id="release-thumbnail" src="" alt="" class="hidden w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100">
               <input type="text" id="short-name-input" class="w-full bg-transparent border-none outline-none text-[15px] text-gray-500 py-1" readonly placeholder="Определяется автоматически из каталога">
             </div>
           </div>
@@ -486,10 +487,23 @@ window.Screens.orderEdit = {
       }
     });
 
+    const releaseThumbnail = document.getElementById('release-thumbnail');
+    function setReleaseThumbnail(imageUrl) {
+      if (imageUrl) {
+        releaseThumbnail.src = imageUrl;
+        releaseThumbnail.classList.remove('hidden');
+      } else {
+        releaseThumbnail.src = '';
+        releaseThumbnail.classList.add('hidden');
+      }
+    }
+    releaseThumbnail.addEventListener('error', () => releaseThumbnail.classList.add('hidden'));
+
     function applyCreatedOrEditedSku(value, label) {
       releaseSearch.value = value;
       shortNameInput.value = label;
       selectedReleaseId = value;
+      setReleaseThumbnail(null); // createSku/updateSku возвращают только value/label, фото подтянется при следующем поиске/открытии
     }
 
     const handleReleaseSearch = debounce(async (e) => {
@@ -499,7 +513,10 @@ window.Screens.orderEdit = {
       const results = await searchReleaseStub(query);
       FormHelpers.renderDropdown(releaseDropdown, results, (item) => `
         <div class="flex items-center justify-between gap-2">
-          <div class="font-medium text-gray-800 text-sm">${item.label}</div>
+          <div class="flex items-center gap-2 min-w-0">
+            ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+            <div class="font-medium text-gray-800 text-sm truncate">${item.label}</div>
+          </div>
           <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
             <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>
@@ -513,6 +530,7 @@ window.Screens.orderEdit = {
         releaseSearch.value = item.value;
         shortNameInput.value = item.label;
         selectedReleaseId = item.value;
+        setReleaseThumbnail(item.imageUrl);
         releaseDropdown.classList.remove('active');
       });
 
@@ -661,6 +679,7 @@ window.Screens.orderEdit = {
       releaseSearch.value = details.productOriginal;
       shortNameInput.value = details.productShort;
       selectedReleaseId = details.productOriginal;
+      setReleaseThumbnail(details.imageUrl);
 
       document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
       document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;

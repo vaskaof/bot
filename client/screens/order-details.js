@@ -29,8 +29,13 @@ window.Screens.orderDetails = {
 
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
-          <div id="d-product" class="font-semibold text-gray-900 text-lg"></div>
-          <div id="d-product-original" class="text-[12px] text-gray-400 mt-0.5"></div>
+          <div class="flex items-start gap-3">
+            <img id="d-product-image" src="" alt="" class="hidden w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100">
+            <div class="min-w-0 flex-1">
+              <div id="d-product" class="font-semibold text-gray-900 text-lg"></div>
+              <div id="d-product-original" class="text-[12px] text-gray-400 mt-0.5"></div>
+            </div>
+          </div>
           <div class="flex flex-wrap gap-1.5 mt-3">
             <span id="d-status-delivery" class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700"></span>
             <span id="d-status-order" class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700"></span>
@@ -115,6 +120,12 @@ window.Screens.orderDetails = {
     function render(d) {
       document.getElementById('d-product').textContent = d.productDisplay;
       document.getElementById('d-product-original').textContent = d.productOriginal || '';
+      const productImage = document.getElementById('d-product-image');
+      if (d.imageUrl) {
+        productImage.src = d.imageUrl;
+        productImage.classList.remove('hidden');
+        productImage.addEventListener('error', () => productImage.classList.add('hidden'), { once: true });
+      }
       document.getElementById('d-status-delivery').textContent = d.statusDelivery || '—';
       document.getElementById('d-status-order').textContent = d.statusOrder || '—';
       document.getElementById('d-date-order').textContent = d.dateOrderDisplay || '—';

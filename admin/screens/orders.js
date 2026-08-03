@@ -164,19 +164,27 @@ window.Screens.orders = {
         navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
       });
       card.innerHTML = `
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
-            ${o.productOriginal && o.productOriginal !== o.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+        <div class="flex items-start gap-3">
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
+                ${o.productOriginal && o.productOriginal !== o.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+              </div>
+              <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
+              ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+              ${o.purchaseChannel ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">${escapeHtmlClient(o.purchaseChannel)}</span>` : ''}
+              ${o.inCatalog
+                ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">в каталоге</span>`
+                : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">не в каталоге</span>`}
+            </div>
+            <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
           </div>
-          <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
         </div>
-        <div class="flex flex-wrap gap-1.5 mt-2">
-          ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
-          ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
-          ${o.purchaseChannel ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">${escapeHtmlClient(o.purchaseChannel)}</span>` : ''}
-        </div>
-        <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
       `;
       return card;
     }

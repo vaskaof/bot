@@ -88,6 +88,20 @@ window.SkuModal = {
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Необязательно">
             </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Фото</label>
+              <input type="text" id="sku-image-input"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Ссылка на изображение">
+              <img id="sku-image-preview" src="" alt=""
+                class="hidden mt-2 w-20 h-20 rounded-lg object-cover border border-gray-100">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Описание</label>
+              <textarea id="sku-description-input" rows="3"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
+                placeholder="Необязательно"></textarea>
+            </div>
             <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
             <div id="sku-merge-conflict" class="hidden"></div>
           </div>
@@ -202,6 +216,26 @@ window.SkuModal = {
       setTimeout(() => originalDropdown.classList.remove('active'), 150);
     });
 
+    // Живое превью фото по URL — тот же приём "onerror скрывает", что уже
+    // используется для карточек в client/screens/wishlist.js, только здесь
+    // это слушатель, а не инлайн-атрибут (разметка модалки статична, не
+    // перерисовывается через innerHTML).
+    function updateImagePreview() {
+      const url = document.getElementById('sku-image-input').value.trim();
+      const preview = document.getElementById('sku-image-preview');
+      if (url === '') {
+        preview.classList.add('hidden');
+        preview.src = '';
+        return;
+      }
+      preview.src = url;
+      preview.classList.remove('hidden');
+    }
+    document.getElementById('sku-image-input').addEventListener('input', updateImagePreview);
+    document.getElementById('sku-image-preview').addEventListener('error', () => {
+      document.getElementById('sku-image-preview').classList.add('hidden');
+    });
+
     async function open(mode, original) {
       skuModalMode = mode;
       skuModalOldOriginal = original || null;
@@ -230,6 +264,9 @@ window.SkuModal = {
           document.getElementById('sku-character-input').value = details.character;
           document.getElementById('sku-series-input').value = details.series;
           document.getElementById('sku-link-input').value = details.link;
+          document.getElementById('sku-image-input').value = details.imageUrl || '';
+          document.getElementById('sku-description-input').value = details.description || '';
+          updateImagePreview();
         } catch (error) {
           const errorText = document.getElementById('sku-error-text');
           errorText.textContent = error.message;
@@ -239,8 +276,10 @@ window.SkuModal = {
         titleEl.textContent = 'Новая позиция каталога';
         saveBtn.textContent = 'Сохранить';
         deleteBtn.classList.add('hidden');
-        ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input', 'sku-link-input']
+        ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input',
+          'sku-link-input', 'sku-image-input', 'sku-description-input']
           .forEach(id => { document.getElementById(id).value = ''; });
+        updateImagePreview();
 
         document.getElementById('create-sku-modal').classList.remove('hidden');
         document.getElementById('create-sku-modal').classList.add('flex');
@@ -272,7 +311,9 @@ window.SkuModal = {
             brand: document.getElementById('sku-brand-input').value.trim(),
             character: document.getElementById('sku-character-input').value.trim(),
             series: document.getElementById('sku-series-input').value.trim(),
-            link: document.getElementById('sku-link-input').value.trim()
+            link: document.getElementById('sku-link-input').value.trim(),
+            imageUrl: document.getElementById('sku-image-input').value.trim(),
+            description: document.getElementById('sku-description-input').value.trim()
           };
           try {
             const result = await callServer('updateSku', skuModalOldOriginal, skuData, btn.dataset.choice);
@@ -389,7 +430,9 @@ window.SkuModal = {
         brand: document.getElementById('sku-brand-input').value.trim(),
         character: document.getElementById('sku-character-input').value.trim(),
         series: document.getElementById('sku-series-input').value.trim(),
-        link: document.getElementById('sku-link-input').value.trim()
+        link: document.getElementById('sku-link-input').value.trim(),
+        imageUrl: document.getElementById('sku-image-input').value.trim(),
+        description: document.getElementById('sku-description-input').value.trim()
       };
 
       try {

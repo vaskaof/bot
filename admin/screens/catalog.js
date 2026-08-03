@@ -128,9 +128,14 @@ window.Screens.catalog = {
       const tags = [s.brand, s.character, s.series].filter(t => t !== '');
 
       card.innerHTML = `
-        <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.shortName || s.original)}</div>
-        ${s.shortName && s.shortName !== s.original ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(s.original)}</div>` : ''}
-        ${tags.length > 0 ? `<div class="flex flex-wrap gap-1.5 mt-2">${tags.map(t => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
+        <div class="flex items-start gap-3">
+          ${s.imageUrl ? `<img src="${escapeHtmlClient(s.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.shortName || s.original)}</div>
+            ${s.shortName && s.shortName !== s.original ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(s.original)}</div>` : ''}
+            ${tags.length > 0 ? `<div class="flex flex-wrap gap-1.5 mt-2">${tags.map(t => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>
       `;
       return card;
     }
@@ -165,8 +170,8 @@ window.Screens.catalog = {
     });
 
     function renderDuplicatesReport(result) {
-      if (result.clusters.length === 0 && result.missingLink.length === 0) {
-        duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей и позиций без ссылки не найдено.</div>';
+      if (result.clusters.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0) {
+        duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей, позиций без ссылки и без фото не найдено.</div>';
         return;
       }
 
@@ -209,6 +214,22 @@ window.Screens.catalog = {
           <div class="text-xs font-semibold text-gray-500 mb-2">Без ссылки (${result.missingLink.length})</div>
           <div class="space-y-1">
             ${result.missingLink.map(item => `
+              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                ${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        duplicatesBody.appendChild(section);
+      }
+
+      if (result.missingImage.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `
+          <div class="text-xs font-semibold text-gray-500 mb-2">Без фото (${result.missingImage.length})</div>
+          <div class="space-y-1">
+            ${result.missingImage.map(item => `
               <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
                 ${escapeHtmlClient(item.shortName || item.original)}
                 <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>

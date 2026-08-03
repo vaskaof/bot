@@ -101,15 +101,20 @@ window.Screens.orders = {
       const debtColor = o.debtSummary === 'Оплачено' ? 'text-green-600' : (o.debtSummary.startsWith('К оплате') ? 'text-red-500' : 'text-amber-500');
 
       card.innerHTML = `
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
-            ${o.productOriginal ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+        <div class="flex items-start gap-3">
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
+                ${o.productOriginal ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+              </div>
+              <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
+            </div>
+            ${o.statusDelivery ? `<span class="inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+            <div class="text-[13px] font-medium mt-2 ${debtColor}">${escapeHtmlClient(o.debtSummary)}</div>
           </div>
-          <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
         </div>
-        ${o.statusDelivery ? `<span class="inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
-        <div class="text-[13px] font-medium mt-2 ${debtColor}">${escapeHtmlClient(o.debtSummary)}</div>
       `;
       return card;
     }
