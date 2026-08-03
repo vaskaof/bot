@@ -83,10 +83,15 @@ window.SkuModal = {
               <datalist id="sku-series-datalist"></datalist>
             </div>
             <div>
-              <label class="text-xs font-medium text-gray-500">Ссылка</label>
-              <input type="text" id="sku-link-input"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
+              <label class="text-xs font-medium text-gray-500">Ссылки</label>
+              <div id="sku-links-list" class="space-y-1.5 mt-1"></div>
+              <div class="flex gap-2 mt-2">
+                <input type="text" id="sku-link-add-input"
+                  class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Добавить ссылку">
+                <button type="button" id="sku-link-add-btn"
+                  class="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm shrink-0">Добавить</button>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Фото</label>
@@ -236,6 +241,92 @@ window.SkuModal = {
       document.getElementById('sku-image-preview').classList.add('hidden');
     });
 
+    // Раздел "Ссылки" (Фаза 2 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
+    // заменяет прежнее единственное поле "Ссылка". В режиме edit позиция уже
+    // существует — добавление/удаление ссылки уходит на сервер СРАЗУ по клику
+    // (addCatalogLink/deleteCatalogLink), список тут же перезагружается. В
+    // режиме create позиции ещё нет — ссылки копятся в pendingLinks локально и
+    // отправляются по очереди ПОСЛЕ успешного createSku (см. flushPendingLinks).
+    let pendingLinks = [];
+
+    function renderLinksList(links, pending) {
+      const container = document.getElementById('sku-links-list');
+      if (links.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-400">Ссылок пока нет</div>';
+        return;
+      }
+      container.innerHTML = links.map((link, idx) => `
+        <div class="flex items-center justify-between gap-2 p-2 border border-gray-100 rounded-lg text-xs">
+          <a href="${escapeHtmlClient(link.url)}" target="_blank" rel="noopener" class="text-indigo-600 truncate flex-1">${escapeHtmlClient(link.url)}</a>
+          <span class="shrink-0 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">${escapeHtmlClient(link.source)}</span>
+          <button type="button" class="link-delete-btn shrink-0 p-1 text-gray-400 hover:text-red-500" data-idx="${idx}">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `).join('');
+      if (window.lucide) window.lucide.createIcons();
+
+      container.querySelectorAll('.link-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          if (pending) {
+            pendingLinks.splice(idx, 1);
+            renderLinksList(pendingLinks, true);
+          } else {
+            try {
+              await callServer('deleteCatalogLink', links[idx].linkId);
+              await loadLinksForEdit();
+            } catch (error) {
+              const errorText = document.getElementById('sku-error-text');
+              errorText.textContent = error.message;
+              errorText.classList.remove('hidden');
+            }
+          }
+        });
+      });
+    }
+
+    async function loadLinksForEdit() {
+      const links = await callServer('getCatalogLinksForSku', skuModalOldOriginal);
+      renderLinksList(links, false);
+    }
+
+    async function flushPendingLinks(skuOriginal) {
+      for (const link of pendingLinks) {
+        try {
+          await callServer('addCatalogLink', skuOriginal, link.url, link.source);
+        } catch (error) {
+          // Позиция уже создана — ссылка не должна блокировать успешный
+          // результат, только логируем для диагностики.
+          console.error('Не удалось привязать ссылку после создания SKU:', error);
+        }
+      }
+      pendingLinks = [];
+    }
+
+    document.getElementById('sku-link-add-btn').addEventListener('click', async () => {
+      const input = document.getElementById('sku-link-add-input');
+      const url = input.value.trim();
+      if (url === '') return;
+
+      if (skuModalMode === 'edit') {
+        const errorText = document.getElementById('sku-error-text');
+        try {
+          await callServer('addCatalogLink', skuModalOldOriginal, url, 'Каталог');
+          input.value = '';
+          errorText.classList.add('hidden');
+          await loadLinksForEdit();
+        } catch (error) {
+          errorText.textContent = error.message;
+          errorText.classList.remove('hidden');
+        }
+      } else {
+        pendingLinks.push({ url, source: 'Каталог' });
+        input.value = '';
+        renderLinksList(pendingLinks, true);
+      }
+    });
+
     async function open(mode, original) {
       skuModalMode = mode;
       skuModalOldOriginal = original || null;
@@ -263,10 +354,11 @@ window.SkuModal = {
           document.getElementById('sku-brand-input').value = details.brand;
           document.getElementById('sku-character-input').value = details.character;
           document.getElementById('sku-series-input').value = details.series;
-          document.getElementById('sku-link-input').value = details.link;
           document.getElementById('sku-image-input').value = details.imageUrl || '';
           document.getElementById('sku-description-input').value = details.description || '';
           updateImagePreview();
+          document.getElementById('sku-link-add-input').value = '';
+          await loadLinksForEdit();
         } catch (error) {
           const errorText = document.getElementById('sku-error-text');
           errorText.textContent = error.message;
@@ -277,9 +369,11 @@ window.SkuModal = {
         saveBtn.textContent = 'Сохранить';
         deleteBtn.classList.add('hidden');
         ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input',
-          'sku-link-input', 'sku-image-input', 'sku-description-input']
+          'sku-image-input', 'sku-description-input', 'sku-link-add-input']
           .forEach(id => { document.getElementById(id).value = ''; });
         updateImagePreview();
+        pendingLinks = [];
+        renderLinksList(pendingLinks, true);
 
         document.getElementById('create-sku-modal').classList.remove('hidden');
         document.getElementById('create-sku-modal').classList.add('flex');
@@ -311,7 +405,6 @@ window.SkuModal = {
             brand: document.getElementById('sku-brand-input').value.trim(),
             character: document.getElementById('sku-character-input').value.trim(),
             series: document.getElementById('sku-series-input').value.trim(),
-            link: document.getElementById('sku-link-input').value.trim(),
             imageUrl: document.getElementById('sku-image-input').value.trim(),
             description: document.getElementById('sku-description-input').value.trim()
           };
@@ -357,6 +450,10 @@ window.SkuModal = {
         btn.addEventListener('click', () => {
           const candidate = candidates[parseInt(btn.dataset.idx, 10)];
           if (skuModalMode === 'create') {
+            // Менеджер выбрал уже существующую похожую позицию вместо создания
+            // новой — сама позиция не создаётся, поэтому накопленные pendingLinks
+            // здесь намеренно не переносятся (та же логика уже применяется к
+            // остальным полям формы — Бренд/Персонаж и т.п. тоже не переносятся).
             closeSkuModal();
             onSaved({ value: candidate.original, label: candidate.shortName || candidate.original }, 'create');
           } else {
@@ -375,6 +472,7 @@ window.SkuModal = {
         try {
           if (skuModalMode === 'create') {
             const result = await callServer('createSku', skuData, true);
+            await flushPendingLinks(result.value);
             closeSkuModal();
             onSaved(result, 'create');
           } else {
@@ -430,7 +528,11 @@ window.SkuModal = {
         brand: document.getElementById('sku-brand-input').value.trim(),
         character: document.getElementById('sku-character-input').value.trim(),
         series: document.getElementById('sku-series-input').value.trim(),
-        link: document.getElementById('sku-link-input').value.trim(),
+        // Только для проверки на дубль на входе (createSku/updateSku не пишут
+        // link в саму строку SKU, Фаза 2, 03.08.2026) — первая из накопленных
+        // pendingLinks как представительный сигнал; в режиме edit pendingLinks
+        // всегда пуст (там ссылки уходят сразу через addCatalogLink по клику).
+        link: pendingLinks.length > 0 ? pendingLinks[0].url : '',
         imageUrl: document.getElementById('sku-image-input').value.trim(),
         description: document.getElementById('sku-description-input').value.trim()
       };
@@ -441,6 +543,7 @@ window.SkuModal = {
           if (result.status === 'possible_duplicate') {
             showPossibleDuplicateWarning(result.candidates, skuData);
           } else {
+            await flushPendingLinks(result.value);
             closeSkuModal();
             onSaved(result, 'create');
           }
