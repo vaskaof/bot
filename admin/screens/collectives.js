@@ -17,7 +17,7 @@ window.Screens.collectives = {
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
-      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Коллективки</h1>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2 inline-flex items-center gap-1.5">Коллективки${helpIcon('Что такое коллективка', '<p>Коллективка — это физическая объединённая посылка Казахстан → Россия, в которую собирают несколько заказов разных клиентов для одной пересылки (экономия на доставке).</p><p>Здесь вы создаёте коллективку (трек-номер), привязываете к ней заказы клиентов и следите за общим статусом доставки.</p>')}</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
       <button id="add-collective-btn" title="Новая коллективка" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">

@@ -51,7 +51,7 @@ window.Screens.catalog = {
       <div id="duplicates-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Аудит каталога</h2>
+            <h2 class="text-base font-semibold text-gray-900 inline-flex items-center gap-1.5">Аудит каталога${helpIcon('Что показывают разделы', '<p><b>Вероятные дубли</b> — позиции, чьи названия автоматически похожи (нечёткое совпадение, не 100%). Кнопка «Объединить» покажет обе целиком для сравнения — ничего не удаляется без вашего явного выбора, какую оставить.</p><p><b>Заказы без соответствия в каталоге</b> / <b>Позиции без единого заказа</b> — рассинхронизация между листом «Заказы» и каталогом, только информационно.</p><p><b>Без ссылки</b> / <b>Без фото</b> — позиции каталога с пустыми полями, ничего не ломают, но мешают клиентам и авто-распознаванию ссылок.</p>')}</h2>
             <button id="duplicates-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>

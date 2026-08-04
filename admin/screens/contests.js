@@ -81,7 +81,7 @@ window.Screens.contests = {
               </select>
             </div>
             <div id="task-signal-block">
-              <label class="text-xs font-medium text-gray-500">Сигнал (для авто-задания) *</label>
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Сигнал (для авто-задания) *${helpIcon('Сигнал автозадания', '<p>Список ниже — фиксированный, ровно 3 готовых сигнала. Свой вариант («написал в поддержку», «оформил N заказов» и т.п.) добавить нельзя без правки кода бэкенда — если такой сигнал нужен, это отдельная задача на разработку, не настройка через панель.</p><p>Система сама проверяет сигнал и засчитывает задание — участнику ничего отправлять не нужно, поэтому у "Авто" нет очереди на "Модерации".</p>')}</label>
               <select id="task-signal-input"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
                 <option value="Есть_Позиция_В_Вишлисте">Есть позиция в вишлисте</option>
@@ -133,7 +133,7 @@ window.Screens.contests = {
               <div id="lottery-task-checklist" class="mt-1 max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-50"></div>
             </div>
             <div id="lottery-type-block">
-              <label class="text-xs font-medium text-gray-500">Тип лотереи</label>
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Тип лотереи${helpIcon('Промо vs Премиум', '<p><b>Промо (участники)</b> — бесплатно для клиента: кнопка «Участвовать» просто добавляет в список претендентов. Розыгрыш — случайный номер среди участников.</p><p><b>Премиум (ячейки)</b> — клиент видит доску пронумерованных ячеек и бронирует свободную за 1 билет (билет списывается только при успешной брони). Вы дополнительно задаёте «Всего ячеек» и «Максимум ячеек на клиента». Розыгрыш — случайный номер среди занятых ячеек. У вас есть отдельная кнопка «Доска» на карточке такой лотереи — просмотр брони с именами.</p>')}</label>
               <div class="flex gap-2 mt-1">
                 <button type="button" data-type="Тип2" class="lottery-type-btn flex-1 py-2 rounded-xl text-xs font-medium border">Промо (участники)</button>
                 <button type="button" data-type="Тип1" class="lottery-type-btn flex-1 py-2 rounded-xl text-xs font-medium border">Премиум (ячейки)</button>
@@ -169,7 +169,7 @@ window.Screens.contests = {
       <div id="draw-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 id="draw-modal-title" class="text-base font-semibold text-gray-900">Розыгрыш</h2>
+            <h2 id="draw-modal-title" class="text-base font-semibold text-gray-900 inline-flex items-center gap-1.5">Розыгрыш${helpIcon('Как работает розыгрыш', '<p>«Выбрать случайно»/«Выбрать» разыгрывает приз ровно для ОДНОГО места. Лотерея после этого остаётся активной — можно нажимать снова для следующего места (2-е, 3-е и т.д.), уже выигравшие в повторный розыгрыш не попадают.</p><p><b>«Завершить розыгрыш»</b> — отдельное необратимое действие: закрывает лотерею и рассылает участникам итоговое сообщение со всеми победителями. Нажимайте, только когда разыграны ВСЕ призы, которые планировали.</p>')}</h2>
             <button id="draw-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
