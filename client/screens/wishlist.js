@@ -397,7 +397,8 @@ window.Screens.wishlist = {
       }
     });
 
-    document.getElementById('item-modal-save').addEventListener('click', async () => {
+    const itemModalSaveBtn = document.getElementById('item-modal-save');
+    itemModalSaveBtn.addEventListener('click', async () => {
       errorText.classList.add('hidden');
       const isManualMode = !manualBlock.classList.contains('hidden');
 
@@ -421,6 +422,11 @@ window.Screens.wishlist = {
         return;
       }
 
+      // Блокировка кнопки на время запроса (найдено 04.08.2026, репорт VASY:
+      // повторные клики на медленном ответе GAS создавали дублирующие записи
+      // вишлиста) — тот же приём, что уже есть у кнопки добавления ссылки в
+      // _sku-modal.js.
+      itemModalSaveBtn.disabled = true;
       try {
         if (editingWishlistId) {
           await callServer('deleteWishlistItem', editingWishlistId);
@@ -432,6 +438,8 @@ window.Screens.wishlist = {
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
+      } finally {
+        itemModalSaveBtn.disabled = false;
       }
     });
   }
