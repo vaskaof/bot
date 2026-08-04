@@ -269,16 +269,24 @@ window.Screens.catalog = {
       duplicatesModal.classList.add('flex');
 
       try {
-        const result = await callServer('findDuplicateCatalogClusters');
-        renderDuplicatesReport(result);
+        // Фаза 6.4 (04.08.2026) — аудит Заказы↔Каталог в той же модалке,
+        // единая точка входа для менеджера. Два независимых запроса
+        // параллельно — findDuplicateCatalogClusters уже проверенная и
+        // задеплоенная логика, не трогаем её структуру ради нового отчёта.
+        const [duplicatesResult, ordersAudit] = await Promise.all([
+          callServer('findDuplicateCatalogClusters'),
+          callServer('getCatalogOrdersAudit')
+        ]);
+        renderDuplicatesReport({ ...duplicatesResult, ...ordersAudit });
       } catch (error) {
         duplicatesBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
       }
     });
 
     function renderDuplicatesReport(result) {
-      if (result.clusters.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0) {
-        duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей, позиций без ссылки и без фото не найдено.</div>';
+      if (result.clusters.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0
+        && result.orphanedOrders.length === 0 && result.unusedSkus.length === 0) {
+        duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей, позиций без ссылки/фото и рассинхронизации с заказами не найдено.</div>';
         return;
       }
 
@@ -337,6 +345,40 @@ window.Screens.catalog = {
           <div class="text-xs font-semibold text-gray-500 mb-2">Без фото (${result.missingImage.length})</div>
           <div class="space-y-1">
             ${result.missingImage.map(item => `
+              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                ${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        duplicatesBody.appendChild(section);
+      }
+
+      // Фаза 6.4 (04.08.2026) — аудит Заказы↔Каталог, обе стороны. Чисто
+      // информационно, ничего не блокирует и не трогает автоматически.
+      if (result.orphanedOrders.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `
+          <div class="text-xs font-semibold text-gray-500 mb-2">Заказы без соответствия в каталоге (${result.orphanedOrders.length})</div>
+          <div class="space-y-1">
+            ${result.orphanedOrders.map(o => `
+              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                ${escapeHtmlClient(o.productOriginal)}
+                <span class="text-gray-400">— ${escapeHtmlClient(o.orderId)}${o.dateOrderDisplay ? ` · ${escapeHtmlClient(o.dateOrderDisplay)}` : ''}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        duplicatesBody.appendChild(section);
+      }
+
+      if (result.unusedSkus.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `
+          <div class="text-xs font-semibold text-gray-500 mb-2">Позиции без единого заказа (${result.unusedSkus.length})</div>
+          <div class="space-y-1">
+            ${result.unusedSkus.map(item => `
               <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
                 ${escapeHtmlClient(item.shortName || item.original)}
                 <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
