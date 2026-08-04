@@ -32,6 +32,7 @@ window.Screens.orderNew = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
           <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -271,6 +272,10 @@ window.Screens.orderNew = {
     let currentRates = {};
     let currentRate = 0;
     let purchaseLinkInput, purchaseLinkHint, purchaseLinkResolveBtn;
+    // Фаза 5 интеграции Вишлист/Каталог/Заказы (04.08.2026) — заказ, оформленный
+    // из "Спрос клиентов", несёт связь с исходной позицией вишлиста насквозь до
+    // saveOrder(). null для обычного пути создания заказа (без изменений).
+    let prefillWishlistId = null;
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -299,7 +304,8 @@ window.Screens.orderNew = {
         mainSum: totalPaymentInput.value,
         mainPaid: document.getElementById('main-paid-toggle').dataset.value,
         notifyClient: document.getElementById('notify-client-checkbox').checked,
-        purchaseLink: purchaseLinkInput.value.trim()
+        purchaseLink: purchaseLinkInput.value.trim(),
+        wishlistId: prefillWishlistId || ''
       };
       return callServer('createOrder', orderData);
     }
@@ -359,6 +365,29 @@ window.Screens.orderNew = {
       }
     });
 
+    // Баннер "у этого клиента это есть в вишлисте" (Фаза 5, 04.08.2026) — по
+    // образцу individual-shipping-banner в order-edit.js. Проверяется каждый
+    // раз, когда известны И клиент, И позиция (оба выбора независимы друг от
+    // друга) — точечные вызовы после выбора, не на каждый ввод текста.
+    const wishlistMatchBanner = document.getElementById('wishlist-match-banner');
+    async function maybeCheckWishlistMatch() {
+      if (!selectedClientId || !selectedReleaseId) {
+        wishlistMatchBanner.classList.add('hidden');
+        return;
+      }
+      try {
+        const match = await callServer('checkClientWishlistMatch', selectedClientId, selectedReleaseId);
+        if (match) {
+          wishlistMatchBanner.textContent = 'У этого клиента эта позиция есть в вишлисте.';
+          wishlistMatchBanner.classList.remove('hidden');
+        } else {
+          wishlistMatchBanner.classList.add('hidden');
+        }
+      } catch (error) {
+        wishlistMatchBanner.classList.add('hidden');
+      }
+    }
+
     const releaseThumbnail = document.getElementById('release-thumbnail');
     function setReleaseThumbnail(imageUrl) {
       if (imageUrl) {
@@ -376,6 +405,7 @@ window.Screens.orderNew = {
       shortNameInput.value = label;
       selectedReleaseId = value;
       setReleaseThumbnail(null); // createSku/updateSku возвращают только value/label, фото подтянется при следующем поиске/открытии
+      maybeCheckWishlistMatch();
     }
 
     // --- "Похоже на ссылку -> Распознать" (Фаза 3 интеграции Вишлист/Каталог/
@@ -448,6 +478,7 @@ window.Screens.orderNew = {
         selectedReleaseId = item.value;
         setReleaseThumbnail(item.imageUrl);
         releaseDropdown.classList.remove('active');
+        maybeCheckWishlistMatch();
       });
 
       const addLi = document.createElement('li');
@@ -490,6 +521,7 @@ window.Screens.orderNew = {
         selectedClientName = item.name;
         manualClientData = null;
         clientDropdown.classList.remove('active');
+        maybeCheckWishlistMatch();
       });
 
       const addLi = document.createElement('li');
@@ -639,6 +671,8 @@ window.Screens.orderNew = {
       setReleaseThumbnail(null);
       purchaseLinkInput.value = '';
       purchaseLinkHint.classList.add('hidden');
+      prefillWishlistId = null;
+      document.getElementById('wishlist-match-banner').classList.add('hidden');
       clientSearch.value = '';
       selectedClientId = null;
       selectedClientUsername = '';
@@ -676,6 +710,31 @@ window.Screens.orderNew = {
         showSaveToast(false, `Не получилось сохранить заказ: ${error.message}`);
       }
     });
+
+    // Предзаполнение из "Спрос клиентов" (Фаза 5, 04.08.2026) — до этого
+    // params полностью игнорировались. Клиент/позиция — независимые блоки,
+    // каждый заполняется, только если соответствующие данные переданы.
+    if (params && params.telegramId) {
+      selectedClientId = params.telegramId;
+      selectedClientUsername = params.username || '';
+      selectedClientName = params.name || '';
+      clientSearch.value = selectedClientName && selectedClientUsername
+        ? `${selectedClientName} (${selectedClientUsername})`
+        : (selectedClientName || selectedClientUsername || 'Клиент');
+    }
+    if (params && params.skuOriginal) {
+      releaseSearch.value = params.skuOriginal;
+      shortNameInput.value = params.productDisplay || params.skuOriginal;
+      selectedReleaseId = params.skuOriginal;
+    } else if (params && params.productOriginal) {
+      releaseSearch.value = params.productOriginal;
+    }
+    if (params && params.wishlistId) {
+      prefillWishlistId = params.wishlistId;
+    }
+    if (params && (params.telegramId || params.skuOriginal)) {
+      maybeCheckWishlistMatch();
+    }
 
     refreshRate();
   }

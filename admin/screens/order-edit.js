@@ -47,6 +47,7 @@ window.Screens.orderEdit = {
 
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+        <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
           <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -809,6 +810,20 @@ window.Screens.orderEdit = {
             banner.classList.remove('hidden');
           }
         } catch (e) { }
+
+        // Баннер "есть в вишлисте" (Фаза 5, 04.08.2026) — оба поля уже
+        // известны сразу после загрузки заказа, повторной проверки при
+        // ручных правках формы (в отличие от order-new.js) не требуется.
+        if (selectedReleaseId) {
+          try {
+            const wishlistMatch = await callServer('checkClientWishlistMatch', details.client.telegramId, selectedReleaseId);
+            if (wishlistMatch) {
+              const wishlistBanner = document.getElementById('wishlist-match-banner');
+              wishlistBanner.textContent = 'У этого клиента эта позиция есть в вишлисте.';
+              wishlistBanner.classList.remove('hidden');
+            }
+          } catch (e) { }
+        }
       }
 
       if (window.lucide) window.lucide.createIcons();

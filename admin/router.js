@@ -28,13 +28,53 @@ const ROUTES = [
 const DEFAULT_ROUTE = 'news';
 
 /**
+ * Собирает query-строку из плоского объекта — вручную (без URLSearchParams,
+ * тот же принцип осторожности, что и на бэкенде — GAS его не имеет, а
+ * тестовый vm-сэндбокс фронтенда его тоже не предоставляет). Пропускает
+ * undefined/null/пустые значения.
+ * @param {Object} params
+ * @returns {string} Без ведущего "?"
+ */
+function buildQueryString(params) {
+  const parts = [];
+  for (const key in params) {
+    const value = params[key];
+    if (value === undefined || value === null || value === '') continue;
+    parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value));
+  }
+  return parts.join('&');
+}
+
+/** Обратная операция к buildQueryString. Пустая/некорректная строка -> {}. */
+function parseQueryString(qs) {
+  const params = {};
+  if (!qs) return params;
+  qs.split('&').forEach((pair) => {
+    if (!pair) return;
+    const idx = pair.indexOf('=');
+    const key = idx === -1 ? pair : pair.slice(0, idx);
+    const rawValue = idx === -1 ? '' : pair.slice(idx + 1);
+    if (!key) return;
+    params[decodeURIComponent(key)] = decodeURIComponent(rawValue);
+  });
+  return params;
+}
+
+/**
  * Разбирает location.hash в {screen, navKey, showNav, params}. Не бросает на
- * пустом/некорректном хэше — фолбэк на DEFAULT_ROUTE.
- * @param {string} hash Например "#/orders" или "#/orders/ORD-1/edit"
+ * пустом/некорректном хэше — фолбэк на DEFAULT_ROUTE. Query-строка (Фаза 5
+ * интеграции Вишлист/Каталог/Заказы, 04.08.2026) отделяется ДО поиска
+ * маршрута — не задевает уже работающий разбор "orders/<id>/edit" (у него
+ * свой params с orderId, query туда не подмешивается).
+ * @param {string} hash Например "#/orders" или "#/orders/new?telegramId=123"
  * @returns {{screen:string, navKey:string|null, showNav:boolean, params:Object}}
  */
 function matchRoute(hash) {
-  const clean = (hash || '').replace(/^#\/?/, '');
+  const raw = (hash || '').replace(/^#\/?/, '');
+  const qIndex = raw.indexOf('?');
+  const clean = qIndex === -1 ? raw : raw.slice(0, qIndex);
+  const queryParams = qIndex === -1 ? {} : parseQueryString(raw.slice(qIndex + 1));
+
   if (clean === '') return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, showNav: true, params: {} };
 
   const editMatch = clean.match(/^orders\/([^/]+)\/edit$/);
@@ -43,14 +83,19 @@ function matchRoute(hash) {
   }
 
   const route = ROUTES.find((r) => r.path === clean);
-  if (route) return { screen: route.screen, navKey: route.navKey, showNav: route.showNav, params: {} };
+  if (route) return { screen: route.screen, navKey: route.navKey, showNav: route.showNav, params: queryParams };
 
   return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, showNav: true, params: {} };
 }
 
-/** Переход между экранами — используется вместо window.location.href/<a href="X.html">. */
-function navigateTo(path) {
-  window.location.hash = '#/' + path;
+/**
+ * Переход между экранами — используется вместо window.location.href/<a href="X.html">.
+ * @param {string} path
+ * @param {Object} [params] Необязательно (Фаза 5, 04.08.2026) — сериализуется в query-строку.
+ */
+function navigateTo(path, params) {
+  const qs = params ? buildQueryString(params) : '';
+  window.location.hash = '#/' + path + (qs ? '?' + qs : '');
 }
 
 /** Общий toast — та же общая функция, что и в клиентском router.js (независимая копия, разные шеллы). */

@@ -98,8 +98,15 @@ window.Screens.wishlistDemand = {
             <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 chevron-icon"></i>
           </div>
         </div>
-        <div class="clients-block hidden mt-2 pt-2 border-t border-gray-100 text-[12px] text-gray-500 space-y-0.5">
-          ${d.clients.map(c => `<div>${escapeHtmlClient(c)}</div>`).join('')}
+        <div class="clients-block hidden mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+          ${d.clients.map((c, idx) => `
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[12px] text-gray-500">${escapeHtmlClient(c.display)}</span>
+              <button type="button" class="order-from-demand-btn shrink-0 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 text-[11px] font-medium" data-idx="${idx}">
+                Оформить заказ
+              </button>
+            </div>
+          `).join('')}
         </div>
       `;
 
@@ -108,6 +115,20 @@ window.Screens.wishlistDemand = {
         const chevron = card.querySelector('.chevron-icon');
         block.classList.toggle('hidden');
         chevron.style.transform = block.classList.contains('hidden') ? '' : 'rotate(180deg)';
+      });
+
+      // Фаза 5 интеграции Вишлист/Каталог/Заказы (04.08.2026) — "Оформить
+      // заказ" у каждого клиента отдельно (клиенты теперь структурированные
+      // объекты, не строки, см. getWishlistDemand).
+      card.querySelectorAll('.order-from-demand-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const c = d.clients[parseInt(btn.dataset.idx, 10)];
+          navigateTo('orders/new', {
+            telegramId: c.telegramId, username: c.username, name: c.name,
+            skuOriginal: d.skuOriginal, productDisplay: d.productDisplay
+          });
+        });
       });
 
       return card;
@@ -121,15 +142,29 @@ window.Screens.wishlistDemand = {
         ${u.rawDescription ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(u.rawDescription)}</div>` : ''}
         ${u.sourceUrl ? `<div class="text-[12px] text-indigo-500 mt-0.5 truncate"><a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener">${escapeHtmlClient(u.sourceUrl)}</a></div>` : ''}
         <div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} · ${escapeHtmlClient(u.createdAtDisplay)}</div>
-        <button type="button" class="add-to-catalog-btn mt-2 w-full text-center py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">
-          Добавить в каталог
-        </button>
+        <div class="flex gap-2 mt-2">
+          <button type="button" class="add-to-catalog-btn flex-1 text-center py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">
+            Добавить в каталог
+          </button>
+          <button type="button" class="order-from-unknown-btn flex-1 text-center py-2 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium">
+            Оформить заказ
+          </button>
+        </div>
       `;
 
       row.querySelector('.add-to-catalog-btn').addEventListener('click', () => {
         skuModal.open('create', null,
           { original: u.rawTitle, description: u.rawDescription, imageUrl: u.rawImageUrl },
           { wishlistId: u.wishlistId, pendingLink: u.sourceUrl, pendingLinkSource: 'Вишлист' });
+      });
+
+      // Фаза 5 (04.08.2026) — заказ без привязки к каталогу: "Выпуск" в форме
+      // заполнится свободным текстом (productOriginal), не позицией каталога.
+      row.querySelector('.order-from-unknown-btn').addEventListener('click', () => {
+        navigateTo('orders/new', {
+          telegramId: u.telegramId, username: u.username, name: u.clientName,
+          productOriginal: u.rawTitle, wishlistId: u.wishlistId
+        });
       });
 
       return row;
