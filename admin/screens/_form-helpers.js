@@ -55,6 +55,47 @@ window.FormHelpers = {
     });
   },
 
+  /**
+   * Авто-подсказка "Канал выкупа" по домену вставленной ссылки на покупку
+   * (Фаза 6.2, 04.08.2026) — тот же принцип, что skuModalGuessBrand в
+   * _sku-modal.js: чистый словарь без AI, никогда не перезаписывает уже
+   * выбранное (проверка на пустое значение — на вызывающей стороне). В
+   * отличие от Бренда, "Канал выкупа" — управляемый справочник, а не
+   * свободный текст, поэтому подсказка ищет СОВПАДЕНИЕ ПОДСТРОКИ по ключевому
+   * слову внутри уже существующих значений availableChannels, а не отдаёт
+   * фиксированную строку "в лоб" — названия каналов в справочнике у разных
+   * магазинов настраиваются вручную и могут отличаться ("Amazon"/"Amazon.com").
+   * @param {string} url
+   * @param {string[]} availableChannels dictionaries.purchaseChannel
+   * @returns {string|null} Одно из значений availableChannels, либо null
+   */
+  guessPurchaseChannel(url, availableChannels) {
+    if (!url || !availableChannels || availableChannels.length === 0) return null;
+
+    const hostMatch = url.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
+    if (!hostMatch) return null;
+    const host = hostMatch[1].toLowerCase();
+
+    const DOMAIN_KEYWORDS = [
+      ['amazon.', 'amazon'],
+      ['ebay.', 'ebay'],
+      ['mercari.', 'mercari'],
+      ['mattel.com', 'mattel'],
+      ['bratz.com', 'bratz'],
+      ['aliexpress.', 'aliexpress'],
+      ['etsy.', 'etsy'],
+      ['walmart.', 'walmart'],
+      ['target.', 'target']
+    ];
+
+    for (const [domainFragment, keyword] of DOMAIN_KEYWORDS) {
+      if (!host.includes(domainFragment)) continue;
+      const match = availableChannels.find(ch => ch.toLowerCase().includes(keyword));
+      if (match) return match;
+    }
+    return null;
+  },
+
   /** Общий рендер выпадающего списка автокомплита (release/client search). */
   renderDropdown(container, items, templateFn, onSelect) {
     container.innerHTML = '';

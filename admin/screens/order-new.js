@@ -443,8 +443,19 @@ window.Screens.orderNew = {
     }
 
     purchaseLinkInput.addEventListener('input', (e) => {
-      purchaseLinkHint.classList.toggle('hidden', !looksLikeUrl(e.target.value));
+      const looksLike = looksLikeUrl(e.target.value);
+      purchaseLinkHint.classList.toggle('hidden', !looksLike);
+      if (looksLike) maybeGuessPurchaseChannel(e.target.value);
     });
+
+    // Авто-подсказка "Канал выкупа" по домену ссылки (Фаза 6.2, 04.08.2026) —
+    // никогда не перезаписывает уже выбранное значение.
+    function maybeGuessPurchaseChannel(url) {
+      const channelSelect = document.querySelector('select[data-dict="purchaseChannel"]');
+      if (!channelSelect || channelSelect.value !== '') return;
+      const guessed = FormHelpers.guessPurchaseChannel(url, dictionaries.purchaseChannel);
+      if (guessed) channelSelect.value = guessed;
+    }
 
     purchaseLinkResolveBtn.addEventListener('click', () => {
       const url = purchaseLinkInput.value.trim();
