@@ -55,8 +55,47 @@ window.Screens.wishlistDemand = {
             </div>
             <button type="button" id="manual-wishlist-use-manual-client" class="text-xs text-indigo-600 font-medium">+ Ввести вручную (без подтверждения)</button>
 
+            <!-- Доработка 04.08.2026 (репорт VASY) — ссылка первым полем, тот
+                 же приём, что уже работает в client/screens/wishlist.js и в
+                 форме заказа: "похоже на ссылку -> Распознать" через
+                 LinkResolverService (resolveWishlistLink). Дедуп по ссылке
+                 (совпадение с уже привязанной позицией каталога) делает сам
+                 backend внутри addWishlistItem — здесь достаточно передать
+                 sourceUrl, повторную ручную проверку не дублируем. -->
             <div>
-              <label class="text-xs font-medium text-gray-500">Название *</label>
+              <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
+              <div class="flex gap-2 mt-1">
+                <input type="text" id="manual-wishlist-url"
+                  class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Вставьте ссылку — можно распознать автоматически">
+                <button type="button" id="manual-wishlist-resolve-btn" disabled
+                  class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  Распознать
+                </button>
+              </div>
+            </div>
+
+            <!-- Поиск по каталогу (04.08.2026, репорт VASY) — тот же приём,
+                 что в order-new.js/_sku-modal.js: если позиция уже есть в
+                 каталоге, выбор из поиска однозначно исключает дубль-по-тексту,
+                 не полагаясь только на совпадение по ссылке. -->
+            <div class="relative">
+              <label class="text-xs font-medium text-gray-500">Или найдите в каталоге</label>
+              <input type="text" id="manual-wishlist-catalog-search" autocomplete="off"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Поиск по каталогу...">
+              <ul id="manual-wishlist-catalog-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              <div id="manual-wishlist-selected-sku" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
+                <span id="manual-wishlist-selected-sku-text"></span>
+                <button type="button" id="manual-wishlist-clear-sku" class="shrink-0 text-indigo-400 hover:text-indigo-700">
+                  <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs font-medium text-gray-500">Название * <span class="text-gray-400 font-normal">(если не нашли в каталоге)</span></label>
               <input type="text" id="manual-wishlist-title" maxlength="150"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Например: Monster High Ghoulia Yelps">
@@ -64,12 +103,6 @@ window.Screens.wishlistDemand = {
             <div>
               <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
               <input type="text" id="manual-wishlist-short-name" maxlength="150"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно">
-            </div>
-            <div>
-              <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
-              <input type="text" id="manual-wishlist-url"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Необязательно">
             </div>
@@ -115,6 +148,15 @@ window.Screens.wishlistDemand = {
     let manualWishlistClientId = '';
     let manualWishlistClientUsername = '';
     let manualWishlistClientName = '';
+    // Выбранная позиция каталога (04.08.2026, доработка по фидбеку VASY) —
+    // если заполнено, при сохранении уходит как skuOriginal вместо ручных
+    // полей, тот же принцип, что isManualMode в client/screens/wishlist.js.
+    let manualWishlistSelectedSku = null;
+    const manualWishlistUrlInput = document.getElementById('manual-wishlist-url');
+    const manualWishlistResolveBtn = document.getElementById('manual-wishlist-resolve-btn');
+    const manualWishlistCatalogSearch = document.getElementById('manual-wishlist-catalog-search');
+    const manualWishlistCatalogDropdown = document.getElementById('manual-wishlist-catalog-dropdown');
+    const manualWishlistSelectedSkuBox = document.getElementById('manual-wishlist-selected-sku');
 
     const manualClientModal = ManualClientModal.init({
       onSaved: ({ username, name }) => {
@@ -134,9 +176,14 @@ window.Screens.wishlistDemand = {
       manualWishlistClientId = ''; manualWishlistClientUsername = ''; manualWishlistClientName = '';
       manualWishlistClientSearch.value = '';
       manualWishlistClientDropdown.classList.remove('active');
+      manualWishlistSelectedSku = null;
+      manualWishlistSelectedSkuBox.classList.add('hidden');
+      manualWishlistCatalogSearch.value = '';
+      manualWishlistCatalogDropdown.classList.remove('active');
+      manualWishlistUrlInput.value = '';
+      manualWishlistResolveBtn.disabled = true;
       document.getElementById('manual-wishlist-title').value = '';
       document.getElementById('manual-wishlist-short-name').value = '';
-      document.getElementById('manual-wishlist-url').value = '';
       document.getElementById('manual-wishlist-description').value = '';
       document.getElementById('manual-wishlist-image').value = '';
       manualWishlistError.classList.add('hidden');
@@ -144,6 +191,79 @@ window.Screens.wishlistDemand = {
       manualWishlistModal.classList.add('flex');
       if (window.lucide) window.lucide.createIcons();
     }
+
+    function looksLikeManualWishlistUrl(value) {
+      return /^https?:\/\//i.test(value.trim());
+    }
+    manualWishlistUrlInput.addEventListener('input', (e) => {
+      manualWishlistResolveBtn.disabled = !looksLikeManualWishlistUrl(e.target.value);
+    });
+
+    // "Распознать" (04.08.2026, доработка по фидбоку VASY) — тот же
+    // resolveWishlistLink (OG-теги/JSON-LD), что уже использует клиентский
+    // вишлист. Перезаписывает поля результатом — менеджер видит и может
+    // поправить перед сохранением (тот же принцип, что в client/screens/wishlist.js).
+    manualWishlistResolveBtn.addEventListener('click', async () => {
+      const url = manualWishlistUrlInput.value.trim();
+      if (url === '') return;
+
+      manualWishlistResolveBtn.disabled = true;
+      const icon = manualWishlistResolveBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+      try {
+        const result = await callServer('resolveWishlistLink', url);
+        document.getElementById('manual-wishlist-title').value = result.title.slice(0, 150);
+        document.getElementById('manual-wishlist-description').value = result.description.slice(0, 300);
+        if (result.imageUrl) document.getElementById('manual-wishlist-image').value = result.imageUrl;
+      } catch (error) {
+        manualWishlistError.textContent = error.message;
+        manualWishlistError.classList.remove('hidden');
+      } finally {
+        manualWishlistResolveBtn.disabled = false;
+        if (icon) icon.classList.remove('animate-spin');
+      }
+    });
+
+    // Поиск по каталогу (04.08.2026, доработка по фидбоку VASY) — выбор
+    // существующей позиции вместо ручного ввода, тот же приём, что в
+    // order-new.js/order-edit.js.
+    const handleManualWishlistCatalogSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { manualWishlistCatalogDropdown.classList.remove('active'); return; }
+
+      const results = await callServer('searchSku', query);
+      manualWishlistCatalogDropdown.innerHTML = '';
+      if (results.length === 0) {
+        manualWishlistCatalogDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+      } else {
+        results.forEach(item => {
+          const li = document.createElement('li');
+          li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0';
+          li.innerHTML = `
+            <div class="flex items-center gap-2 min-w-0">
+              ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+              <div class="font-medium text-gray-800 text-sm truncate">${escapeHtmlClient(item.label)}</div>
+            </div>
+          `;
+          li.addEventListener('click', () => {
+            manualWishlistSelectedSku = item.value;
+            document.getElementById('manual-wishlist-selected-sku-text').textContent = `Выбрано: ${item.label}`;
+            manualWishlistSelectedSkuBox.classList.remove('hidden');
+            manualWishlistCatalogSearch.value = '';
+            manualWishlistCatalogDropdown.classList.remove('active');
+          });
+          manualWishlistCatalogDropdown.appendChild(li);
+        });
+      }
+      manualWishlistCatalogDropdown.classList.add('active');
+      if (window.lucide) window.lucide.createIcons();
+    }, 300);
+    manualWishlistCatalogSearch.addEventListener('input', handleManualWishlistCatalogSearch);
+
+    document.getElementById('manual-wishlist-clear-sku').addEventListener('click', () => {
+      manualWishlistSelectedSku = null;
+      manualWishlistSelectedSkuBox.classList.add('hidden');
+    });
 
     document.getElementById('add-manual-wishlist-btn').addEventListener('click', openManualWishlistModal);
     document.getElementById('manual-wishlist-close').addEventListener('click', closeManualWishlistModal);
@@ -181,6 +301,9 @@ window.Screens.wishlistDemand = {
       if (!manualWishlistClientSearch.contains(e.target) && !manualWishlistClientDropdown.contains(e.target)) {
         manualWishlistClientDropdown.classList.remove('active');
       }
+      if (!manualWishlistCatalogSearch.contains(e.target) && !manualWishlistCatalogDropdown.contains(e.target)) {
+        manualWishlistCatalogDropdown.classList.remove('active');
+      }
     });
 
     manualWishlistSaveBtn.addEventListener('click', async () => {
@@ -192,8 +315,8 @@ window.Screens.wishlistDemand = {
         return;
       }
       const rawTitle = document.getElementById('manual-wishlist-title').value.trim();
-      if (rawTitle === '') {
-        manualWishlistError.textContent = 'Название обязательно для заполнения.';
+      if (!manualWishlistSelectedSku && rawTitle === '') {
+        manualWishlistError.textContent = 'Выберите позицию из каталога или укажите название вручную.';
         manualWishlistError.classList.remove('hidden');
         return;
       }
@@ -205,10 +328,11 @@ window.Screens.wishlistDemand = {
         await callServer('addWishlistItemForClient',
           { telegramId: manualWishlistClientId, username: manualWishlistClientUsername, name: manualWishlistClientName },
           {
+            skuOriginal: manualWishlistSelectedSku,
             rawTitle: rawTitle,
             shortNameRu: document.getElementById('manual-wishlist-short-name').value.trim(),
             rawDescription: document.getElementById('manual-wishlist-description').value.trim(),
-            sourceUrl: document.getElementById('manual-wishlist-url').value.trim(),
+            sourceUrl: manualWishlistUrlInput.value.trim(),
             rawImageUrl: document.getElementById('manual-wishlist-image').value.trim()
           });
         closeManualWishlistModal();

@@ -323,40 +323,12 @@ window.Screens.catalog = {
         duplicatesBody.appendChild(section);
       }
 
-      if (result.missingLink.length > 0) {
-        const section = document.createElement('div');
-        section.innerHTML = `
-          <div class="text-xs font-semibold text-gray-500 mb-2">Без ссылки (${result.missingLink.length})</div>
-          <div class="space-y-1">
-            ${result.missingLink.map(item => `
-              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
-                ${escapeHtmlClient(item.shortName || item.original)}
-                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
-              </div>
-            `).join('')}
-          </div>
-        `;
-        duplicatesBody.appendChild(section);
-      }
-
-      if (result.missingImage.length > 0) {
-        const section = document.createElement('div');
-        section.innerHTML = `
-          <div class="text-xs font-semibold text-gray-500 mb-2">Без фото (${result.missingImage.length})</div>
-          <div class="space-y-1">
-            ${result.missingImage.map(item => `
-              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
-                ${escapeHtmlClient(item.shortName || item.original)}
-                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
-              </div>
-            `).join('')}
-          </div>
-        `;
-        duplicatesBody.appendChild(section);
-      }
-
       // Фаза 6.4 (04.08.2026) — аудит Заказы↔Каталог, обе стороны. Чисто
       // информационно, ничего не блокирует и не трогает автоматически.
+      // Сознательно СРАЗУ после "Вероятные дубли" (03.08.2026, репорт VASY:
+      // раньше стояли в самом низу, за длинным списком "Без ссылки" —
+      // терялись из виду) — эти два списка обычно короче и требуют внимания
+      // не меньше, чем дубли.
       if (result.orphanedOrders.length > 0) {
         const section = document.createElement('div');
         section.innerHTML = `
@@ -379,6 +351,38 @@ window.Screens.catalog = {
           <div class="text-xs font-semibold text-gray-500 mb-2">Позиции без единого заказа (${result.unusedSkus.length})</div>
           <div class="space-y-1">
             ${result.unusedSkus.map(item => `
+              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                ${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        duplicatesBody.appendChild(section);
+      }
+
+      if (result.missingLink.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `
+          <div class="text-xs font-semibold text-gray-500 mb-2">Без ссылки (${result.missingLink.length})</div>
+          <div class="space-y-1">
+            ${result.missingLink.map(item => `
+              <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                ${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        duplicatesBody.appendChild(section);
+      }
+
+      if (result.missingImage.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `
+          <div class="text-xs font-semibold text-gray-500 mb-2">Без фото (${result.missingImage.length})</div>
+          <div class="space-y-1">
+            ${result.missingImage.map(item => `
               <div class="text-xs text-gray-600 border border-gray-100 rounded-lg px-2.5 py-1.5">
                 ${escapeHtmlClient(item.shortName || item.original)}
                 <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span>
