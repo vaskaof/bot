@@ -10,19 +10,19 @@ window.Screens = window.Screens || {};
 window.Screens.orders = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Заказы</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="new-order-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="new-order-btn" title="Новый заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
-      <button id="collectives-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="collectives-btn" title="Коллективки" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="package-2" class="w-6 h-6"></i>
       </button>
-      <button id="refresh-orders" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-orders" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;
@@ -46,7 +46,7 @@ window.Screens.orders = {
             <option value="purchaseChannel">Канал выкупа</option>
             <option value="clientDisplay">Клиент</option>
           </select>
-          <button id="sort-direction" class="p-1.5 text-indigo-600">
+          <button id="sort-direction" title="Сменить направление сортировки" class="p-1.5 text-indigo-600">
             <i data-lucide="arrow-down-wide-narrow" class="w-4 h-4"></i>
           </button>
         </div>

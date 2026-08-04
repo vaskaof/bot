@@ -8,13 +8,13 @@ window.Screens = window.Screens || {};
 window.Screens.questions = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Вопросы</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-questions" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-questions" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;

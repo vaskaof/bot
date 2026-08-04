@@ -20,7 +20,7 @@ window.ManualClientModal = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Новый клиент (без подтверждения)</h2>
-            <button id="manual-client-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="manual-client-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>

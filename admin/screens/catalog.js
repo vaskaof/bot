@@ -9,22 +9,22 @@ window.Screens = window.Screens || {};
 window.Screens.catalog = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Каталог</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-catalog-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-catalog-btn" title="Обновить каталог" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
-      <button id="find-duplicates-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy-check" class="w-6 h-6"></i>
       </button>
-      <button id="wishlist-demand-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="wishlist-demand-btn" title="Спрос клиентов" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="heart" class="w-6 h-6"></i>
       </button>
-      <button id="add-sku-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="add-sku-btn" title="Добавить позицию в каталог" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
     `;
@@ -52,7 +52,7 @@ window.Screens.catalog = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Аудит каталога</h2>
-            <button id="duplicates-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="duplicates-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -64,7 +64,7 @@ window.Screens.catalog = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Слияние позиций</h2>
-            <button id="merge-compare-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="merge-compare-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>

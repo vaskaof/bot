@@ -13,10 +13,10 @@ window.Screens.news = {
   render(root) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Новости</h1>';
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
-      <button id="add-news-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="add-news-btn" title="Новая новость" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
     `;
@@ -38,7 +38,7 @@ window.Screens.news = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="news-modal-title" class="text-base font-semibold text-gray-900">Новая новость</h2>
-            <button id="news-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="news-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -158,7 +158,7 @@ window.Screens.news = {
         <div class="text-[11px] text-gray-400 mt-2">Создано: ${escapeHtmlClient(n.createdAtDisplay)}${n.publishedAtDisplay ? ` · Опубликовано: ${escapeHtmlClient(n.publishedAtDisplay)}` : ''}</div>
         <div class="flex items-center gap-2 mt-3">
           ${isDraft ? '<button type="button" class="publish-btn flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">Опубликовать</button>' : ''}
-          <button type="button" class="edit-btn p-2 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button type="button" class="edit-btn p-2 text-gray-400 hover:text-indigo-600" title="Редактировать"><i data-lucide="pencil" class="w-4 h-4"></i></button>
           <button type="button" class="delete-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         </div>
       `;

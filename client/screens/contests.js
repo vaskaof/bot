@@ -11,9 +11,26 @@
 window.Screens = window.Screens || {};
 window.Screens.contests = {
   render(root) {
+    // Текст подсказки собран по реальной механике из backend (EconomyService.js,
+    // CONSTANTS.ECONOMY_SOVY_PER_TICKET=100) — не выдумка, см. анализ юзерфрендли
+    // фронтенда 05.08.2026.
+    const balanceHelpBody = `
+      <p><b>🦉 Совы</b> — начисляются за приглашение друга, за выполненные задания
+      и при оплате заказа (в среднем 5000 ₽ оплаты ≈ 100 сов, точный курс задаёт
+      команда).</p>
+      <p>Каждые <b>100 Сов</b> автоматически превращаются в <b>1 Билет</b> — шкала
+      выше показывает прогресс до следующего билета.</p>
+      <p><b>🎟️ Билеты</b> нужны для лотерей с ячейками (бейдж «Премиум» на карточке):
+      1 билет = 1 попытка забронировать ячейку на доске. Если ячейку в этот момент
+      уже занял кто-то другой — билет не списывается, можно сразу попробовать другую.</p>
+      <p>Обычные лотереи (без бейджа «Премиум») бесплатны — участие только по кнопке
+      «Участвовать», без списания билетов.</p>
+    `;
+
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Конкурсы</h1>';
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      ${helpIcon('Совы, Билеты и лотереи', balanceHelpBody, { header: true })}
+      <button id="refresh-btn" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;
@@ -33,6 +50,7 @@ window.Screens.contests = {
           <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 mt-3">
             <span>🎟️</span><span>Билеты: <span id="tickets-count">0</span></span>
           </div>
+          <div class="text-[11px] text-gray-400 mt-2">100 Сов = 1 Билет для лотерей с ячейками (бейдж «Премиум») — подробнее по «?» в шапке</div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -60,7 +78,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="proof-modal-title" class="text-base font-semibold text-gray-900">Отправить на проверку</h2>
-            <button id="proof-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="proof-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -85,7 +103,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="board-modal-title" class="text-base font-semibold text-gray-900">Доска ячеек</h2>
-            <button id="board-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="board-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -177,6 +195,7 @@ window.Screens.contests = {
         ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
         <div class="mt-2 space-y-0.5">${conditionsHtml}</div>
         <div class="text-[12px] text-gray-400 mt-2">${countLine}</div>
+        ${isType1 ? '<div class="text-[11px] text-gray-400 mt-0.5">Бронь ячейки — 1 билет за попытку, спишется только при удаче</div>' : ''}
       `;
 
       if (isType1) {

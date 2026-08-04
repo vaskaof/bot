@@ -19,13 +19,13 @@ const CONFIG_SNOOZE_DAYS_LABEL = '3 дня';
 window.Screens.reminders = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Напоминания</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-reminders" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-reminders" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;

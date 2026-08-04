@@ -18,7 +18,7 @@ window.Screens.orderEdit = {
     const currentOrderId = params.orderId || null;
 
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors shrink-0">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors shrink-0">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <div class="flex flex-col items-center ml-2 min-w-0">
@@ -31,7 +31,7 @@ window.Screens.orderEdit = {
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить
       </label>
-      <button id="save-order-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="save-order-btn" title="Сохранить изменения" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="save" class="w-6 h-6"></i>
       </button>
     `;
@@ -639,7 +639,7 @@ window.Screens.orderEdit = {
             ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
             <div class="font-medium text-gray-800 text-sm truncate">${item.label}</div>
           </div>
-          <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
+          <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" title="Редактировать позицию каталога" data-original="${escapeHtmlClient(item.value)}">
             <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>
         </div>

@@ -16,10 +16,10 @@ window.Screens.contests = {
   render(root) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Конкурсы</h1>';
     document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-btn" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
-      <button id="add-task-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="add-task-btn" title="Добавить (на текущей вкладке)" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
     `;
@@ -54,7 +54,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="task-modal-title" class="text-base font-semibold text-gray-900">Новое задание</h2>
-            <button id="task-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="task-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -110,7 +110,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="lottery-modal-title" class="text-base font-semibold text-gray-900">Новая лотерея</h2>
-            <button id="lottery-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="lottery-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -170,7 +170,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="draw-modal-title" class="text-base font-semibold text-gray-900">Розыгрыш</h2>
-            <button id="draw-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="draw-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -221,7 +221,7 @@ window.Screens.contests = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="board-modal-title" class="text-base font-semibold text-gray-900">Доска ячеек</h2>
-            <button id="board-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="board-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -326,7 +326,7 @@ window.Screens.contests = {
           <button type="button" class="toggle-active-btn flex-1 py-2 rounded-xl text-xs font-medium ${t.active ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
             ${t.active ? 'Выключить' : 'Включить'}
           </button>
-          <button type="button" class="edit-task-btn p-2 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button type="button" class="edit-task-btn p-2 text-gray-400 hover:text-indigo-600" title="Редактировать"><i data-lucide="pencil" class="w-4 h-4"></i></button>
         </div>
       `;
 

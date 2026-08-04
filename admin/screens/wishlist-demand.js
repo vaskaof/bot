@@ -9,16 +9,16 @@ window.Screens = window.Screens || {};
 window.Screens.wishlistDemand = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Спрос клиентов</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="add-manual-wishlist-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="add-manual-wishlist-btn" title="Добавить в вишлист от лица клиента" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-5 h-5"></i>
       </button>
-      <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;
@@ -41,7 +41,7 @@ window.Screens.wishlistDemand = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Добавить в вишлист от лица клиента</h2>
-            <button id="manual-wishlist-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="manual-wishlist-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -88,7 +88,7 @@ window.Screens.wishlistDemand = {
               <ul id="manual-wishlist-catalog-dropdown" class="dropdown-menu custom-scrollbar"></ul>
               <div id="manual-wishlist-selected-sku" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
                 <span id="manual-wishlist-selected-sku-text"></span>
-                <button type="button" id="manual-wishlist-clear-sku" class="shrink-0 text-indigo-400 hover:text-indigo-700">
+                <button type="button" id="manual-wishlist-clear-sku" title="Очистить выбор" class="shrink-0 text-indigo-400 hover:text-indigo-700">
                   <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 </button>
               </div>

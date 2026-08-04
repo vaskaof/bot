@@ -206,3 +206,94 @@ function generateRequestId() {
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+/**
+ * Общая подсказка "?" (05.08.2026, по итогам аудита юзерфрендли фронтенда) —
+ * для мест, где короткой строки под полем недостаточно (правила Сов/Билетов,
+ * механика лотерей Тип1/Тип2, розыгрыш призов и т.п.). Модалка создаётся ОДИН
+ * раз лениво и переиспользуется на весь шелл (аппендится в document.body, а
+ * не дублируется в разметке каждого экрана — иначе тот же долг, что уже есть
+ * с дублированием <nav>, см. frontend-nav.md). Значок — lucide "help-circle",
+ * тот же, что уже используется на вкладке "Вопросы" нижней навигации, чтобы
+ * не вводить новый визуальный язык (запрос VASY 05.08.2026 — не выделяться
+ * стилем среди других кнопок).
+ *
+ * Контент кладётся прямо в data-атрибуты кнопки (экранированный
+ * escapeHtmlClient), без отдельного реестра в памяти — браузер сам
+ * раскодирует HTML-сущности при чтении getAttribute, тот же принцип
+ * экранирования, что и везде в проекте.
+ */
+let _helpModalEl = null;
+
+function _ensureHelpModal() {
+    if (_helpModalEl) return _helpModalEl;
+    const el = document.createElement('div');
+    el.id = 'shared-help-modal';
+    el.className = 'fixed inset-0 bg-black/40 hidden items-center justify-center z-[90] px-4';
+    el.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 id="shared-help-title" class="text-base font-semibold text-gray-900"></h2>
+        <button type="button" id="shared-help-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="shared-help-body" class="p-4 text-[13px] text-gray-600 leading-relaxed space-y-2"></div>
+    </div>
+  `;
+    document.body.appendChild(el);
+    el.querySelector('#shared-help-close').addEventListener('click', closeHelpModal);
+    el.addEventListener('click', (e) => { if (e.target === el) closeHelpModal(); });
+    if (window.lucide) window.lucide.createIcons();
+    _helpModalEl = el;
+    return el;
+}
+
+function closeHelpModal() {
+    if (!_helpModalEl) return;
+    _helpModalEl.classList.add('hidden');
+    _helpModalEl.classList.remove('flex');
+}
+
+function showHelpModal(title, bodyHtml) {
+    const modal = _ensureHelpModal();
+    modal.querySelector('#shared-help-title').textContent = title;
+    modal.querySelector('#shared-help-body').innerHTML = bodyHtml;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+/**
+ * HTML маленькой кнопки "?" — вставлять прямо в template-строку разметки
+ * экрана рядом с обычными innerHTML-собранными блоками (renderRoute() уже
+ * вызывает lucide.createIcons() после render(), отдельно вызывать не нужно).
+ * {header:true} — вариант для #header-actions: p-2/rounded-full/hover:bg-white/50,
+ * визуально как соседние кнопки-иконки (refresh/plus), не выделяется стилем.
+ * По умолчанию — маленький инлайн-значок для подписи/лейбла внутри блока.
+ * @param {string} title Заголовок модалки
+ * @param {string} bodyHtml HTML-содержимое (можно несколько <p>/<ul>)
+ * @param {{header?: boolean}} [opts]
+ * @returns {string}
+ */
+function helpIcon(title, bodyHtml, opts) {
+    const isHeader = opts && opts.header;
+    const cls = isHeader
+        ? 'help-icon-btn p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors'
+        : 'help-icon-btn inline-flex items-center justify-center align-middle text-gray-300 hover:text-indigo-500 transition-colors';
+    const iconSize = isHeader ? 'w-5 h-5' : 'w-3.5 h-3.5';
+    return `<button type="button" class="${cls}" data-help-title="${escapeHtmlClient(title)}" data-help-body="${escapeHtmlClient(bodyHtml)}"><i data-lucide="help-circle" class="${iconSize}"></i></button>`;
+}
+
+// Один делегированный обработчик на document — не требует перепривязки при
+// повторных renderRoute() (тот же принцип, что уже применён к нижней
+// навигации в router.js). Гвард на typeof — common.js подключается и в
+// тестовом vm-харнессе (tests/mocks/browser-mocks.js), где document —
+// минимальный мок без addEventListener; там showHelpModal/helpIcon не
+// тестируются, но модуль обязан загружаться без ошибок на верхнем уровне.
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.help-icon-btn');
+        if (!btn) return;
+        showHelpModal(btn.getAttribute('data-help-title') || '', btn.getAttribute('data-help-body') || '');
+    });
+}

@@ -14,13 +14,13 @@ window.Screens = window.Screens || {};
 window.Screens.collectives = {
   render(root, dictionaries, params, signal) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Коллективки</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="add-collective-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="add-collective-btn" title="Новая коллективка" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
     `;
@@ -43,7 +43,7 @@ window.Screens.collectives = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Новая коллективка</h2>
-            <button id="create-collective-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="create-collective-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -64,7 +64,7 @@ window.Screens.collectives = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900" id="detail-title">Коллективка</h2>
-            <button id="collective-detail-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="collective-detail-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -238,7 +238,7 @@ window.Screens.collectives = {
             <span class="font-medium text-gray-800">${escapeHtmlClient(o.productDisplay)}</span>
             <span class="text-gray-400"> — ${escapeHtmlClient(o.clientDisplay || 'без клиента')}</span>
           </div>
-          <button type="button" class="unassign-order-btn shrink-0 text-red-500" data-order-id="${escapeHtmlClient(o.orderId)}">
+          <button type="button" class="unassign-order-btn shrink-0 text-red-500" title="Убрать заказ из коллективки" data-order-id="${escapeHtmlClient(o.orderId)}">
             <i data-lucide="x" class="w-3.5 h-3.5"></i>
           </button>
         `;

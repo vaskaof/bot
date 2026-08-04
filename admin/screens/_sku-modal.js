@@ -45,7 +45,7 @@ window.SkuModal = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 id="sku-modal-title" class="text-base font-semibold text-gray-900">Новая позиция каталога</h2>
-            <button id="create-sku-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="create-sku-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
@@ -297,7 +297,7 @@ window.SkuModal = {
         <div class="flex items-center justify-between gap-2 p-2 border border-gray-100 rounded-lg text-xs">
           <a href="${escapeHtmlClient(link.url)}" target="_blank" rel="noopener" class="text-indigo-600 truncate flex-1">${escapeHtmlClient(link.url)}</a>
           <span class="shrink-0 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">${escapeHtmlClient(link.source)}</span>
-          <button type="button" class="link-delete-btn shrink-0 p-1 text-gray-400 hover:text-red-500" data-idx="${idx}">
+          <button type="button" class="link-delete-btn shrink-0 p-1 text-gray-400 hover:text-red-500" title="Удалить ссылку" data-idx="${idx}">
             <i data-lucide="x" class="w-3.5 h-3.5"></i>
           </button>
         </div>

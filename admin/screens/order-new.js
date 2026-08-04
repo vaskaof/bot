@@ -14,7 +14,7 @@ window.Screens = window.Screens || {};
 window.Screens.orderNew = {
   render(root, dictionaries, params, signal) {
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Новый заказ</h1>
@@ -24,7 +24,7 @@ window.Screens.orderNew = {
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить
       </label>
-      <button id="save-order-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="save-order-btn" title="Сохранить заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="save" class="w-6 h-6"></i>
       </button>
     `;
@@ -200,7 +200,7 @@ window.Screens.orderNew = {
               <div class="flex flex-col sm:items-end">
                 <div class="flex items-center gap-1 text-[11px] text-gray-500">
                   Курс: <span id="rate-display">91.65</span> ₽
-                  <button id="refresh-rate" class="hover:text-indigo-600 transition-colors">
+                  <button id="refresh-rate" title="Обновить курс" class="hover:text-indigo-600 transition-colors">
                     <i data-lucide="refresh-cw" class="w-3 h-3"></i>
                   </button>
                 </div>
@@ -474,7 +474,7 @@ window.Screens.orderNew = {
             ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
             <div class="font-medium text-gray-800 text-sm truncate">${item.label}</div>
           </div>
-          <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" data-original="${escapeHtmlClient(item.value)}">
+          <button type="button" class="sku-edit-icon p-1 text-gray-400 hover:text-indigo-600 shrink-0" title="Редактировать позицию каталога" data-original="${escapeHtmlClient(item.value)}">
             <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>
         </div>

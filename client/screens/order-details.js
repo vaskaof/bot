@@ -12,7 +12,7 @@ window.Screens.orderDetails = {
     const currentOrderId = params.orderId || null;
 
     document.getElementById('header-left').innerHTML = `
-      <button type="button" id="back-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Заказ</h1>
@@ -64,7 +64,7 @@ window.Screens.orderDetails = {
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900">Вопрос по заказу</h2>
-            <button id="question-modal-close" class="p-1 text-gray-400 hover:text-gray-600">
+            <button id="question-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
