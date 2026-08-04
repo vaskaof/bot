@@ -15,6 +15,9 @@ window.Screens.wishlistDemand = {
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Спрос клиентов</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
+      <button id="add-manual-wishlist-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="plus" class="w-5 h-5"></i>
+      </button>
       <button id="refresh-btn" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -32,6 +35,65 @@ window.Screens.wishlistDemand = {
         <div id="unknown-empty" class="hidden text-center text-sm text-gray-400 py-6">Таких позиций нет.</div>
       </main>
       ${SkuModal.html()}
+
+      <!-- Фаза 6.3 (04.08.2026) — менеджер добавляет позицию в вишлист от лица клиента. -->
+      <div id="manual-wishlist-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Добавить в вишлист от лица клиента</h2>
+            <button id="manual-wishlist-close" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="relative">
+              <label class="text-xs font-medium text-gray-500">Клиент</label>
+              <input type="text" id="manual-wishlist-client-search" autocomplete="off"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Поиск клиента...">
+              <ul id="manual-wishlist-client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+            </div>
+            <button type="button" id="manual-wishlist-use-manual-client" class="text-xs text-indigo-600 font-medium">+ Ввести вручную (без подтверждения)</button>
+
+            <div>
+              <label class="text-xs font-medium text-gray-500">Название *</label>
+              <input type="text" id="manual-wishlist-title" maxlength="150"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Например: Monster High Ghoulia Yelps">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
+              <input type="text" id="manual-wishlist-short-name" maxlength="150"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Необязательно">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Ссылка на товар</label>
+              <input type="text" id="manual-wishlist-url"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Необязательно">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Описание</label>
+              <textarea id="manual-wishlist-description" rows="2" maxlength="300"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
+                placeholder="Необязательно"></textarea>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Ссылка на изображение</label>
+              <input type="text" id="manual-wishlist-image"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Необязательно">
+            </div>
+            <div id="manual-wishlist-error" class="text-xs text-red-500 hidden"></div>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="manual-wishlist-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="manual-wishlist-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Добавить</button>
+          </div>
+        </div>
+      </div>
+      ${ManualClientModal.html()}
     `;
 
     const demandList = document.getElementById('demand-list');
@@ -42,6 +104,123 @@ window.Screens.wishlistDemand = {
     // Фаза 4 интеграции Вишлист/Каталог/Заказы (04.08.2026) — "черновик SKU":
     // перенос позиции вишлиста в каталог из раздела "Не найдено".
     const skuModal = SkuModal.init({ onSaved: () => load() });
+
+    // Фаза 6.3 (04.08.2026) — менеджер добавляет позицию в вишлист от лица
+    // клиента (клиент попросил куклу в переписке, не через мини-апп).
+    const manualWishlistModal = document.getElementById('manual-wishlist-modal');
+    const manualWishlistClientSearch = document.getElementById('manual-wishlist-client-search');
+    const manualWishlistClientDropdown = document.getElementById('manual-wishlist-client-dropdown');
+    const manualWishlistSaveBtn = document.getElementById('manual-wishlist-save');
+    const manualWishlistError = document.getElementById('manual-wishlist-error');
+    let manualWishlistClientId = '';
+    let manualWishlistClientUsername = '';
+    let manualWishlistClientName = '';
+
+    const manualClientModal = ManualClientModal.init({
+      onSaved: ({ username, name }) => {
+        manualWishlistClientId = '';
+        manualWishlistClientUsername = username;
+        manualWishlistClientName = name;
+        manualWishlistClientSearch.value = name !== '' ? `${name} (${username || 'без username'})` : (username || 'Без данных');
+      }
+    });
+
+    function closeManualWishlistModal() {
+      manualWishlistModal.classList.add('hidden');
+      manualWishlistModal.classList.remove('flex');
+    }
+
+    function openManualWishlistModal() {
+      manualWishlistClientId = ''; manualWishlistClientUsername = ''; manualWishlistClientName = '';
+      manualWishlistClientSearch.value = '';
+      manualWishlistClientDropdown.classList.remove('active');
+      document.getElementById('manual-wishlist-title').value = '';
+      document.getElementById('manual-wishlist-short-name').value = '';
+      document.getElementById('manual-wishlist-url').value = '';
+      document.getElementById('manual-wishlist-description').value = '';
+      document.getElementById('manual-wishlist-image').value = '';
+      manualWishlistError.classList.add('hidden');
+      manualWishlistModal.classList.remove('hidden');
+      manualWishlistModal.classList.add('flex');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    document.getElementById('add-manual-wishlist-btn').addEventListener('click', openManualWishlistModal);
+    document.getElementById('manual-wishlist-close').addEventListener('click', closeManualWishlistModal);
+    document.getElementById('manual-wishlist-cancel').addEventListener('click', closeManualWishlistModal);
+    document.getElementById('manual-wishlist-use-manual-client').addEventListener('click', () => manualClientModal.open());
+
+    const handleManualWishlistClientSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { manualWishlistClientDropdown.classList.remove('active'); return; }
+
+      const results = await callServer('searchClient', query);
+      manualWishlistClientDropdown.innerHTML = '';
+      if (results.length === 0) {
+        manualWishlistClientDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+      } else {
+        results.forEach(item => {
+          const li = document.createElement('li');
+          li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0';
+          li.innerHTML = `<div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>`;
+          li.addEventListener('click', () => {
+            manualWishlistClientId = item.telegramId;
+            manualWishlistClientUsername = item.username;
+            manualWishlistClientName = item.name;
+            manualWishlistClientSearch.value = item.displayName;
+            manualWishlistClientDropdown.classList.remove('active');
+          });
+          manualWishlistClientDropdown.appendChild(li);
+        });
+      }
+      manualWishlistClientDropdown.classList.add('active');
+    }, 300);
+    manualWishlistClientSearch.addEventListener('input', handleManualWishlistClientSearch);
+
+    document.addEventListener('click', (e) => {
+      if (!manualWishlistClientSearch.contains(e.target) && !manualWishlistClientDropdown.contains(e.target)) {
+        manualWishlistClientDropdown.classList.remove('active');
+      }
+    });
+
+    manualWishlistSaveBtn.addEventListener('click', async () => {
+      manualWishlistError.classList.add('hidden');
+
+      if (!manualWishlistClientId && !manualWishlistClientUsername) {
+        manualWishlistError.textContent = 'Выберите клиента из поиска или введите вручную.';
+        manualWishlistError.classList.remove('hidden');
+        return;
+      }
+      const rawTitle = document.getElementById('manual-wishlist-title').value.trim();
+      if (rawTitle === '') {
+        manualWishlistError.textContent = 'Название обязательно для заполнения.';
+        manualWishlistError.classList.remove('hidden');
+        return;
+      }
+
+      // Блокировка кнопки на время запроса — та же защита от двойной
+      // отправки, что уже добавлена в клиентский вишлист (04.08.2026).
+      manualWishlistSaveBtn.disabled = true;
+      try {
+        await callServer('addWishlistItemForClient',
+          { telegramId: manualWishlistClientId, username: manualWishlistClientUsername, name: manualWishlistClientName },
+          {
+            rawTitle: rawTitle,
+            shortNameRu: document.getElementById('manual-wishlist-short-name').value.trim(),
+            rawDescription: document.getElementById('manual-wishlist-description').value.trim(),
+            sourceUrl: document.getElementById('manual-wishlist-url').value.trim(),
+            rawImageUrl: document.getElementById('manual-wishlist-image').value.trim()
+          });
+        closeManualWishlistModal();
+        showSaveToast(true, 'Добавлено в вишлист клиента');
+        load();
+      } catch (error) {
+        manualWishlistError.textContent = error.message;
+        manualWishlistError.classList.remove('hidden');
+      } finally {
+        manualWishlistSaveBtn.disabled = false;
+      }
+    });
 
     load();
 
