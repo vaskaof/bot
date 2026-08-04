@@ -152,12 +152,21 @@ window.SkuModal = {
     // успешного create/update/merge позиция вишлиста молча привязывается к
     // сохранённому SKU. delete исключён явно — там result === null, привязывать
     // нечего. Сбой привязки не блокирует уже сохранённый SKU — только логируется.
+    // context.wishlistIds (Фаза 6.1, 04.08.2026, массив) — тот же принцип, но
+    // для кластера из "Не найдено": один клик привязывает СРАЗУ все позиции
+    // кластера к одной созданной SKU. wishlistId (единственное число) и
+    // wishlistIds (массив) не смешиваются в одном вызове — если передан
+    // массив, используется он, singular-путь Фазы 4 не трогаем.
     async function handleSaved(result, action, context) {
-      if (context && context.wishlistId && action !== 'delete') {
-        try {
-          await callServer('linkWishlistItemToSku', context.wishlistId, result.value);
-        } catch (error) {
-          console.error('Не удалось привязать позицию вишлиста к каталогу:', error);
+      if (context && action !== 'delete') {
+        const idsToLink = Array.isArray(context.wishlistIds) ? context.wishlistIds
+          : (context.wishlistId ? [context.wishlistId] : []);
+        for (const wishlistId of idsToLink) {
+          try {
+            await callServer('linkWishlistItemToSku', wishlistId, result.value);
+          } catch (error) {
+            console.error('Не удалось привязать позицию вишлиста к каталогу:', error);
+          }
         }
       }
       onSaved(result, action, context);

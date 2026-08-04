@@ -79,7 +79,9 @@ window.Screens.wishlistDemand = {
         unknownEmpty.classList.remove('hidden');
       } else {
         unknownEmpty.classList.add('hidden');
-        result.unknown.forEach(u => unknownList.appendChild(buildUnknownRow(u)));
+        // Фаза 6.1 (04.08.2026) — result.unknown теперь массив кластеров
+        // (похожие по названию Unknown-позиции сгруппированы бэкендом).
+        result.unknown.forEach(cluster => unknownList.appendChild(buildUnknownCluster(cluster)));
       }
 
       if (window.lucide) window.lucide.createIcons();
@@ -182,6 +184,45 @@ window.Screens.wishlistDemand = {
       });
 
       return row;
+    }
+
+    // Фаза 6.1 (04.08.2026) — кластер похожих Unknown-позиций (несколько
+    // клиентов хотят одну и ту же куклу с разным написанием/ссылкой).
+    // Одиночный кластер (самый частый случай) рендерится как раньше —
+    // buildUnknownRow без изменений. Кластер из нескольких — сводная
+    // карточка, "Добавить в каталог" создаёт ОДНУ позицию и привязывает
+    // сразу все вишлисты кластера (context.wishlistIds, см. _sku-modal.js).
+    function buildUnknownCluster(cluster) {
+      if (cluster.length === 1) return buildUnknownRow(cluster[0]);
+
+      const primary = cluster[0]; // самая свежая позиция кластера
+      const box = document.createElement('div');
+      box.className = 'bg-white rounded-2xl shadow-sm border border-amber-200 p-4 mb-3';
+      box.innerHTML = `
+        <div class="flex items-start gap-3">
+          ${primary.imageUrl ? `<img src="${escapeHtmlClient(primary.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="font-medium text-gray-800 text-[14px] truncate">${escapeHtmlClient(primary.productDisplay)}</div>
+            <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Похоже, хотят ${cluster.length} клиентов</span>
+          </div>
+        </div>
+        <div class="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          ${cluster.map(u => `
+            <div class="text-[12px] text-gray-500 truncate">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} — ${escapeHtmlClient(u.rawTitle)}</div>
+          `).join('')}
+        </div>
+        <button type="button" class="add-cluster-to-catalog-btn mt-3 w-full text-center py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">
+          Добавить в каталог (свяжет все ${cluster.length})
+        </button>
+      `;
+
+      box.querySelector('.add-cluster-to-catalog-btn').addEventListener('click', () => {
+        skuModal.open('create', null,
+          { original: primary.rawTitle, description: primary.rawDescription, imageUrl: primary.rawImageUrl },
+          { wishlistIds: cluster.map(u => u.wishlistId), pendingLink: primary.sourceUrl, pendingLinkSource: 'Вишлист' });
+      });
+
+      return box;
     }
   }
 };
