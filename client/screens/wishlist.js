@@ -85,6 +85,12 @@ window.Screens.wishlist = {
                 placeholder="Например: Monster High Ghoulia Yelps">
             </div>
             <div>
+              <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
+              <input type="text" id="manual-short-name-input" maxlength="150"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Необязательно — например: Гулия Йелпс">
+            </div>
+            <div>
               <label class="text-xs font-medium text-gray-500">Описание</label>
               <textarea id="manual-description-input" maxlength="300" rows="2"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
@@ -179,6 +185,7 @@ window.Screens.wishlist = {
         ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
         <div class="flex-1 min-w-0">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
+          ${item.isUnknown && item.rawTitle && item.rawTitle !== item.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(item.rawTitle)}</div>` : ''}
           ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
           ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
           <div class="flex flex-wrap gap-3 mt-1">
@@ -253,6 +260,7 @@ window.Screens.wishlist = {
       itemSearchDropdown.classList.remove('active');
       urlHintBlock.classList.add('hidden');
       document.getElementById('manual-title-input').value = '';
+      document.getElementById('manual-short-name-input').value = '';
       document.getElementById('manual-description-input').value = '';
       document.getElementById('manual-url-input').value = '';
       document.getElementById('manual-image-input').value = '';
@@ -277,6 +285,7 @@ window.Screens.wishlist = {
       editingWishlistId = item.wishlistId;
       document.getElementById('item-modal-title').textContent = 'Редактировать позицию';
       document.getElementById('manual-title-input').value = item.rawTitle;
+      document.getElementById('manual-short-name-input').value = item.shortNameRu || '';
       document.getElementById('manual-description-input').value = item.rawDescription;
       document.getElementById('manual-url-input').value = item.sourceUrl;
       document.getElementById('manual-image-input').value = item.rawImageUrl;
@@ -395,6 +404,7 @@ window.Screens.wishlist = {
       const payload = {
         skuOriginal: isManualMode ? null : selectedSkuValue,
         rawTitle: document.getElementById('manual-title-input').value.trim(),
+        shortNameRu: document.getElementById('manual-short-name-input').value.trim(),
         rawDescription: document.getElementById('manual-description-input').value.trim(),
         sourceUrl: document.getElementById('manual-url-input').value.trim(),
         rawImageUrl: document.getElementById('manual-image-input').value.trim()
