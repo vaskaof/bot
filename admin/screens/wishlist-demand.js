@@ -90,12 +90,20 @@ window.Screens.wishlistDemand = {
       card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
 
       card.innerHTML = `
-        <div class="flex items-center justify-between gap-2 cursor-pointer" data-toggle>
-          <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(d.productDisplay)}</div>
-          <div class="flex items-center gap-2 shrink-0">
-            <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Хотят: ${d.activeCount}</span>
-            ${d.purchasedCount > 0 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">Куплено: ${d.purchasedCount}</span>` : ''}
-            <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 chevron-icon"></i>
+        <div class="flex items-start gap-3 cursor-pointer" data-toggle>
+          ${d.imageUrl ? `<img src="${escapeHtmlClient(d.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(d.productDisplay)}</div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Хотят: ${d.activeCount}</span>
+                ${d.purchasedCount > 0 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">Куплено: ${d.purchasedCount}</span>` : ''}
+                <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 chevron-icon"></i>
+              </div>
+            </div>
+            ${d.skuOriginal !== d.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5 truncate">${escapeHtmlClient(d.skuOriginal)}</div>` : ''}
+            ${d.description ? `<div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(d.description)}</div>` : ''}
+            ${d.link ? `<a href="${escapeHtmlClient(d.link)}" target="_blank" rel="noopener" class="block text-[12px] text-indigo-500 mt-0.5 truncate" onclick="event.stopPropagation()">${escapeHtmlClient(d.link)}</a>` : ''}
           </div>
         </div>
         <div class="clients-block hidden mt-2 pt-2 border-t border-gray-100 space-y-1.5">
@@ -138,10 +146,16 @@ window.Screens.wishlistDemand = {
       const row = document.createElement('div');
       row.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
       row.innerHTML = `
-        <div class="font-medium text-gray-800 text-[14px]">${escapeHtmlClient(u.rawTitle)}</div>
-        ${u.rawDescription ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(u.rawDescription)}</div>` : ''}
-        ${u.sourceUrl ? `<div class="text-[12px] text-indigo-500 mt-0.5 truncate"><a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener">${escapeHtmlClient(u.sourceUrl)}</a></div>` : ''}
-        <div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} · ${escapeHtmlClient(u.createdAtDisplay)}</div>
+        <div class="flex items-start gap-3">
+          ${u.imageUrl ? `<img src="${escapeHtmlClient(u.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="font-medium text-gray-800 text-[14px] truncate">${escapeHtmlClient(u.productDisplay)}</div>
+            ${u.rawTitle && u.rawTitle !== u.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5 truncate">${escapeHtmlClient(u.rawTitle)}</div>` : ''}
+            ${u.rawDescription ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(u.rawDescription)}</div>` : ''}
+            ${u.sourceUrl ? `<div class="text-[12px] text-indigo-500 mt-0.5 truncate"><a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener">${escapeHtmlClient(u.sourceUrl)}</a></div>` : ''}
+            <div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} · ${escapeHtmlClient(u.createdAtDisplay)}</div>
+          </div>
+        </div>
         <div class="flex gap-2 mt-2">
           <button type="button" class="add-to-catalog-btn flex-1 text-center py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">
             Добавить в каталог
