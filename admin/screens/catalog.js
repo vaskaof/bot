@@ -59,6 +59,18 @@ window.Screens.catalog = {
           <div id="duplicates-body" class="p-4 space-y-4"></div>
         </div>
       </div>
+
+      <div id="merge-compare-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Слияние позиций</h2>
+            <button id="merge-compare-close" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="merge-compare-body" class="p-4"></div>
+        </div>
+      </div>
     `;
 
     let allSku = [];
@@ -143,12 +155,107 @@ window.Screens.catalog = {
     document.getElementById('add-sku-btn').addEventListener('click', () => skuModal.open('create'));
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
-    // ссылки (инструмент "Найти вероятные дубли", 03.08.2026). Сам ничего не
-    // меняет — "Объединить" открывает уже существующую SKU-модалку в режиме
-    // редактирования с подставленным именем цели, дальше срабатывает обычный
-    // merge-флоу (точный конфликт → keepExisting/keepNew).
+    // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).
+    //
+    // РЕДИЗАЙН 04.08.2026 (репорт VASY: при слиянии обе позиции оставались в
+    // каталоге вместо одной) — раньше "Объединить" открывало общую SKU-модалку
+    // в режиме редактирования, молча подменяло поле "Выпуск" на имя цели и
+    // полагалось на то, что менеджер нажмёт "Сохранить" и правильно выберет
+    // между keepNew/keepExisting в возникшем конфликте. Прямые вызовы
+    // updateSku(oldOriginal, skuData, mergeChoice) подтверждены тестами как
+    // корректные — проблема была именно в этой хрупкой цепочке. Теперь
+    // "Объединить" сразу показывает обе позиции целиком (фото/теги/описание/
+    // ссылки) и вызывает updateSku НАПРЯМУЮ с explicit mergeChoice, без
+    // промежуточной формы редактирования.
     const duplicatesModal = document.getElementById('duplicates-modal');
     const duplicatesBody = document.getElementById('duplicates-body');
+    const mergeCompareModal = document.getElementById('merge-compare-modal');
+    const mergeCompareBody = document.getElementById('merge-compare-body');
+
+    function closeMergeCompareModal() {
+      mergeCompareModal.classList.add('hidden');
+      mergeCompareModal.classList.remove('flex');
+    }
+    document.getElementById('merge-compare-close').addEventListener('click', closeMergeCompareModal);
+
+    function buildMergeCandidateHtml(details, links) {
+      const tags = [details.brand, details.character, details.series].filter(t => t !== '');
+      return `
+        <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 min-w-0">
+          ${details.imageUrl ? `<img src="${escapeHtmlClient(details.imageUrl)}" alt="" class="w-16 h-16 rounded-lg object-cover bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="font-semibold text-gray-900 text-sm truncate">${escapeHtmlClient(details.shortName || details.original)}</div>
+          <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(details.original)}</div>
+          ${tags.length > 0 ? `<div class="flex flex-wrap gap-1">${tags.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
+          ${details.description ? `<div class="text-[11px] text-gray-500">${escapeHtmlClient(details.description)}</div>` : ''}
+          ${links.length > 0
+            ? `<div class="space-y-0.5">${links.map(l => `<a href="${escapeHtmlClient(l.url)}" target="_blank" rel="noopener" class="block text-[11px] text-indigo-500 truncate">${escapeHtmlClient(l.url)}</a>`).join('')}</div>`
+            : '<div class="text-[11px] text-gray-300">Ссылок нет</div>'}
+        </div>
+      `;
+    }
+
+    async function performMerge(targetDetails, sourceDetails, mergeChoice) {
+      const errorEl = document.getElementById('merge-compare-error');
+      errorEl.classList.add('hidden');
+      const skuData = {
+        original: targetDetails.original,
+        shortName: sourceDetails.shortName,
+        brand: sourceDetails.brand,
+        character: sourceDetails.character,
+        series: sourceDetails.series,
+        imageUrl: sourceDetails.imageUrl,
+        description: sourceDetails.description
+      };
+      try {
+        await callServer('updateSku', sourceDetails.original, skuData, mergeChoice);
+        closeMergeCompareModal();
+        showSaveToast(true, 'Позиции объединены');
+        loadCatalog();
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+      }
+    }
+
+    function renderMergeCompare(targetDetails, sourceDetails, targetLinks, sourceLinks) {
+      mergeCompareBody.innerHTML = `
+        <p class="text-xs text-gray-500 mb-3">Выберите, какую позицию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          ${buildMergeCandidateHtml(targetDetails, targetLinks)}
+          ${buildMergeCandidateHtml(sourceDetails, sourceLinks)}
+        </div>
+        <div id="merge-compare-error" class="text-xs text-red-500 hidden mb-2"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" id="merge-keep-target-btn" class="py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium hover:border-indigo-400">
+            Оставить: ${escapeHtmlClient(targetDetails.shortName || targetDetails.original)}
+          </button>
+          <button type="button" id="merge-keep-source-btn" class="py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium hover:border-indigo-400">
+            Оставить: ${escapeHtmlClient(sourceDetails.shortName || sourceDetails.original)}
+          </button>
+        </div>
+      `;
+      document.getElementById('merge-keep-target-btn').addEventListener('click', () => performMerge(targetDetails, sourceDetails, 'keepExisting'));
+      document.getElementById('merge-keep-source-btn').addEventListener('click', () => performMerge(targetDetails, sourceDetails, 'keepNew'));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    async function openMergeCompare(targetOriginal, sourceOriginal) {
+      mergeCompareBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка данных...</div>';
+      mergeCompareModal.classList.remove('hidden');
+      mergeCompareModal.classList.add('flex');
+
+      try {
+        const [targetDetails, sourceDetails, targetLinks, sourceLinks] = await Promise.all([
+          callServer('getSkuDetails', targetOriginal),
+          callServer('getSkuDetails', sourceOriginal),
+          callServer('getCatalogLinksForSku', targetOriginal),
+          callServer('getCatalogLinksForSku', sourceOriginal)
+        ]);
+        renderMergeCompare(targetDetails, sourceDetails, targetLinks, sourceLinks);
+      } catch (error) {
+        mergeCompareBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
 
     function closeDuplicatesModal() {
       duplicatesModal.classList.add('hidden');
@@ -187,20 +294,20 @@ window.Screens.catalog = {
             const row = document.createElement('div');
             row.className = 'flex items-center justify-between gap-2 text-xs';
             row.innerHTML = `
-              <span class="text-gray-700">${escapeHtmlClient(item.shortName || item.original)}
-                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              <span class="flex items-center gap-2 min-w-0">
+                ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+                <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+                  <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              </span>
               ${idx > 0 ? `<button type="button" class="merge-with-first-btn shrink-0 px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-idx="${idx}">Объединить</button>` : ''}
             `;
             block.appendChild(row);
           });
           block.querySelectorAll('.merge-with-first-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => {
               const idx = parseInt(btn.dataset.idx, 10);
-              const target = cluster[0].original;
-              const source = cluster[idx].original;
               closeDuplicatesModal();
-              await skuModal.open('edit', source);
-              document.getElementById('sku-original-input').value = target;
+              openMergeCompare(cluster[0].original, cluster[idx].original);
             });
           });
           section.appendChild(block);
