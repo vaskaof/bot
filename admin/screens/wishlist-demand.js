@@ -199,10 +199,15 @@ window.Screens.wishlistDemand = {
       manualWishlistResolveBtn.disabled = !looksLikeManualWishlistUrl(e.target.value);
     });
 
-    // "Распознать" (04.08.2026, доработка по фидбоку VASY) — тот же
-    // resolveWishlistLink (OG-теги/JSON-LD), что уже использует клиентский
-    // вишлист. Перезаписывает поля результатом — менеджер видит и может
-    // поправить перед сохранением (тот же принцип, что в client/screens/wishlist.js).
+    // "Распознать" (05.08.2026, фикс по фидбоку VASY) — этот экран админский,
+    // а WebApp.js подставляет user первым аргументом ТОЛЬКО клиентским методам
+    // (см. WebApp.js:_handleWebAppRequest). resolveWishlistLink(user, url) — из
+    // CLIENT_ALLOWED_METHODS, ждёт user первым параметром; вызов отсюда без
+    // user на самом деле передавал url НА МЕСТО user (url становился undefined),
+    // отсюда всегда "Введите корректную ссылку на товар." даже на валидной
+    // ссылке. Правильный метод для админского контекста — уже существующий
+    // resolveProductLinkForAdmin(url) (общий троттлинг, без user), тот же,
+    // что использует SKU-модалка в режиме create.
     manualWishlistResolveBtn.addEventListener('click', async () => {
       const url = manualWishlistUrlInput.value.trim();
       if (url === '') return;
@@ -211,7 +216,7 @@ window.Screens.wishlistDemand = {
       const icon = manualWishlistResolveBtn.querySelector('svg');
       if (icon) icon.classList.add('animate-spin');
       try {
-        const result = await callServer('resolveWishlistLink', url);
+        const result = await callServer('resolveProductLinkForAdmin', url);
         document.getElementById('manual-wishlist-title').value = result.title.slice(0, 150);
         document.getElementById('manual-wishlist-description').value = result.description.slice(0, 300);
         if (result.imageUrl) document.getElementById('manual-wishlist-image').value = result.imageUrl;
@@ -251,6 +256,13 @@ window.Screens.wishlistDemand = {
             manualWishlistSelectedSkuBox.classList.remove('hidden');
             manualWishlistCatalogSearch.value = '';
             manualWishlistCatalogDropdown.classList.remove('active');
+            // Доработка 05.08.2026 (фидбек VASY) — те же поля, что
+            // order-new.js подставляет при выборе позиции из поиска
+            // (searchSku отдаёт только value/label/imageUrl, описания там нет),
+            // чтобы менеджер видел, что именно уйдёт в вишлист, до сохранения.
+            document.getElementById('manual-wishlist-title').value = item.value;
+            document.getElementById('manual-wishlist-short-name').value = item.label;
+            if (item.imageUrl) document.getElementById('manual-wishlist-image').value = item.imageUrl;
           });
           manualWishlistCatalogDropdown.appendChild(li);
         });
