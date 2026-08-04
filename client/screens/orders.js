@@ -20,6 +20,21 @@ window.Screens.orders = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
 
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-2 flex items-center gap-2">
+          <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
+          <input type="text" id="orders-search" autocomplete="off"
+            class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400"
+            placeholder="Поиск по названию...">
+        </div>
+        <div class="flex items-center gap-2 mb-3 px-1">
+          <span class="text-[11px] text-gray-400">Сортировка:</span>
+          <select id="orders-sort" class="text-[12px] bg-white border border-gray-200 rounded-lg px-2 py-1 outline-none text-gray-600">
+            <option value="date-desc">Сначала новые</option>
+            <option value="date-asc">Сначала старые</option>
+            <option value="status">По статусу доставки</option>
+          </select>
+        </div>
+
         <div id="active-section">
           <div class="text-[11px] text-gray-400 px-1 mb-2">Активные</div>
           <div id="active-list"></div>
@@ -33,6 +48,9 @@ window.Screens.orders = {
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">
           У вас пока нет заказов. Если вы уже оформляли заказ — напишите менеджеру.
         </div>
+        <div id="no-results-message" class="hidden text-center text-sm text-gray-400 py-10">
+          По этому запросу ничего не найдено.
+        </div>
       </main>
     `;
 
@@ -43,7 +61,12 @@ window.Screens.orders = {
     const activeSection = document.getElementById('active-section');
     const completedSection = document.getElementById('completed-section');
     const emptyMessage = document.getElementById('empty-message');
+    const noResultsMessage = document.getElementById('no-results-message');
     const refreshBtn = document.getElementById('refresh-btn');
+    const searchInput = document.getElementById('orders-search');
+    const sortSelect = document.getElementById('orders-sort');
+
+    let allOrders = [];
 
     loadOrders();
 
@@ -56,30 +79,58 @@ window.Screens.orders = {
       });
     });
 
+    // Поиск/сортировка — чисто на уже загруженном списке, без похода на
+    // сервер (04.08.2026, по запросу VASY).
+    searchInput.addEventListener('input', debounce(() => render(), 200));
+    sortSelect.addEventListener('change', () => render());
+
     async function loadOrders() {
       activeList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       completedList.innerHTML = '';
       try {
-        const orders = await callServer('getClientOrdersList');
-        render(orders);
+        allOrders = await callServer('getClientOrdersList');
+        render();
       } catch (error) {
         activeList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
     }
 
-    // Дефолтная сортировка: сначала блок активных, затем завершённых;
-    // внутри каждого блока — по дате (новые сверху).
-    function render(orders) {
-      const active = orders.filter(o => !o.isCompleted).sort((a, b) => b.dateOrderSort - a.dateOrderSort);
-      const completed = orders.filter(o => o.isCompleted).sort((a, b) => b.dateOrderSort - a.dateOrderSort);
+    function applySort(list, sortMode) {
+      if (sortMode === 'date-asc') return list.sort((a, b) => a.dateOrderSort - b.dateOrderSort);
+      if (sortMode === 'status') return list.sort((a, b) => (a.statusDelivery || '').localeCompare(b.statusDelivery || '', 'ru'));
+      return list.sort((a, b) => b.dateOrderSort - a.dateOrderSort); // date-desc, дефолт
+    }
 
-      if (orders.length === 0) {
+    // Дефолтная сортировка: сначала блок активных, затем завершённых;
+    // внутри каждого блока — по выбранной сортировке (по умолчанию — по
+    // дате, новые сверху). Поиск — по короткому и полному названию позиции.
+    function render() {
+      const query = searchInput.value.trim().toLowerCase();
+      const sortMode = sortSelect.value;
+
+      const filtered = query === ''
+        ? allOrders
+        : allOrders.filter(o => `${o.productDisplay} ${o.productOriginal || ''}`.toLowerCase().includes(query));
+
+      if (allOrders.length === 0) {
         activeSection.classList.add('hidden');
         completedSection.classList.add('hidden');
+        noResultsMessage.classList.add('hidden');
         emptyMessage.classList.remove('hidden');
         return;
       }
       emptyMessage.classList.add('hidden');
+
+      if (filtered.length === 0) {
+        activeSection.classList.add('hidden');
+        completedSection.classList.add('hidden');
+        noResultsMessage.classList.remove('hidden');
+        return;
+      }
+      noResultsMessage.classList.add('hidden');
+
+      const active = applySort(filtered.filter(o => !o.isCompleted), sortMode);
+      const completed = applySort(filtered.filter(o => o.isCompleted), sortMode);
 
       activeSection.classList.toggle('hidden', active.length === 0);
       completedSection.classList.toggle('hidden', completed.length === 0);
@@ -89,6 +140,8 @@ window.Screens.orders = {
 
       completedList.innerHTML = '';
       completed.forEach(o => completedList.appendChild(buildCard(o)));
+
+      if (window.lucide) window.lucide.createIcons();
     }
 
     function buildCard(o) {

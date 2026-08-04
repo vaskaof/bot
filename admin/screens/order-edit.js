@@ -414,6 +414,17 @@ window.Screens.orderEdit = {
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
     let purchaseLinkInput, purchaseLinkHint, purchaseLinkResolveBtn;
+    // Снимок amount/rateKzt/rateRub на момент загрузки (04.08.2026, по
+    // запросу VASY) — после сохранения "Итог Руб" на экране оставался старым
+    // до перезагрузки заказа, хотя в самой таблице формула уже пересчиталась.
+    // Пересчитываем на фронтенде без лишнего запроса — та же формула, что и
+    // в листе ("Итог Руб" = "Количество к валюте" * "Тенге к валюте" /
+    // "Тенге к рублю", проверено по реальной таблице). "Доход Руб" НЕ
+    // пересчитываем — 5-членная формула с условиями по каждому флагу оплаты,
+    // дублировать её ещё в одном месте — риск тихо показать неверную цифру
+    // (уже есть техдолг про дублирование расчёта платежей), честнее пометить
+    // как требующую перезагрузки.
+    let originalCalcSnapshot = null;
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -454,6 +465,34 @@ window.Screens.orderEdit = {
       };
 
       return callServer('updateOrder', currentOrderId, fields);
+    }
+
+    // Пересчитывает "Итог Руб" на экране без обращения к серверу, если
+    // amount/курсы отличаются от того, что было при открытии формы —
+    // см. комментарий у originalCalcSnapshot выше.
+    function maybeRefreshTotalDisplay() {
+      if (!originalCalcSnapshot) return;
+
+      const changed = amountInput.value !== originalCalcSnapshot.amount
+        || rateKztInput.value !== originalCalcSnapshot.rateKzt
+        || rateRubInput.value !== originalCalcSnapshot.rateRub;
+      if (!changed) return;
+
+      const parse = (val) => parseFloat((val || '').toString().replace(',', '.'));
+      const amount = parse(amountInput.value);
+      const rateKzt = parse(rateKztInput.value);
+      const rateRub = parse(rateRubInput.value);
+
+      const totalRubDisplay = document.getElementById('total-rub-display');
+      if (!isNaN(amount) && !isNaN(rateKzt) && !isNaN(rateRub) && rateRub !== 0) {
+        totalRubDisplay.textContent = (amount * rateKzt / rateRub).toFixed(2);
+      }
+      // "Доход Руб" зависит от "Итог Руб" в формуле листа — раз тот поменялся,
+      // старое значение на экране уже неверно, но пересчитать его здесь
+      // безопасно нельзя (см. комментарий выше) — честно помечаем как устаревшее.
+      document.getElementById('profit-rub-display').textContent = 'обновится при открытии';
+
+      originalCalcSnapshot = { amount: amountInput.value, rateKzt: rateKztInput.value, rateRub: rateRubInput.value };
     }
 
     function showNotFound() {
@@ -778,6 +817,7 @@ window.Screens.orderEdit = {
       amountInput.value = details.amount || '';
       rateKztInput.value = details.rateKztToCurrency;
       rateRubInput.value = details.rateRubToKzt;
+      originalCalcSnapshot = { amount: amountInput.value, rateKzt: rateKztInput.value, rateRub: rateRubInput.value };
       document.getElementById('total-rub-display').textContent = details.totalRub !== '' ? details.totalRub : '—';
       document.getElementById('profit-rub-display').textContent = details.profitRub !== '' ? details.profitRub : '—';
 
@@ -837,6 +877,7 @@ window.Screens.orderEdit = {
       }
       try {
         const result = await saveOrder();
+        maybeRefreshTotalDisplay();
         showSaveToast(true, 'Изменения сохранены');
         if (result.notifyWarning) {
           setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);
