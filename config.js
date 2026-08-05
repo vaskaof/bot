@@ -5,6 +5,6 @@
  * Здесь — только то, что технически нужно ДО первого обращения к серверу.
  */
 const APP_CONFIG = {
-  GAS_API_URL: 'https://script.google.com/macros/s/AKfycbyJjJnomBDsWPWUpbkrYF0qarQd53Obza5Dqqug_NVdPU_cxFdUCnt4PXPzqdwEgU3R/exec',
+  GAS_API_URL: 'https://api.dreamdool.ru',
   TIMEZONE: 'Europe/Moscow'
 };
