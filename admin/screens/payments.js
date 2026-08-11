@@ -134,6 +134,28 @@ window.Screens.payments = {
           </div>
         </div>
       </div>
+
+      <!-- Модалка "Оплатить из кредита" — мост new-model кредит → конкретный old-model заказ -->
+      <div id="apply-credit-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Оплатить заказ из кредита</h2>
+            <button id="ac-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p id="ac-target" class="text-sm text-gray-600"></p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Сумма, ₽</label>
+              <input type="number" id="ac-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+            </div>
+            <p id="ac-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="ac-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="ac-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Оплатить</button>
+          </div>
+        </div>
+      </div>
     `;
 
     // === Состояние экрана — живёт внутри render(), не утекает между заходами ===
@@ -502,6 +524,9 @@ window.Screens.payments = {
             </div>
           </div>
           ${payments.length > 0 ? `<div class="divide-y divide-gray-50 border-t border-gray-50">${payments.map((p) => renderPaymentRow(p, 'order', o.orderId)).join('')}</div>` : '<div class="text-[11px] text-gray-400">Платежей пока нет.</div>'}
+          ${currentCreditBalance > 0 && mb.remaining > 0.01 ? `
+            <button data-action="apply-credit-to-order" data-order-id="${o.orderId}" data-remaining="${mb.remaining}" class="mt-2 w-full text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg py-1.5">Оплатить из кредита (${money(Math.min(currentCreditBalance, mb.remaining))} ₽ доступно)</button>
+          ` : ''}
         </div>
       `;
     }
@@ -514,6 +539,8 @@ window.Screens.payments = {
 
       if (action === 'edit-order') {
         navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
+      } else if (action === 'apply-credit-to-order') {
+        openApplyCreditModal(btn.dataset.orderId, parseFloat(btn.dataset.remaining));
       } else if (action === 'open-earmark') {
         openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining));
       } else if (action === 'cancel-earmark') {
@@ -598,12 +625,55 @@ window.Screens.payments = {
       const saveBtn = document.getElementById('rf-save');
       saveBtn.disabled = true;
       try {
-        await callServer('refundClientCredit', currentClient.telegramId, amount);
+        await callServer('refundClientCredit', currentClient.telegramId, amount, generateRequestId());
         closeRefundModal();
         await loadClientData();
       } catch (error) {
         rfError.textContent = 'Не удалось списать: ' + error.message;
         rfError.classList.remove('hidden');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    // === Модалка "Оплатить из кредита" (мост new-model кредит → old-model заказ) ===
+    const acModal = document.getElementById('apply-credit-modal');
+    const acTargetText = document.getElementById('ac-target');
+    const acAmount = document.getElementById('ac-amount');
+    const acError = document.getElementById('ac-error');
+    let applyCreditContext = null; // {orderId, remaining}
+
+    function openApplyCreditModal(orderId, remaining) {
+      applyCreditContext = { orderId, remaining };
+      acError.classList.add('hidden');
+      const suggested = Math.min(currentCreditBalance, remaining);
+      acAmount.value = suggested > 0 ? suggested.toFixed(2) : '';
+      acTargetText.textContent = `Заказ ${orderId} · доступно из кредита: ${money(Math.min(currentCreditBalance, remaining))} ₽`;
+      acModal.classList.remove('hidden');
+      acModal.classList.add('flex');
+    }
+    function closeApplyCreditModal() {
+      acModal.classList.add('hidden');
+      acModal.classList.remove('flex');
+    }
+    document.getElementById('ac-close').addEventListener('click', closeApplyCreditModal);
+    document.getElementById('ac-cancel').addEventListener('click', closeApplyCreditModal);
+
+    document.getElementById('ac-save').addEventListener('click', async () => {
+      acError.classList.add('hidden');
+      const amount = parseFloat(acAmount.value);
+      if (isNaN(amount) || amount <= 0) { acError.textContent = 'Укажите сумму больше нуля.'; acError.classList.remove('hidden'); return; }
+      if (amount > currentCreditBalance) { acError.textContent = 'Сумма больше кредитного баланса.'; acError.classList.remove('hidden'); return; }
+
+      const saveBtn = document.getElementById('ac-save');
+      saveBtn.disabled = true;
+      try {
+        await callServer('applyCreditToOldModelOrder', currentClient.telegramId, applyCreditContext.orderId, amount, generateRequestId());
+        closeApplyCreditModal();
+        await loadClientData();
+      } catch (error) {
+        acError.textContent = error.message; // сервер уже формулирует понятный текст, включая "кредит списан, но..." при частичном сбое
+        acError.classList.remove('hidden');
       } finally {
         saveBtn.disabled = false;
       }
