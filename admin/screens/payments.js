@@ -112,6 +112,28 @@ window.Screens.payments = {
           </div>
         </div>
       </div>
+
+      <!-- Модалка "Списать" — возврат клиенту (деньги покидают учёт, не путать с "Освободить") -->
+      <div id="refund-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Списать кредит (возврат клиенту)</h2>
+            <button id="rf-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p class="text-xs text-gray-400">Сумма ФИЗИЧЕСКИ покидает учёт — реальный перевод клиенту делается отдельно, вне этого экрана. Это только фиксация факта.</p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Сумма, ₽ (не больше кредитного баланса)</label>
+              <input type="number" id="rf-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+            </div>
+            <p id="rf-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="rf-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="rf-save" class="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-medium">Списать</button>
+          </div>
+        </div>
+      </div>
     `;
 
     // === Состояние экрана — живёт внутри render(), не утекает между заходами ===
@@ -319,7 +341,10 @@ window.Screens.payments = {
             <div class="text-[11px] text-gray-400 mt-0.5">Заморожен, пока у клиента нет открытых заказов — применяется вручную.</div>
             ${poolLeftover > 0 ? `<div class="text-[11px] text-amber-600 mt-0.5">(ещё ${money(poolLeftover)} ₽ находятся на распределении менеджером)</div>` : ''}
           </div>
-          <button id="release-credit-btn" ${currentCreditBalance > 0 ? '' : 'disabled'} class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border ${currentCreditBalance > 0 ? 'text-indigo-600 border-indigo-100' : 'text-gray-300 border-gray-100 cursor-not-allowed'}">Освободить</button>
+          <div class="shrink-0 flex flex-col gap-1.5">
+            <button id="release-credit-btn" ${currentCreditBalance > 0 ? '' : 'disabled'} class="text-xs font-medium px-3 py-1.5 rounded-lg border ${currentCreditBalance > 0 ? 'text-indigo-600 border-indigo-100' : 'text-gray-300 border-gray-100 cursor-not-allowed'}">Освободить</button>
+            <button id="open-refund-btn" ${currentCreditBalance > 0 ? '' : 'disabled'} class="text-xs font-medium px-3 py-1.5 rounded-lg border ${currentCreditBalance > 0 ? 'text-red-600 border-red-100' : 'text-gray-300 border-gray-100 cursor-not-allowed'}">Списать</button>
+          </div>
         </div>
 
         <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-4 flex items-center justify-center gap-2">
@@ -368,6 +393,7 @@ window.Screens.payments = {
         clientSearch.focus();
       });
       document.getElementById('release-credit-btn').addEventListener('click', onReleaseCredit);
+      document.getElementById('open-refund-btn').addEventListener('click', openRefundModal);
       document.getElementById('open-record-payment-btn').addEventListener('click', openRecordPaymentModal);
 
       if (window.lucide) window.lucide.createIcons();
@@ -388,6 +414,15 @@ window.Screens.payments = {
       `;
     }
 
+    // По рекомендации VASY (11.08.2026) — если с записью платежа что-то не
+    // так, у менеджера должен быть прямой путь поправить сам заказ, не уходя
+    // с экрана "Оплаты" на общий список заказов и не ища его там заново.
+    // Тот же маршрут/приём, что orders.js уже использует для перехода на
+    // редактирование.
+    function renderEditOrderButton(orderId) {
+      return `<button data-action="edit-order" data-order-id="${orderId}" title="Открыть заказ на редактирование" class="shrink-0 p-1.5 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>`;
+    }
+
     function renderNewModelOrderCard(o) {
       const d = o.details;
       const stages = d.stagesBalance || [];
@@ -396,9 +431,12 @@ window.Screens.payments = {
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="min-w-0">
-              <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
-              <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+            <div class="min-w-0 flex items-start gap-1.5">
+              ${renderEditOrderButton(o.orderId)}
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
+                <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+              </div>
             </div>
             ${orderTarget > 0 ? `
               <div class="text-right shrink-0">
@@ -451,9 +489,12 @@ window.Screens.payments = {
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="min-w-0">
-              <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
-              <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+            <div class="min-w-0 flex items-start gap-1.5">
+              ${renderEditOrderButton(o.orderId)}
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
+                <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+              </div>
             </div>
             <div class="text-right shrink-0">
               <div class="text-sm font-semibold text-gray-900">${money(mb.paid)} / ${money(mb.target)} ₽</div>
@@ -471,7 +512,9 @@ window.Screens.payments = {
       if (!btn) return;
       const action = btn.dataset.action;
 
-      if (action === 'open-earmark') {
+      if (action === 'edit-order') {
+        navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
+      } else if (action === 'open-earmark') {
         openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining));
       } else if (action === 'cancel-earmark') {
         if (!confirm('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.')) return;
@@ -524,6 +567,47 @@ window.Screens.payments = {
         alert('Не удалось освободить кредит: ' + error.message);
       }
     }
+
+    // === Модалка "Списать" (возврат клиенту, деньги покидают учёт) ===
+    const rfModal = document.getElementById('refund-modal');
+    const rfAmount = document.getElementById('rf-amount');
+    const rfError = document.getElementById('rf-error');
+
+    function openRefundModal() {
+      if (currentCreditBalance <= 0) return;
+      rfError.classList.add('hidden');
+      rfAmount.value = currentCreditBalance.toFixed(2);
+      rfAmount.max = currentCreditBalance;
+      rfModal.classList.remove('hidden');
+      rfModal.classList.add('flex');
+    }
+    function closeRefundModal() {
+      rfModal.classList.add('hidden');
+      rfModal.classList.remove('flex');
+    }
+    document.getElementById('rf-close').addEventListener('click', closeRefundModal);
+    document.getElementById('rf-cancel').addEventListener('click', closeRefundModal);
+
+    document.getElementById('rf-save').addEventListener('click', async () => {
+      rfError.classList.add('hidden');
+      const amount = parseFloat(rfAmount.value);
+      if (isNaN(amount) || amount <= 0) { rfError.textContent = 'Укажите сумму больше нуля.'; rfError.classList.remove('hidden'); return; }
+      if (amount > currentCreditBalance) { rfError.textContent = 'Сумма больше кредитного баланса.'; rfError.classList.remove('hidden'); return; }
+      if (!confirm(`Списать ${money(amount)} ₽? Подтвердите, что перевод клиенту уже сделан (или делается) вне этого экрана — это действие только фиксирует факт.`)) return;
+
+      const saveBtn = document.getElementById('rf-save');
+      saveBtn.disabled = true;
+      try {
+        await callServer('refundClientCredit', currentClient.telegramId, amount);
+        closeRefundModal();
+        await loadClientData();
+      } catch (error) {
+        rfError.textContent = 'Не удалось списать: ' + error.message;
+        rfError.classList.remove('hidden');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
 
     // === Модалка "Записать платёж" ===
     const rpModal = document.getElementById('record-payment-modal');
