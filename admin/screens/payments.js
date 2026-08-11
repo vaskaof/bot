@@ -41,12 +41,26 @@ window.Screens.payments = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="client-search-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 relative">
-          <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
-          <input type="text" id="payments-client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск клиента по имени/username..." autocomplete="off">
-          <ul id="payments-client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+        <div id="tab-switcher" class="flex gap-1.5 mb-3">
+          <button type="button" data-tab="client" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Клиент</button>
+          <button type="button" data-tab="claims" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
+            Заявки клиентов <span id="claims-count-badge"></span>
+          </button>
         </div>
-        <div id="payments-client-view"></div>
+
+        <div id="client-tab">
+          <div id="client-search-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 relative">
+            <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <input type="text" id="payments-client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск клиента по имени/username..." autocomplete="off">
+            <ul id="payments-client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          </div>
+          <div id="payments-client-view"></div>
+        </div>
+
+        <div id="claims-tab" class="hidden">
+          <div id="claims-list"></div>
+          <div id="claims-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
+        </div>
       </main>
 
       <!-- Модалка "Записать платёж" — куда (пул/конкретный old-model заказ) + сумма + опциональные метки -->
@@ -169,6 +183,23 @@ window.Screens.payments = {
     const clientSearch = document.getElementById('payments-client-search');
     const clientDropdown = document.getElementById('payments-client-dropdown');
     const clientView = document.getElementById('payments-client-view');
+
+    // === Вкладки "Клиент" / "Заявки клиентов" (F3, 11.08.2026) ===
+    let currentTab = 'client';
+    const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => { currentTab = btn.dataset.tab; updateTabStyles(); });
+    });
+    function updateTabStyles() {
+      tabButtons.forEach((btn) => {
+        const active = btn.dataset.tab === currentTab;
+        btn.className = `tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`;
+      });
+      document.getElementById('client-tab').classList.toggle('hidden', currentTab !== 'client');
+      document.getElementById('claims-tab').classList.toggle('hidden', currentTab !== 'claims');
+    }
+    updateTabStyles();
+    loadClaims();
 
     function showEmptyState() {
       clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Найдите клиента, чтобы увидеть его оплаты.</div>';
@@ -855,5 +886,102 @@ window.Screens.payments = {
         saveBtn.disabled = false;
       }
     });
+
+    // === Вкладка "Заявки клиентов" (F3, 11.08.2026) — модерация self-report ===
+    // Тот же паттерн, что "Модерация" в admin/screens/contests.js (бейдж
+    // счётчика, карточка, Одобрить/Отклонить, отклонение — prompt() на
+    // комментарий) — переиспользуем намеренно, не изобретаем новый UI.
+    const claimsList = document.getElementById('claims-list');
+    const claimsEmpty = document.getElementById('claims-empty-message');
+
+    async function loadClaims() {
+      claimsList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        const pending = await callServer('getPendingPaymentClaims');
+        renderClaims(pending);
+      } catch (error) {
+        claimsList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    function renderClaims(pending) {
+      const badge = document.getElementById('claims-count-badge');
+      badge.textContent = pending.length > 0 ? `(${pending.length})` : '';
+
+      claimsList.innerHTML = '';
+      if (pending.length === 0) {
+        claimsEmpty.classList.remove('hidden');
+        return;
+      }
+      claimsEmpty.classList.add('hidden');
+      pending.forEach((c) => claimsList.appendChild(buildClaimCard(c)));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function isLikelyUrl(text) {
+      return /^https?:\/\//i.test(text.trim());
+    }
+
+    function buildClaimCard(c) {
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+
+      const scopeLabel = c.scopeOrderId ? `за заказ ${escapeHtmlClient(c.scopeOrderId)}` : 'за весь пул';
+      const proofHtml = isLikelyUrl(c.proofText)
+        ? `<a href="${escapeHtmlClient(c.proofText)}" target="_blank" rel="noopener" class="text-indigo-600 underline break-all">${escapeHtmlClient(c.proofText)}</a>`
+        : escapeHtmlClient(c.proofText);
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-semibold text-gray-900 text-[15px]">${money(c.amountRub)} ₽ — ${scopeLabel}</div>
+            <div class="text-[12px] text-gray-400 mt-0.5">Клиент: ${escapeHtmlClient(c.clientTelegramId)} · ${c.createdAt ? new Date(c.createdAt).toLocaleString('ru-RU') : ''}</div>
+          </div>
+          <button type="button" class="open-client-btn shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Открыть клиента</button>
+        </div>
+        <div class="text-[13px] text-gray-700 mt-2 p-2 bg-gray-50 rounded-lg break-words">${proofHtml}</div>
+        <div class="flex items-center gap-2 mt-3">
+          <button type="button" class="approve-claim-btn flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">Одобрить</button>
+          <button type="button" class="reject-claim-btn flex-1 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium">Отклонить</button>
+        </div>
+      `;
+
+      card.querySelector('.open-client-btn').addEventListener('click', () => {
+        currentTab = 'client';
+        updateTabStyles();
+        const item = { telegramId: c.clientTelegramId, username: '', name: '', displayName: c.clientTelegramId };
+        clientSearch.value = item.displayName;
+        selectClient(item);
+      });
+
+      card.querySelector('.approve-claim-btn').addEventListener('click', async (e) => {
+        if (!confirm(`Одобрить заявку и записать платёж ${money(c.amountRub)} ₽ ${scopeLabel}?`)) return;
+        e.currentTarget.disabled = true;
+        try {
+          await callServer('approvePaymentClaim', c.id);
+          showSaveToast(true, 'Заявка одобрена, платёж записан');
+          loadClaims();
+          if (currentClient && currentClient.telegramId === c.clientTelegramId) await loadClientData();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          showSaveToast(false, `Не удалось одобрить: ${error.message}`);
+        }
+      });
+
+      card.querySelector('.reject-claim-btn').addEventListener('click', async (e) => {
+        const comment = prompt('Причина отклонения (необязательно):', '') || '';
+        e.currentTarget.disabled = true;
+        try {
+          await callServer('rejectPaymentClaim', c.id, comment);
+          showSaveToast(true, 'Заявка отклонена');
+          loadClaims();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          showSaveToast(false, `Не удалось отклонить: ${error.message}`);
+        }
+      });
+
+      return card;
+    }
   }
 };

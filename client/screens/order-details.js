@@ -10,6 +10,16 @@ window.Screens = window.Screens || {};
 window.Screens.orderDetails = {
   render(root, context, params) {
     const currentOrderId = params.orderId || null;
+    let currentDetails = null; // getClientOrderDetails, нужен модалке "Сообщить об оплате" (isNewModel/stagesBalance)
+
+    const STAGE_LABELS = {
+      'Основная': 'Основная оплата',
+      'Вес': 'Вес',
+      'СДЭК': 'СДЭК (КЗ→РФ)',
+      'Доставка_РФ': 'Доставка по РФ',
+      'СДЭК_Индивидуальная': 'СДЭК (индивидуальная)'
+    };
+    const stageLabel = (stage) => (stage || '').split('/').map((s) => STAGE_LABELS[s] || s).join(' / ');
 
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
@@ -54,8 +64,18 @@ window.Screens.orderDetails = {
           <div id="d-payments-list" class="space-y-2"></div>
         </div>
 
+        <div id="d-rollup-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mt-3">
+          <div id="d-order-rollup" class="text-sm"></div>
+          <div id="d-pool-rollup" class="hidden text-sm mt-3 pt-3 border-t border-gray-100"></div>
+        </div>
+
+        <button id="report-payment-btn" type="button"
+          class="w-full mt-4 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-medium">
+          Сообщить об оплате
+        </button>
+
         <button id="ask-question-btn" type="button"
-          class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-medium">
+          class="w-full mt-3 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-medium">
           Задать вопрос по заказу
         </button>
       </main>
@@ -86,6 +106,50 @@ window.Screens.orderDetails = {
           </div>
         </div>
       </div>
+
+      <!-- Модалка "Сообщить об оплате" (F3, self-report, 11.08.2026) — амаунт + текст/ссылка,
+           без загрузки файла (известное ограничение проекта, не решается здесь).
+           Менеджер одобряет/отклоняет в админке. -->
+      <div id="report-payment-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Сообщить об оплате</h2>
+            <button id="rp-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p class="text-xs text-gray-400">Укажите сумму и приложите текст/ссылку, подтверждающую перевод — менеджер проверит и подтвердит платёж.</p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Сумма перевода, ₽</label>
+              <input type="number" id="rp-modal-amount" step="0.01" min="0.01"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+            </div>
+            <div id="rp-modal-scope-row" class="hidden">
+              <label class="text-xs font-medium text-gray-500">За что</label>
+              <div class="flex gap-2 mt-1">
+                <label class="flex-1 flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs cursor-pointer">
+                  <input type="radio" name="rp-modal-scope" value="order" checked> Только за этот заказ
+                </label>
+                <label class="flex-1 flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs cursor-pointer">
+                  <input type="radio" name="rp-modal-scope" value="pool"> За все мои заказы
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Текст или ссылка на подтверждение</label>
+              <textarea id="rp-modal-proof" rows="3" maxlength="500"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
+                placeholder="Например: ссылка на чек или скриншот, либо описание перевода"></textarea>
+            </div>
+            <p id="rp-modal-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="rp-modal-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="rp-modal-send" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium">Отправить</button>
+          </div>
+        </div>
+      </div>
     `;
 
     // <button> + click-обработчики вместо <a href> — Telegram WebView может
@@ -104,7 +168,12 @@ window.Screens.orderDetails = {
     async function initApp() {
       try {
         const d = await callServer('getClientOrderDetails', currentOrderId);
+        currentDetails = d;
         render(d);
+        // Пул-уровень (F3-довесок) — отдельный, не блокирующий запрос: если он
+        // упадёт, экран заказа всё равно должен открыться нормально (это
+        // дополнительная, не критичная информация).
+        callServer('getMyPaymentsRollup').then(renderPoolRollup).catch(() => {});
       } catch (error) {
         showNotFound();
       }
@@ -173,8 +242,72 @@ window.Screens.orderDetails = {
         }
       }
 
+      renderOrderRollup(d);
+
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('app-content').classList.remove('hidden');
+    }
+
+    // --- "Сумма/приоритетная сумма" за заказ (F3-довесок, 11.08.2026) ---
+    // За ЭТОТ заказ — бесплатно, чистая фронтенд-арифметика над уже
+    // отданным d.stagesBalance (массив УЖЕ в приоритетном порядке, §3) —
+    // никакой новой бизнес-логики здесь не считается, только сумма/поиск
+    // первой непокрытой стадии. Только new-model — у старой модели нет
+    // partial-tracking по стадиям (см. d.payments.lines выше).
+    function renderOrderRollup(d) {
+      const card = document.getElementById('d-rollup-card');
+      const orderBox = document.getElementById('d-order-rollup');
+      if (!d.isNewModel || !d.stagesBalance || d.stagesBalance.length === 0) {
+        orderBox.innerHTML = '';
+        updateRollupCardVisibility();
+        return;
+      }
+      const known = d.stagesBalance.filter((s) => s.target > 0);
+      if (known.length === 0) { orderBox.innerHTML = ''; updateRollupCardVisibility(); return; }
+
+      const totalRemaining = known.reduce((sum, s) => sum + Math.max(s.remaining, 0), 0);
+      const priority = known.find((s) => s.remaining > 0.01);
+
+      if (totalRemaining <= 0.01) {
+        orderBox.innerHTML = '<div class="text-green-600 font-medium">По этому заказу всё оплачено.</div>';
+      } else {
+        orderBox.innerHTML = `
+          <div class="text-gray-500 text-[11px]">По этому заказу</div>
+          <div class="flex items-baseline gap-2 mt-0.5">
+            <span class="text-lg font-bold text-gray-900">${totalRemaining.toFixed(2)} ₽</span>
+            <span class="text-[12px] text-gray-400">осталось к оплате</span>
+          </div>
+          ${priority ? `<div class="text-[12px] text-amber-600 mt-0.5">Приоритетно сейчас: ${priority.remaining.toFixed(2)} ₽ (${escapeHtmlClient(stageLabel(priority.stage))})</div>` : ''}
+        `;
+      }
+      updateRollupCardVisibility();
+    }
+
+    // Пул-уровень — через getMyPaymentsRollup (paymentsService.getClientPaymentsRollup),
+    // кросс-заказный, учитывает tier-batch блокировку (§19) по ВСЕМ открытым
+    // заказам новой модели клиента, не только текущему — считается на бэкенде
+    // намеренно, не на фронте (см. личную память Architect'а
+    // project_bot_knopka_staged_payments_refactor, §17 продолжение).
+    function renderPoolRollup(rollup) {
+      const box = document.getElementById('d-pool-rollup');
+      if (!rollup || rollup.totalRemaining <= 0.01) { box.classList.add('hidden'); updateRollupCardVisibility(); return; }
+      box.innerHTML = `
+        <div class="text-gray-500 text-[11px]">По всем вашим заказам новой модели</div>
+        <div class="flex items-baseline gap-2 mt-0.5">
+          <span class="text-lg font-bold text-gray-900">${rollup.totalRemaining.toFixed(2)} ₽</span>
+          <span class="text-[12px] text-gray-400">осталось к оплате всего</span>
+        </div>
+        ${rollup.priorityAmount > 0.01 ? `<div class="text-[12px] text-amber-600 mt-0.5">Приоритетно сейчас: ${rollup.priorityAmount.toFixed(2)} ₽ (${escapeHtmlClient(stageLabel(rollup.priorityStage))})</div>` : ''}
+      `;
+      box.classList.remove('hidden');
+      updateRollupCardVisibility();
+    }
+
+    function updateRollupCardVisibility() {
+      const card = document.getElementById('d-rollup-card');
+      const hasOrderBox = document.getElementById('d-order-rollup').innerHTML.trim() !== '';
+      const hasPoolBox = !document.getElementById('d-pool-rollup').classList.contains('hidden');
+      card.classList.toggle('hidden', !hasOrderBox && !hasPoolBox);
     }
 
     // --- Форма "Вопрос по заказу" ---
@@ -229,6 +362,73 @@ window.Screens.orderDetails = {
           questionErrorText.textContent = error.message;
           questionErrorText.classList.remove('hidden');
         }
+      }
+    });
+
+    // --- Форма "Сообщить об оплате" (F3, self-report) ---
+    const reportModal = document.getElementById('report-payment-modal');
+    const rpModalAmount = document.getElementById('rp-modal-amount');
+    const rpModalProof = document.getElementById('rp-modal-proof');
+    const rpModalScopeRow = document.getElementById('rp-modal-scope-row');
+    const rpModalError = document.getElementById('rp-modal-error');
+
+    document.getElementById('report-payment-btn').addEventListener('click', () => {
+      rpModalAmount.value = '';
+      rpModalProof.value = '';
+      rpModalError.classList.add('hidden');
+      // Scope-выбор — только когда ЭТОТ заказ new-model (§17 E.3, точка входа
+      // всегда экран конкретного заказа, без отдельной "свободной" точки
+      // входа — упрощение, согласованное с VASY). Old-model — scope всегда
+      // "этот заказ", выбор не нужен (нет кросс-заказного пула для старой модели).
+      const isNewModel = currentDetails && currentDetails.isNewModel;
+      rpModalScopeRow.classList.toggle('hidden', !isNewModel);
+      if (isNewModel) {
+        const orderRadio = reportModal.querySelector('input[name="rp-modal-scope"][value="order"]');
+        if (orderRadio) orderRadio.checked = true;
+      }
+      reportModal.classList.remove('hidden');
+      reportModal.classList.add('flex');
+    });
+
+    function closeReportModal() {
+      reportModal.classList.add('hidden');
+      reportModal.classList.remove('flex');
+    }
+    document.getElementById('rp-modal-close').addEventListener('click', closeReportModal);
+    document.getElementById('rp-modal-cancel').addEventListener('click', closeReportModal);
+
+    document.getElementById('rp-modal-send').addEventListener('click', async () => {
+      rpModalError.classList.add('hidden');
+      const amount = parseFloat(rpModalAmount.value);
+      if (isNaN(amount) || amount <= 0) {
+        rpModalError.textContent = 'Укажите сумму больше нуля.';
+        rpModalError.classList.remove('hidden');
+        return;
+      }
+      const proofText = rpModalProof.value.trim();
+      if (proofText === '') {
+        rpModalError.textContent = 'Добавьте текст или ссылку, подтверждающую перевод.';
+        rpModalError.classList.remove('hidden');
+        return;
+      }
+
+      const isNewModel = currentDetails && currentDetails.isNewModel;
+      const scopeChoice = isNewModel
+        ? (reportModal.querySelector('input[name="rp-modal-scope"]:checked') || {}).value
+        : 'order';
+      const scopeOrderId = scopeChoice === 'pool' ? null : currentOrderId;
+
+      const sendBtn = document.getElementById('rp-modal-send');
+      sendBtn.disabled = true;
+      try {
+        await callServer('submitPaymentClaim', amount, proofText, scopeOrderId, generateRequestId());
+        closeReportModal();
+        showSaveToast(true, 'Заявка отправлена, менеджер проверит платёж');
+      } catch (error) {
+        rpModalError.textContent = error.message;
+        rpModalError.classList.remove('hidden');
+      } finally {
+        sendBtn.disabled = false;
       }
     });
   }
