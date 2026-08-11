@@ -20,6 +20,8 @@ window.Screens.orders = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="greeting" class="text-sm text-gray-500 mb-4"></div>
 
+        <div id="priority-rollup-card" class="hidden bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3"></div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-2 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="orders-search" autocomplete="off"
@@ -68,7 +70,34 @@ window.Screens.orders = {
 
     let allOrders = [];
 
+    const STAGE_LABELS = {
+      'Основная': 'Основная оплата',
+      'Вес': 'Вес',
+      'СДЭК': 'СДЭК (КЗ→РФ)',
+      'Доставка_РФ': 'Доставка по РФ',
+      'СДЭК_Индивидуальная': 'СДЭК (индивидуальная)'
+    };
+    const stageLabel = (stage) => (stage || '').split('/').map((s) => STAGE_LABELS[s] || s).join(' / ');
+
     loadOrders();
+    // Приоритетная сумма "прямо сейчас" по всем new-model заказам клиента
+    // (12.08.2026, по запросу VASY — видно и в списке, не только на экране
+    // заказа) — отдельный, не блокирующий запрос: список заказов должен
+    // открыться нормально, даже если этот запрос упадёт.
+    callServer('getMyPaymentsRollup').then(renderPriorityRollup).catch(() => {});
+
+    function renderPriorityRollup(rollup) {
+      const card = document.getElementById('priority-rollup-card');
+      if (!rollup || rollup.priorityAmount <= 0.01) { card.classList.add('hidden'); return; }
+      card.innerHTML = `
+        <div class="text-[11px] text-amber-700">Приоритетно нужно оплатить сейчас</div>
+        <div class="flex items-baseline gap-2">
+          <div class="text-2xl font-bold text-amber-700">${rollup.priorityAmount.toFixed(2)} ₽</div>
+          <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(rollup.priorityStage))}</div>
+        </div>
+      `;
+      card.classList.remove('hidden');
+    }
 
     refreshBtn.addEventListener('click', () => {
       const icon = refreshBtn.querySelector('svg');

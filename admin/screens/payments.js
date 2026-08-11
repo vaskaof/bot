@@ -178,6 +178,7 @@ window.Screens.payments = {
     let currentPayments = []; // getPaymentsForClient — только new-model, {id,date,amount,reason}
     let currentEarmarks = []; // getEarmarksForClient — {id,orderId,stage,amount,note,createdBy,createdAt}
     let currentCreditBalance = 0;
+    let currentRollup = { totalRemaining: 0, priorityAmount: 0, priorityStage: null }; // getClientPaymentsRollup (12.08.2026, по запросу VASY)
     let earmarkContext = null; // {clientTelegramId, orderId, stage, remaining} — контекст открытой earmark-модалки
 
     const clientSearch = document.getElementById('payments-client-search');
@@ -303,17 +304,19 @@ window.Screens.payments = {
     async function loadClientData() {
       clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const [orderSummaries, payments, earmarks, creditBalance] = await Promise.all([
+        const [orderSummaries, payments, earmarks, creditBalance, rollup] = await Promise.all([
           callServer('getOrdersForClientAdmin', currentClient.telegramId),
           callServer('getPaymentsForClient', currentClient.telegramId),
           callServer('getEarmarksForClient', currentClient.telegramId),
-          callServer('getClientCreditBalance', currentClient.telegramId)
+          callServer('getClientCreditBalance', currentClient.telegramId),
+          callServer('getClientPaymentsRollup', currentClient.telegramId)
         ]);
         const details = await Promise.all(orderSummaries.map((o) => callServer('getOrderDetails', o.orderId)));
         currentOrders = orderSummaries.map((o, i) => Object.assign({}, o, { details: details[i] }));
         currentPayments = payments;
         currentEarmarks = earmarks;
         currentCreditBalance = creditBalance;
+        currentRollup = rollup;
         renderClientView();
       } catch (error) {
         clientView.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
@@ -372,6 +375,17 @@ window.Screens.payments = {
               <div class="text-xs text-gray-400">осталось из ${money(grandTarget)} ₽ (оплачено ${money(grandPaid)} ₽)</div>
             </div>
             ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели считается только «Основная» — вес/СДЭК/доставка по РФ там без частичного учёта, не включены.</p>` : ''}
+          </div>
+        ` : ''}
+
+        ${currentRollup.priorityAmount > 0.01 ? `
+          <div class="bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3">
+            <div class="text-[11px] text-amber-700">Приоритетная оплата сейчас (new-model, кросс-заказно)</div>
+            <div class="flex items-baseline gap-2">
+              <div class="text-2xl font-bold text-amber-700">${money(currentRollup.priorityAmount)} ₽</div>
+              <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(currentRollup.priorityStage))}</div>
+            </div>
+            <p class="text-[11px] text-amber-600 mt-1">Именно эта сумма обязательна клиенту ПРЯМО СЕЙЧАС, чтобы разблокировать следующий тир — тир считается покрытым только когда профинансирован ЦЕЛИКОМ по всем открытым new-model заказам клиента сразу.</p>
           </div>
         ` : ''}
 
@@ -969,8 +983,16 @@ window.Screens.payments = {
         if (!confirm(`Одобрить заявку и записать платёж ${money(c.amountRub)} ₽ ${scopeLabel}?`)) return;
         e.currentTarget.disabled = true;
         try {
-          await callServer('approvePaymentClaim', c.id);
-          showSaveToast(true, 'Заявка одобрена, платёж записан');
+          const result = await callServer('approvePaymentClaim', c.id);
+          // earmarkFailed (money-gate Review, 12.08.2026) — платёж уже реально
+          // записан в пул (деньги не потеряны), но авто-закрепление за
+          // приоритетной стадией заказа не удалось — менеджеру нужно
+          // закрепить вручную кнопкой «Закрепить» на нужной стадии.
+          if (result && result.earmarkFailed) {
+            showSaveToast(false, 'Платёж записан, но авто-закрепление за стадией не удалось — закрепите вручную кнопкой «Закрепить»');
+          } else {
+            showSaveToast(true, 'Заявка одобрена, платёж записан');
+          }
           loadClaims();
           if (currentClient && currentClient.telegramId === c.clientTelegramId) await loadClientData();
         } catch (error) {
