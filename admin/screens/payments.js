@@ -199,7 +199,17 @@ window.Screens.payments = {
       document.getElementById('claims-tab').classList.toggle('hidden', currentTab !== 'claims');
     }
     updateTabStyles();
-    loadClaims();
+    // loadClaims() вызывается НИЖЕ, сразу после объявления claimsList/claimsEmpty
+    // (см. "Вкладка Заявки клиентов") — реальный баг, найденный VASY 12.08.2026:
+    // вызов был здесь, а claimsList/claimsEmpty — const'ы, объявленные почти в
+    // конце файла. Temporal dead zone: loadClaims() падал с ReferenceError
+    // ("Cannot access 'claimsList' before initialization") при первом же
+    // обращении к claimsList внутри своего тела — тихо, как необработанный
+    // reject промиса (loadClaims() вызывался без await/.catch), поэтому ни
+    // бейдж, ни список никогда не заполнялись, а остальной экран (поиск
+    // клиента, модалки) работал нормально — из-за этого баг не был замечен
+    // раньше при синтаксической проверке/тестах (node --check не ловит
+    // ошибки времени выполнения, юнит-тестов на этот экран нет).
 
     function showEmptyState() {
       clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Найдите клиента, чтобы увидеть его оплаты.</div>';
@@ -893,6 +903,7 @@ window.Screens.payments = {
     // комментарий) — переиспользуем намеренно, не изобретаем новый UI.
     const claimsList = document.getElementById('claims-list');
     const claimsEmpty = document.getElementById('claims-empty-message');
+    loadClaims();
 
     async function loadClaims() {
       claimsList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
