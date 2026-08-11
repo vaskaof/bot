@@ -131,8 +131,50 @@ window.Screens.payments = {
     }
     showEmptyState();
 
+    // "Недавние" — список последних открытых в этом экране клиентов, до
+    // начала ввода (по запросу VASY). Нет backend-эквивалента ("список всех
+    // клиентов" не существует — searchClient с пустым query всегда отдаёт []
+    // на стороне GAS, ClientService.searchClients), поэтому чисто клиентский
+    // localStorage, per-браузер/устройство, не общий для всех админов.
+    const RECENT_CLIENTS_KEY = 'payments_recent_clients';
+    const RECENT_CLIENTS_MAX = 8;
+
+    function getRecentClients() {
+      try {
+        const raw = localStorage.getItem(RECENT_CLIENTS_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) { return []; } // приватный режим/localStorage недоступен — не критично, просто нет списка
+    }
+
+    function addRecentClient(item) {
+      try {
+        const list = getRecentClients().filter((c) => c.telegramId !== item.telegramId);
+        list.unshift({ telegramId: item.telegramId, username: item.username, name: item.name, displayName: item.displayName });
+        localStorage.setItem(RECENT_CLIENTS_KEY, JSON.stringify(list.slice(0, RECENT_CLIENTS_MAX)));
+      } catch (e) { /* см. getRecentClients */ }
+    }
+
+    function renderRecentClientsDropdown() {
+      const recent = getRecentClients();
+      if (recent.length === 0) { clientDropdown.classList.remove('active'); return; }
+      clientDropdown.innerHTML = '<li class="px-3 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Недавние</li>';
+      recent.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
+        li.innerHTML = `<div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>`;
+        li.addEventListener('click', () => {
+          clientDropdown.classList.remove('active');
+          clientSearch.value = item.displayName;
+          selectClient(item);
+        });
+        clientDropdown.appendChild(li);
+      });
+      clientDropdown.classList.add('active');
+    }
+
     const handleClientSearch = debounce(async (e) => {
       const query = e.target.value.trim();
+      if (query.length === 0) { renderRecentClientsDropdown(); return; }
       if (query.length < 2) { clientDropdown.classList.remove('active'); return; }
       let results;
       try {
@@ -150,7 +192,11 @@ window.Screens.payments = {
     }, 300);
 
     clientSearch.addEventListener('input', handleClientSearch);
-    clientSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) clientDropdown.classList.add('active'); });
+    clientSearch.addEventListener('focus', (e) => {
+      const q = e.target.value.trim();
+      if (q.length >= 2) clientDropdown.classList.add('active');
+      else renderRecentClientsDropdown();
+    });
     document.addEventListener('click', (e) => {
       if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
     }, { signal });
@@ -165,6 +211,7 @@ window.Screens.payments = {
 
     function selectClient(item) {
       currentClient = item;
+      addRecentClient(item);
       loadClientData();
     }
 
@@ -270,6 +317,7 @@ window.Screens.payments = {
             <div class="text-[11px] text-gray-400">Кредитный баланс</div>
             <div class="text-lg font-bold text-gray-900">${money(currentCreditBalance)} ₽</div>
             <div class="text-[11px] text-gray-400 mt-0.5">Заморожен, пока у клиента нет открытых заказов — применяется вручную.</div>
+            ${poolLeftover > 0 ? `<div class="text-[11px] text-amber-600 mt-0.5">(ещё ${money(poolLeftover)} ₽ находятся на распределении менеджером)</div>` : ''}
           </div>
           <button id="release-credit-btn" ${currentCreditBalance > 0 ? '' : 'disabled'} class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border ${currentCreditBalance > 0 ? 'text-indigo-600 border-indigo-100' : 'text-gray-300 border-gray-100 cursor-not-allowed'}">Освободить</button>
         </div>
