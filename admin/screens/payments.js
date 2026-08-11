@@ -1,0 +1,572 @@
+'use strict';
+
+/**
+ * Экран "Оплаты" (F2.1, 11.08.2026) — клиент-центричный (не order-центричный,
+ * см. личную память Architect'а project_bot_knopka_staged_payments_refactor,
+ * §17 E.1). Бэкенд-фундамент — F2.0 (тот же раунд): getPaymentsForClient/
+ * getEarmarksForClient/editClientPayment/cancelClientPayment/
+ * getClientCreditBalance/releaseClientCreditForClient — все admin-методы,
+ * НЕ в CLIENT_ALLOWED_METHODS.
+ *
+ * Разделение путей записи платежа — намеренное, не упрощение (см. money-gate
+ * находку в webapp-api.md): `paymentsRepository.getOpenOrdersForClient`
+ * читает ТОЛЬКО new-model заказы (`order_meta`) — платёж, отправленный через
+ * клиентский пул (`recordClientPaymentDirect`) клиенту, у которого открыты
+ * ТОЛЬКО old-model заказы, был бы тут же заморожен в кредит мимо реального
+ * заказа. Поэтому "Записать платёж" всегда явно спрашивает КУДА: общий пул
+ * (new-model, `recordClientPaymentDirect`) или конкретный old-model заказ
+ * (`recordOrderPayment`, старый заказный путь, без изменений).
+ */
+window.Screens = window.Screens || {};
+window.Screens.payments = {
+  render(root, dictionaries, params, signal) {
+    const STAGE_LABELS = {
+      'Основная': 'Основная оплата',
+      'Вес': 'Вес',
+      'СДЭК': 'СДЭК (КЗ→РФ)',
+      'Доставка_РФ': 'Доставка по РФ',
+      'СДЭК_Индивидуальная': 'СДЭК (индивидуальная)'
+    };
+    const stageLabel = (stage) => STAGE_LABELS[stage] || stage;
+    const money = (n) => (Number(n) || 0).toFixed(2);
+
+    document.getElementById('header-left').innerHTML = `
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="arrow-left" class="w-6 h-6"></i>
+      </button>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Оплаты</h1>
+    `;
+    document.getElementById('header-actions').innerHTML = '';
+    document.getElementById('back-btn').addEventListener('click', () => history.back());
+
+    root.innerHTML = `
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div id="client-search-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 relative">
+          <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
+          <input type="text" id="payments-client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск клиента по имени/username..." autocomplete="off">
+          <ul id="payments-client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+        </div>
+        <div id="payments-client-view"></div>
+      </main>
+
+      <!-- Модалка "Записать платёж" — куда (пул/конкретный old-model заказ) + сумма + опциональные метки -->
+      <div id="record-payment-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Записать платёж</h2>
+            <button id="rp-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-4 space-y-3">
+            <div>
+              <label class="text-xs font-medium text-gray-500">Куда</label>
+              <select id="rp-target" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"></select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Сумма, ₽</label>
+              <input type="number" id="rp-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+            </div>
+            <div id="rp-note-row">
+              <label class="text-xs font-medium text-gray-500">Заметка (необязательно)</label>
+              <input type="text" id="rp-note" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Например: перевод от 11.08">
+            </div>
+            <div id="rp-split-section" class="hidden border-t border-gray-100 pt-3">
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" id="rp-split-toggle">
+                Сразу закрепить часть суммы за конкретной стадией (точечное распределение)
+              </label>
+              <div id="rp-split-rows" class="hidden mt-2 space-y-2"></div>
+              <button type="button" id="rp-split-add" class="hidden mt-2 text-xs font-medium text-indigo-600">+ добавить ещё одну метку</button>
+            </div>
+            <p id="rp-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="rp-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="rp-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Записать</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка "Закрепить" — точечное распределение на уже лежащие в пуле деньги -->
+      <div id="earmark-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Закрепить сумму</h2>
+            <button id="em-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p id="em-target" class="text-sm text-gray-600"></p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Сумма, ₽ (не больше остатка стадии)</label>
+              <input type="number" id="em-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Заметка (необязательно)</label>
+              <input type="text" id="em-note" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Например: по просьбе клиента">
+            </div>
+            <p id="em-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="em-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="em-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Закрепить</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // === Состояние экрана — живёт внутри render(), не утекает между заходами ===
+    let currentClient = null; // {telegramId, username, name, displayName}
+    let currentOrders = [];   // getOrdersForClientAdmin(...) + details:getOrderDetails(...) на каждый
+    let currentPayments = []; // getPaymentsForClient — только new-model, {id,date,amount,reason}
+    let currentEarmarks = []; // getEarmarksForClient — {id,orderId,stage,amount,note,createdBy,createdAt}
+    let currentCreditBalance = 0;
+    let earmarkContext = null; // {clientTelegramId, orderId, stage, remaining} — контекст открытой earmark-модалки
+
+    const clientSearch = document.getElementById('payments-client-search');
+    const clientDropdown = document.getElementById('payments-client-dropdown');
+    const clientView = document.getElementById('payments-client-view');
+
+    function showEmptyState() {
+      clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Найдите клиента, чтобы увидеть его оплаты.</div>';
+    }
+    showEmptyState();
+
+    const handleClientSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { clientDropdown.classList.remove('active'); return; }
+      let results;
+      try {
+        results = await callServer('searchClient', query);
+      } catch (error) {
+        return;
+      }
+      FormHelpers.renderDropdown(clientDropdown, results, (item) => `
+        <div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>
+      `, (item) => {
+        clientDropdown.classList.remove('active');
+        clientSearch.value = item.displayName;
+        selectClient(item);
+      });
+    }, 300);
+
+    clientSearch.addEventListener('input', handleClientSearch);
+    clientSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) clientDropdown.classList.add('active'); });
+    document.addEventListener('click', (e) => {
+      if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
+    }, { signal });
+
+    // Точка входа из другого экрана (например, будущая кнопка "Оплаты" на карточке заказа) —
+    // тот же приём, что navigateTo('orders/new', {...}) в wishlist-demand.js.
+    if (params && params.telegramId) {
+      const displayName = params.name || params.username || params.telegramId;
+      clientSearch.value = displayName;
+      selectClient({ telegramId: params.telegramId, username: params.username || '', name: params.name || '', displayName });
+    }
+
+    function selectClient(item) {
+      currentClient = item;
+      loadClientData();
+    }
+
+    async function loadClientData() {
+      clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        const [orderSummaries, payments, earmarks, creditBalance] = await Promise.all([
+          callServer('getOrdersForClientAdmin', currentClient.telegramId),
+          callServer('getPaymentsForClient', currentClient.telegramId),
+          callServer('getEarmarksForClient', currentClient.telegramId),
+          callServer('getClientCreditBalance', currentClient.telegramId)
+        ]);
+        const details = await Promise.all(orderSummaries.map((o) => callServer('getOrderDetails', o.orderId)));
+        currentOrders = orderSummaries.map((o, i) => Object.assign({}, o, { details: details[i] }));
+        currentPayments = payments;
+        currentEarmarks = earmarks;
+        currentCreditBalance = creditBalance;
+        renderClientView();
+      } catch (error) {
+        clientView.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    function earmarksForStage(orderId, stage) {
+      return currentEarmarks.filter((m) => m.orderId === orderId && m.stage === stage);
+    }
+
+    function renderClientView() {
+      const newModelOrders = currentOrders.filter((o) => o.isNewModel);
+      const oldModelOrders = currentOrders.filter((o) => !o.isNewModel);
+
+      clientView.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(currentClient.displayName || currentClient.name || currentClient.username)}</div>
+            <div class="text-[12px] text-gray-400">${escapeHtmlClient(currentClient.username || '')} · ID ${escapeHtmlClient(currentClient.telegramId)}</div>
+          </div>
+          <button id="change-client-btn" class="shrink-0 text-xs font-medium text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100">Сменить</button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
+          <div>
+            <div class="text-[11px] text-gray-400">Кредитный баланс</div>
+            <div class="text-lg font-bold text-gray-900">${money(currentCreditBalance)} ₽</div>
+            <div class="text-[11px] text-gray-400 mt-0.5">Заморожен, пока у клиента нет открытых заказов — применяется вручную.</div>
+          </div>
+          <button id="release-credit-btn" ${currentCreditBalance > 0 ? '' : 'disabled'} class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border ${currentCreditBalance > 0 ? 'text-indigo-600 border-indigo-100' : 'text-gray-300 border-gray-100 cursor-not-allowed'}">Освободить</button>
+        </div>
+
+        <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-4 flex items-center justify-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i> Записать платёж
+        </button>
+
+        ${newModelOrders.length > 0 ? `
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Новая финансовая модель</div>
+          ${newModelOrders.map((o) => renderNewModelOrderCard(o)).join('')}
+        ` : ''}
+
+        ${currentEarmarks.length > 0 ? `
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Активные метки (точечное распределение)</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 divide-y divide-gray-50">
+            ${currentEarmarks.map((m) => `
+              <div class="p-3 flex items-center justify-between gap-2 text-sm">
+                <div class="min-w-0">
+                  <div class="font-medium text-gray-800">🔒 ${money(m.amount)} ₽ — ${escapeHtmlClient(m.orderId)} / ${escapeHtmlClient(stageLabel(m.stage))}</div>
+                  <div class="text-[11px] text-gray-400">${m.note ? escapeHtmlClient(m.note) + ' · ' : ''}${escapeHtmlClient(m.createdBy || '')}</div>
+                </div>
+                <button data-action="cancel-earmark" data-id="${m.id}" class="shrink-0 text-xs font-medium text-red-500 px-2 py-1">Отменить</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${currentPayments.length > 0 ? `
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Платежи в общий пул</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 divide-y divide-gray-50">
+            ${currentPayments.map((p) => renderPaymentRow(p, 'pool')).join('')}
+          </div>
+        ` : ''}
+
+        ${oldModelOrders.length > 0 ? `
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Старая модель (по заказу)</div>
+          ${oldModelOrders.map((o) => renderOldModelOrderCard(o)).join('')}
+        ` : ''}
+
+        ${currentOrders.length === 0 ? '<div class="text-center text-sm text-gray-400 py-6">У клиента пока нет заказов.</div>' : ''}
+      `;
+
+      document.getElementById('change-client-btn').addEventListener('click', () => {
+        currentClient = null;
+        clientSearch.value = '';
+        showEmptyState();
+        clientSearch.focus();
+      });
+      document.getElementById('release-credit-btn').addEventListener('click', onReleaseCredit);
+      document.getElementById('open-record-payment-btn').addEventListener('click', openRecordPaymentModal);
+
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderPaymentRow(p, scope, orderId) {
+      return `
+        <div class="p-3 flex items-center justify-between gap-2 text-sm">
+          <div class="min-w-0">
+            <div class="font-medium text-gray-800">${money(p.amount)} ₽</div>
+            <div class="text-[11px] text-gray-400">${p.date ? new Date(p.date).toLocaleString('ru-RU') : ''}${p.reason ? ' · ' + escapeHtmlClient(p.reason) : ''}</div>
+          </div>
+          <div class="shrink-0 flex items-center gap-1">
+            <button data-action="edit-payment" data-scope="${scope}" data-order-id="${orderId || ''}" data-payment-id="${escapeHtmlClient(p.id)}" data-amount="${p.amount}" title="Изменить сумму" class="p-1.5 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+            <button data-action="cancel-payment" data-scope="${scope}" data-order-id="${orderId || ''}" data-payment-id="${escapeHtmlClient(p.id)}" title="Отменить" class="p-1.5 text-gray-400 hover:text-red-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderNewModelOrderCard(o) {
+      const d = o.details;
+      const stages = d.stagesBalance || [];
+      return `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="min-w-0">
+              <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
+              <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            ${stages.map((s) => renderStageRow(o.orderId, s)).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderStageRow(orderId, s) {
+      const marks = earmarksForStage(orderId, s.stage);
+      const earmarked = marks.reduce((sum, m) => sum + m.amount, 0);
+      const byPriority = Math.max(0, s.paid - earmarked);
+      const remaining = Math.max(0, s.remaining);
+      return `
+        <div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
+          <div class="min-w-0">
+            <div class="text-sm text-gray-700">${escapeHtmlClient(stageLabel(s.stage))} <span class="${s.covered ? 'text-emerald-600' : 'text-gray-400'} text-[11px]">${s.covered ? '✓ покрыто' : 'открыто'}</span></div>
+            <div class="text-[11px] text-gray-400">
+              ${money(s.paid)} / ${money(s.target)} ₽
+              ${earmarked > 0 ? ` · 🔒 ${money(earmarked)} ₽ вручную` : ''}
+              ${byPriority > 0 ? ` · ${money(byPriority)} ₽ по приоритету` : ''}
+            </div>
+          </div>
+          ${remaining > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${remaining}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Закрепить</button>` : ''}
+        </div>
+      `;
+    }
+
+    function renderOldModelOrderCard(o) {
+      // mainBalance.payments — байт-в-байт financeService.getOrderPaymentStatus(orderId,...),
+      // список платежей ИМЕННО этого заказа (не путать с paymentsRaw — сырыми
+      // Да/Нет-флагами формы, и не с client-скоуповым currentPayments, который
+      // существует только для new-model). См. ordersService.getMainBalanceForOrder.
+      const mb = o.details.mainBalance || { target: 0, paid: 0, remaining: 0, payments: [] };
+      const payments = mb.payments || [];
+      return `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="min-w-0">
+              <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
+              <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-sm font-semibold text-gray-900">${money(mb.paid)} / ${money(mb.target)} ₽</div>
+              <div class="text-[11px] ${mb.remaining <= 0.01 ? 'text-emerald-600' : 'text-gray-400'}">${mb.remaining <= 0.01 ? '✓ оплачено' : 'осталось ' + money(mb.remaining) + ' ₽'}</div>
+            </div>
+          </div>
+          ${payments.length > 0 ? `<div class="divide-y divide-gray-50 border-t border-gray-50">${payments.map((p) => renderPaymentRow(p, 'order', o.orderId)).join('')}</div>` : '<div class="text-[11px] text-gray-400">Платежей пока нет.</div>'}
+        </div>
+      `;
+    }
+
+    // === Делегирование кликов по динамически отрисованным кнопкам ===
+    clientView.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+
+      if (action === 'open-earmark') {
+        openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining));
+      } else if (action === 'cancel-earmark') {
+        if (!confirm('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.')) return;
+        try {
+          await callServer('cancelManualAllocation', parseInt(btn.dataset.id, 10), currentClient.telegramId);
+          await loadClientData();
+        } catch (error) {
+          alert('Не удалось отменить метку: ' + error.message);
+        }
+      } else if (action === 'edit-payment') {
+        const scope = btn.dataset.scope;
+        const currentAmount = btn.dataset.amount;
+        const raw = prompt('Новая сумма платежа, ₽:', currentAmount);
+        if (raw === null) return;
+        const amount = parseFloat(raw);
+        if (isNaN(amount) || amount <= 0) { alert('Сумма должна быть положительным числом.'); return; }
+        try {
+          if (scope === 'pool') {
+            await callServer('editClientPayment', currentClient.telegramId, parseInt(btn.dataset.paymentId, 10), amount);
+          } else {
+            await callServer('editOrderPayment', btn.dataset.orderId, btn.dataset.paymentId, amount);
+          }
+          await loadClientData();
+        } catch (error) {
+          alert('Не удалось изменить платёж: ' + error.message);
+        }
+      } else if (action === 'cancel-payment') {
+        if (!confirm('Отменить платёж? Деньги уйдут из пула клиента и распределение пересчитается заново.')) return;
+        const scope = btn.dataset.scope;
+        try {
+          if (scope === 'pool') {
+            await callServer('cancelClientPayment', currentClient.telegramId, parseInt(btn.dataset.paymentId, 10));
+          } else {
+            await callServer('cancelOrderPayment', btn.dataset.orderId, btn.dataset.paymentId);
+          }
+          await loadClientData();
+        } catch (error) {
+          alert('Не удалось отменить платёж: ' + error.message);
+        }
+      }
+    });
+
+    async function onReleaseCredit() {
+      if (currentCreditBalance <= 0) return;
+      if (!confirm(`Освободить ${money(currentCreditBalance)} ₽ кредита в общий пул клиента?`)) return;
+      try {
+        await callServer('releaseClientCreditForClient', currentClient.telegramId);
+        await loadClientData();
+      } catch (error) {
+        alert('Не удалось освободить кредит: ' + error.message);
+      }
+    }
+
+    // === Модалка "Записать платёж" ===
+    const rpModal = document.getElementById('record-payment-modal');
+    const rpTarget = document.getElementById('rp-target');
+    const rpAmount = document.getElementById('rp-amount');
+    const rpNoteRow = document.getElementById('rp-note-row');
+    const rpNote = document.getElementById('rp-note');
+    const rpSplitSection = document.getElementById('rp-split-section');
+    const rpSplitToggle = document.getElementById('rp-split-toggle');
+    const rpSplitRows = document.getElementById('rp-split-rows');
+    const rpSplitAdd = document.getElementById('rp-split-add');
+    const rpError = document.getElementById('rp-error');
+
+    function stageOptionsForSplit() {
+      const options = [];
+      currentOrders.filter((o) => o.isNewModel).forEach((o) => {
+        (o.details.stagesBalance || []).forEach((s) => {
+          if (s.remaining > 0.01) {
+            options.push({ orderId: o.orderId, stage: s.stage, label: `${o.orderId} — ${o.productDisplay} — ${stageLabel(s.stage)} (ещё нужно: ${money(s.remaining)} ₽)`, remaining: s.remaining });
+          }
+        });
+      });
+      return options;
+    }
+
+    function addSplitRow() {
+      const options = stageOptionsForSplit();
+      if (options.length === 0) return;
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2 split-row';
+      row.innerHTML = `
+        <select class="split-target flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
+          ${options.map((o) => `<option value="${o.orderId}|||${o.stage}">${escapeHtmlClient(o.label)}</option>`).join('')}
+        </select>
+        <input type="number" step="0.01" min="0.01" placeholder="₽" class="split-amount w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
+        <button type="button" class="split-remove text-gray-400 hover:text-red-500 shrink-0"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      `;
+      row.querySelector('.split-remove').addEventListener('click', () => row.remove());
+      rpSplitRows.appendChild(row);
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    rpSplitToggle.addEventListener('change', () => {
+      const on = rpSplitToggle.checked;
+      rpSplitRows.classList.toggle('hidden', !on);
+      rpSplitAdd.classList.toggle('hidden', !on);
+      if (on && rpSplitRows.children.length === 0) addSplitRow();
+    });
+    rpSplitAdd.addEventListener('click', addSplitRow);
+
+    function openRecordPaymentModal() {
+      rpError.classList.add('hidden');
+      rpAmount.value = '';
+      rpNote.value = '';
+      rpSplitToggle.checked = false;
+      rpSplitRows.innerHTML = '';
+      rpSplitRows.classList.add('hidden');
+      rpSplitAdd.classList.add('hidden');
+
+      // "Общий пул" доступен всегда, даже без единого заказа — клиент может
+      // заплатить заранее (§D допускает кредит без заказов вообще).
+      const oldModelOrders = currentOrders.filter((o) => !o.isNewModel);
+
+      rpTarget.innerHTML = `
+        <option value="pool">Общий пул (новая финансовая модель)</option>
+        ${oldModelOrders.map((o) => `<option value="order:${o.orderId}">${escapeHtmlClient(o.orderId)} — ${escapeHtmlClient(o.productDisplay)} (старая модель)</option>`).join('')}
+      `;
+      onTargetChange();
+      rpModal.classList.remove('hidden');
+      rpModal.classList.add('flex');
+    }
+
+    function onTargetChange() {
+      const isPool = rpTarget.value === 'pool';
+      rpNoteRow.classList.toggle('hidden', !isPool);
+      rpSplitSection.classList.toggle('hidden', !isPool);
+      if (!isPool) {
+        rpSplitToggle.checked = false;
+        rpSplitRows.classList.add('hidden');
+        rpSplitAdd.classList.add('hidden');
+      }
+    }
+    rpTarget.addEventListener('change', onTargetChange);
+
+    function closeRecordPaymentModal() {
+      rpModal.classList.add('hidden');
+      rpModal.classList.remove('flex');
+    }
+    document.getElementById('rp-close').addEventListener('click', closeRecordPaymentModal);
+    document.getElementById('rp-cancel').addEventListener('click', closeRecordPaymentModal);
+
+    document.getElementById('rp-save').addEventListener('click', async () => {
+      rpError.classList.add('hidden');
+      const amount = parseFloat(rpAmount.value);
+      if (isNaN(amount) || amount <= 0) { rpError.textContent = 'Укажите сумму больше нуля.'; rpError.classList.remove('hidden'); return; }
+
+      const target = rpTarget.value;
+      const saveBtn = document.getElementById('rp-save');
+      saveBtn.disabled = true;
+      try {
+        if (target === 'pool') {
+          await callServer('recordClientPaymentDirect', currentClient.telegramId, amount, rpNote.value.trim(), generateRequestId());
+
+          if (rpSplitToggle.checked) {
+            const rows = Array.from(rpSplitRows.querySelectorAll('.split-row'));
+            for (const row of rows) {
+              const [orderId, stage] = row.querySelector('.split-target').value.split('|||');
+              const splitAmount = parseFloat(row.querySelector('.split-amount').value);
+              if (isNaN(splitAmount) || splitAmount <= 0) continue; // пустая строка — просто пропускаем, деньги остаются в пуле
+              await callServer('createManualAllocation', currentClient.telegramId, orderId, stage, splitAmount, rpNote.value.trim(), generateRequestId());
+            }
+          }
+        } else {
+          const orderId = target.slice('order:'.length);
+          await callServer('recordOrderPayment', orderId, amount, generateRequestId());
+        }
+        closeRecordPaymentModal();
+        await loadClientData();
+      } catch (error) {
+        rpError.textContent = 'Не удалось записать платёж: ' + error.message;
+        rpError.classList.remove('hidden');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    // === Модалка "Закрепить" (standalone-вход точечного распределения) ===
+    const emModal = document.getElementById('earmark-modal');
+    const emTargetText = document.getElementById('em-target');
+    const emAmount = document.getElementById('em-amount');
+    const emNote = document.getElementById('em-note');
+    const emError = document.getElementById('em-error');
+
+    function openEarmarkModal(orderId, stage, remaining) {
+      earmarkContext = { orderId, stage, remaining };
+      emError.classList.add('hidden');
+      emAmount.value = remaining > 0 ? remaining.toFixed(2) : '';
+      emAmount.max = remaining;
+      emNote.value = '';
+      emTargetText.textContent = `Заказ ${orderId} — ${stageLabel(stage)}`;
+      emModal.classList.remove('hidden');
+      emModal.classList.add('flex');
+    }
+    function closeEarmarkModal() {
+      emModal.classList.add('hidden');
+      emModal.classList.remove('flex');
+    }
+    document.getElementById('em-close').addEventListener('click', closeEarmarkModal);
+    document.getElementById('em-cancel').addEventListener('click', closeEarmarkModal);
+
+    document.getElementById('em-save').addEventListener('click', async () => {
+      emError.classList.add('hidden');
+      const amount = parseFloat(emAmount.value);
+      if (isNaN(amount) || amount <= 0) { emError.textContent = 'Укажите сумму больше нуля.'; emError.classList.remove('hidden'); return; }
+
+      const saveBtn = document.getElementById('em-save');
+      saveBtn.disabled = true;
+      try {
+        await callServer('createManualAllocation', currentClient.telegramId, earmarkContext.orderId, earmarkContext.stage, amount, emNote.value.trim(), generateRequestId());
+        closeEarmarkModal();
+        await loadClientData();
+      } catch (error) {
+        emError.textContent = 'Не удалось закрепить сумму: ' + error.message;
+        emError.classList.remove('hidden');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+};
