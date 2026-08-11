@@ -305,9 +305,12 @@ window.Screens.orderEdit = {
                 <input type="number" id="fee-rub" class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0" step="1">
                 <span class="text-sm text-gray-500 font-medium">₽</span>
               </div>
-              <div class="flex items-center gap-1 shrink-0 ml-auto" id="booking-paid-toggle" data-value="Нет">
-                <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-                <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+              <div class="flex items-center gap-2 shrink-0 ml-auto">
+                <span class="text-[11px] text-gray-400 text-right leading-tight max-w-[80px]">Клиент оплатил комиссию как бронь?</span>
+                <div class="flex items-center gap-1 shrink-0" id="booking-paid-toggle" data-value="Нет">
+                  <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+                  <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+                </div>
               </div>
             </div>
           </div>
@@ -328,6 +331,12 @@ window.Screens.orderEdit = {
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
+              <!-- Новая финансовая модель (11.08.2026) — движок сам решает "оплачено ли
+                   Основная" по waterfall, тумблер выше для new-model заказов НИКОГДА не
+                   читается сервером (см. ordersService.updateOrder — эти 4 колонки для
+                   new-model пишет ТОЛЬКО applyRecomputeSideEffects). Спрятан здесь и
+                   заменён read-only статусом, чтобы не выглядеть как рабочий переключатель. -->
+              <div id="main-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
             </div>
           </div>
 
@@ -347,6 +356,7 @@ window.Screens.orderEdit = {
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
+              <div id="weight-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
             </div>
           </div>
 
@@ -366,6 +376,7 @@ window.Screens.orderEdit = {
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
+              <div id="delivery-kzrf-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
             </div>
           </div>
 
@@ -385,6 +396,7 @@ window.Screens.orderEdit = {
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
+              <div id="delivery-rf-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
             </div>
           </div>
 
@@ -846,6 +858,45 @@ window.Screens.orderEdit = {
       FormHelpers.setTagToggle('weight-paid-toggle', details.payments.weight.paid === 'Да' || details.payments.weight.paid === 'да' ? 'Да' : 'Нет');
       FormHelpers.setTagToggle('delivery-kzrf-paid-toggle', details.payments.deliveryKzRf.paid === 'Да' || details.payments.deliveryKzRf.paid === 'да' ? 'Да' : 'Нет');
       FormHelpers.setTagToggle('delivery-rf-paid-toggle', details.payments.deliveryRf.paid === 'Да' || details.payments.deliveryRf.paid === 'да' ? 'Да' : 'Нет');
+
+      // Новая финансовая модель — ЧЕТЫРЕ тумблера (Основная/Вес/СДЭК/Доставка_РФ)
+      // дублируют то, что уже решает waterfall и НИКОГДА не читаются сервером
+      // для new-model заказов (см. ordersService.updateOrder — эти 4 колонки
+      // пишет ТОЛЬКО applyRecomputeSideEffects); суммы (weight-sum-input и т.д.)
+      // остаются рабочими — их updateOrder действительно читает и ревизует цель.
+      // §17 E.4/F5 задел, здесь — только эта строка формы, не весь F5. Old-model
+      // — без изменений, тумблеры остаются единственным механизмом (ledger их
+      // не покрывает).
+      function applyNewModelReadonlyStage(toggleId, readonlyId, stage) {
+        const toggleEl = document.getElementById(toggleId);
+        const readonlyEl = document.getElementById(readonlyId);
+        if (!details.isNewModel) {
+          toggleEl.classList.remove('hidden');
+          readonlyEl.classList.add('hidden');
+          return;
+        }
+        toggleEl.classList.add('hidden');
+        readonlyEl.classList.remove('hidden');
+        const s = (details.stagesBalance || []).find((st) => st.stage === stage);
+        if (s && s.covered) {
+          readonlyEl.textContent = '✓ Оплачено';
+          readonlyEl.className = 'shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700';
+        } else if (s && s.target > 0) {
+          readonlyEl.textContent = `Не покрыто: ${s.paid.toFixed(2)}/${s.target.toFixed(2)} ₽`;
+          readonlyEl.className = 'shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500';
+        } else {
+          readonlyEl.textContent = 'Цель ещё не известна';
+          readonlyEl.className = 'shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-200 text-gray-400';
+        }
+      }
+      applyNewModelReadonlyStage('main-paid-toggle', 'main-paid-readonly', 'Основная');
+      applyNewModelReadonlyStage('weight-paid-toggle', 'weight-paid-readonly', 'Вес');
+      // СДЭК/СДЭК_Индивидуальная — какая из двух реально в stagesBalance (зависит
+      // от ветки заказа, см. paymentsService.stagesForBranch), та и покажется —
+      // ищем совпадение по любому из двух имён, не завязываемся на sdekTypeSelect.
+      const sdekStageName = (details.stagesBalance || []).some((s) => s.stage === 'СДЭК_Индивидуальная') ? 'СДЭК_Индивидуальная' : 'СДЭК';
+      applyNewModelReadonlyStage('delivery-kzrf-paid-toggle', 'delivery-kzrf-paid-readonly', sdekStageName);
+      applyNewModelReadonlyStage('delivery-rf-paid-toggle', 'delivery-rf-paid-readonly', 'Доставка_РФ');
 
       weightSumInput.value = details.payments.weight.sum || '';
       deliveryKzRfSumInput.value = details.payments.deliveryKzRf.sum || '';
