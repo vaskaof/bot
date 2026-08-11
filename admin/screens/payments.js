@@ -60,6 +60,7 @@ window.Screens.payments = {
             <div>
               <label class="text-xs font-medium text-gray-500">Куда</label>
               <select id="rp-target" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"></select>
+              <p id="rp-target-hint" class="hidden text-[11px] text-gray-400 mt-1">У клиента только заказы новой модели — деньги всегда идут в общий пул, дальше их распределяет автоматика по приоритету (или ручная метка «Закрепить»), а не выбор конкретного заказа.</p>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Сумма, ₽</label>
@@ -195,6 +196,18 @@ window.Screens.payments = {
       const newModelOrders = currentOrders.filter((o) => o.isNewModel);
       const oldModelOrders = currentOrders.filter((o) => !o.isNewModel);
 
+      // "Свободный остаток пула" — считается на фронте, не отдаётся отдельным
+      // эндпоинтом (то же самое число вернул бы recomputeForClient.leftover,
+      // но у нас нет read-only метода для него без мутации) — сумма НЕотменённых
+      // платежей минус кредит минус уже распределённое (по приоритету ИЛИ
+      // метками — stagesBalance[].paid уже учитывает оба источника). Именно
+      // ЭТО число объясняет "деньги не показываются" — деньги реально лежат
+      // здесь, просто ни одна стадия ещё не покрыта целиком.
+      const totalPoolPayments = currentPayments.reduce((sum, p) => sum + p.amount, 0);
+      const totalAllocated = newModelOrders.reduce((sum, o) =>
+        sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
+      const poolLeftover = Math.max(0, totalPoolPayments - currentCreditBalance - totalAllocated);
+
       clientView.innerHTML = `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
           <div class="min-w-0">
@@ -202,6 +215,28 @@ window.Screens.payments = {
             <div class="text-[12px] text-gray-400">${escapeHtmlClient(currentClient.username || '')} · ID ${escapeHtmlClient(currentClient.telegramId)}</div>
           </div>
           <button id="change-client-btn" class="shrink-0 text-xs font-medium text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100">Сменить</button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <div class="text-[11px] text-gray-400">Всего оплачено в пул</div>
+              <div class="text-lg font-bold text-gray-900">${money(totalPoolPayments)} ₽</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-400">Распределено по стадиям</div>
+              <div class="text-lg font-bold text-gray-900">${money(totalAllocated)} ₽</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-400">Свободный остаток</div>
+              <div class="text-lg font-bold ${poolLeftover > 0 ? 'text-amber-600' : 'text-gray-900'}">${money(poolLeftover)} ₽</div>
+            </div>
+          </div>
+          ${poolLeftover > 0 ? `
+            <p class="text-[11px] text-gray-400 mt-2 pt-2 border-t border-gray-50">
+              Стадии финансируются ЦЕЛИКОМ по очереди (Основная → Вес → СДЭК → Доставка) — пока пула не хватает на всю стадию сразу по ВСЕМ открытым заказам клиента, она показывает 0% покрытия, даже если деньги уже есть. Обойти очередь можно кнопкой «Закрепить» на конкретной стадии.
+            </p>
+          ` : ''}
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
@@ -302,15 +337,22 @@ window.Screens.payments = {
       const earmarked = marks.reduce((sum, m) => sum + m.amount, 0);
       const byPriority = Math.max(0, s.paid - earmarked);
       const remaining = Math.max(0, s.remaining);
+      // target=0 в stagesBalance неотличимо на бэке от "стадия ещё не участвует
+      // в приоритетном списке" (§8a — цель ещё не известна, а не буквально
+      // бесплатно) — реальных нулевых стадий в этом бизнесе не бывает, поэтому
+      // это безопасная эвристика отображения, не бэкенд-логика.
+      const targetUnknown = s.target <= 0;
       return `
         <div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
           <div class="min-w-0">
-            <div class="text-sm text-gray-700">${escapeHtmlClient(stageLabel(s.stage))} <span class="${s.covered ? 'text-emerald-600' : 'text-gray-400'} text-[11px]">${s.covered ? '✓ покрыто' : 'открыто'}</span></div>
-            <div class="text-[11px] text-gray-400">
-              ${money(s.paid)} / ${money(s.target)} ₽
-              ${earmarked > 0 ? ` · 🔒 ${money(earmarked)} ₽ вручную` : ''}
-              ${byPriority > 0 ? ` · ${money(byPriority)} ₽ по приоритету` : ''}
-            </div>
+            <div class="text-sm text-gray-700">${escapeHtmlClient(stageLabel(s.stage))} <span class="${s.covered ? 'text-emerald-600' : 'text-gray-400'} text-[11px]">${s.covered ? '✓ покрыто' : (targetUnknown ? 'цель не известна' : 'открыто')}</span></div>
+            ${targetUnknown ? '' : `
+              <div class="text-[11px] text-gray-400">
+                ${money(s.paid)} / ${money(s.target)} ₽
+                ${earmarked > 0 ? ` · 🔒 ${money(earmarked)} ₽ вручную` : ''}
+                ${byPriority > 0 ? ` · ${money(byPriority)} ₽ по приоритету` : ''}
+              </div>
+            `}
           </div>
           ${remaining > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${remaining}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Закрепить</button>` : ''}
         </div>
@@ -427,7 +469,13 @@ window.Screens.payments = {
 
     function addSplitRow() {
       const options = stageOptionsForSplit();
-      if (options.length === 0) return;
+      if (options.length === 0) {
+        // Раньше здесь был тихий no-op (return без объяснения) — с точки зрения
+        // менеджера чекбокс/кнопка просто "ничего не делали", неотличимо от
+        // поломки. Теперь явно говорим почему нечего распределять.
+        rpSplitRows.innerHTML = '<p class="text-xs text-gray-400 py-1">Нет открытых стадий с известной целью ни у одного заказа новой модели — сначала должна быть задана цена веса/СДЭК/доставки хотя бы одного открытого заказа.</p>';
+        return;
+      }
       const row = document.createElement('div');
       row.className = 'flex items-center gap-2 split-row';
       row.innerHTML = `
@@ -445,8 +493,10 @@ window.Screens.payments = {
     rpSplitToggle.addEventListener('change', () => {
       const on = rpSplitToggle.checked;
       rpSplitRows.classList.toggle('hidden', !on);
-      rpSplitAdd.classList.toggle('hidden', !on);
       if (on && rpSplitRows.children.length === 0) addSplitRow();
+      // Кнопка "+ добавить ещё одну метку" видна только если есть ЧТО добавлять —
+      // иначе это ещё один вариант того же тихого no-op, что чинили выше.
+      rpSplitAdd.classList.toggle('hidden', !on || stageOptionsForSplit().length === 0);
     });
     rpSplitAdd.addEventListener('click', addSplitRow);
 
@@ -467,6 +517,7 @@ window.Screens.payments = {
         <option value="pool">Общий пул (новая финансовая модель)</option>
         ${oldModelOrders.map((o) => `<option value="order:${o.orderId}">${escapeHtmlClient(o.orderId)} — ${escapeHtmlClient(o.productDisplay)} (старая модель)</option>`).join('')}
       `;
+      document.getElementById('rp-target-hint').classList.toggle('hidden', oldModelOrders.length > 0);
       onTargetChange();
       rpModal.classList.remove('hidden');
       rpModal.classList.add('flex');
