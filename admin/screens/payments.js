@@ -208,6 +208,21 @@ window.Screens.payments = {
         sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
       const poolLeftover = Math.max(0, totalPoolPayments - currentCreditBalance - totalAllocated);
 
+      // "Сколько надо заплатить" — по запросу VASY, чтобы менеджер сразу видел
+      // итог, не складывая стадии в уме. New-model — точная сумма по ВСЕМ
+      // стадиям (stagesBalance уже покрывает Основная+Вес+СДЭК+Доставка_РФ).
+      // Old-model — только "Основная" (mainBalance) — у Вес/СДЭК/Доставка_РФ
+      // там нет partial-tracking, только булев флаг, честной суммы не
+      // существует, поэтому не притворяемся, что она есть (сноска ниже).
+      const newModelTarget = newModelOrders.reduce((sum, o) =>
+        sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.target, 0), 0);
+      const newModelPaid = totalAllocated;
+      const oldModelTarget = oldModelOrders.reduce((sum, o) => sum + (o.details.mainBalance ? o.details.mainBalance.target : 0), 0);
+      const oldModelPaid = oldModelOrders.reduce((sum, o) => sum + (o.details.mainBalance ? o.details.mainBalance.paid : 0), 0);
+      const grandTarget = newModelTarget + oldModelTarget;
+      const grandPaid = newModelPaid + oldModelPaid;
+      const grandRemaining = Math.max(0, grandTarget - grandPaid);
+
       clientView.innerHTML = `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
           <div class="min-w-0">
@@ -216,6 +231,17 @@ window.Screens.payments = {
           </div>
           <button id="change-client-btn" class="shrink-0 text-xs font-medium text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100">Сменить</button>
         </div>
+
+        ${currentOrders.length > 0 ? `
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+            <div class="text-[11px] text-gray-400 mb-1">Нужно заплатить по всем заказам</div>
+            <div class="flex items-baseline gap-2">
+              <div class="text-2xl font-bold text-gray-900">${money(grandRemaining)} ₽</div>
+              <div class="text-xs text-gray-400">осталось из ${money(grandTarget)} ₽ (оплачено ${money(grandPaid)} ₽)</div>
+            </div>
+            ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели считается только «Основная» — вес/СДЭК/доставка по РФ там без частичного учёта, не включены.</p>` : ''}
+          </div>
+        ` : ''}
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-4">
@@ -317,6 +343,8 @@ window.Screens.payments = {
     function renderNewModelOrderCard(o) {
       const d = o.details;
       const stages = d.stagesBalance || [];
+      const orderTarget = stages.reduce((sum, s) => sum + s.target, 0);
+      const orderPaid = stages.reduce((sum, s) => sum + s.paid, 0);
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-2 mb-2">
@@ -324,6 +352,12 @@ window.Screens.payments = {
               <div class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
               <div class="text-[11px] text-gray-400">№ ${escapeHtmlClient(o.orderId)} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
             </div>
+            ${orderTarget > 0 ? `
+              <div class="text-right shrink-0">
+                <div class="text-sm font-semibold text-gray-900">${money(orderPaid)} / ${money(orderTarget)} ₽</div>
+                <div class="text-[11px] ${orderPaid >= orderTarget ? 'text-emerald-600' : 'text-gray-400'}">${orderPaid >= orderTarget ? '✓ по заказу оплачено' : 'по заказу нужно ' + money(orderTarget - orderPaid) + ' ₽'}</div>
+              </div>
+            ` : ''}
           </div>
           <div class="space-y-1.5">
             ${stages.map((s) => renderStageRow(o.orderId, s)).join('')}
