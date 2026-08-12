@@ -47,12 +47,18 @@ window.Screens.profile = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="credit-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1">
             <span>💰</span><span>Кредитный баланс</span>
           </div>
           <div id="credit-amount" class="text-xl font-semibold text-gray-900">0 ₽</div>
-          <div class="text-[11px] text-gray-400 mt-1">На распределении менеджера — сумма закреплена за вами и будет направлена на ближайшую оплату по согласованию с вами.</div>
+          <div class="text-[11px] text-gray-400 mt-1">Заморожен, пока нет открытых заказов — применяется вручную по согласованию с менеджером.</div>
+
+          <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1 mt-3 pt-3 border-t border-gray-50">
+            <span>⏳</span><span>На распределении</span>
+          </div>
+          <div id="pool-leftover-amount" class="text-xl font-semibold text-gray-900">0 ₽</div>
+          <div class="text-[11px] text-gray-400 mt-1">Деньги уже в пуле, но пока не покрыли очередной этап оплаты целиком — как только накопится нужная сумма, менеджер их распределит.</div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -166,23 +172,33 @@ window.Screens.profile = {
     loadAll();
 
     async function loadAll() {
-      await Promise.all([loadCreditBalance(), loadReferralInfo(), loadNotificationSettings()]);
+      await Promise.all([loadCreditBalance(), loadPoolLeftover(), loadReferralInfo(), loadNotificationSettings()]);
     }
 
+    // Карточка балансов — ВСЕГДА видна, включая нулевые значения (VASY,
+    // 12.08.2026: "не скрывай нулевые показатели в виде валют" — раньше
+    // карточка кредита пряталась при 0 ₽, что читалось как "раздел не
+    // работает", а не как "баланс реально нулевой").
     async function loadCreditBalance() {
       try {
         const amount = await callServer('getMyCreditBalance');
-        const card = document.getElementById('credit-card');
-        if (amount > 0) {
-          document.getElementById('credit-amount').textContent = `${amount.toFixed(2)} ₽`;
-          card.classList.remove('hidden');
-        } else {
-          card.classList.add('hidden');
-        }
+        document.getElementById('credit-amount').textContent = `${amount.toFixed(2)} ₽`;
       } catch (error) {
-        // Тихий фейл — кредит не критичен для остального экрана, карточка
-        // просто останется скрытой (тот же принцип, что и её "нет остатка").
         console.error('getMyCreditBalance:', error.message);
+      }
+    }
+
+    // "На распределении" — отдельное число от кредита (VASY, 12.08.2026):
+    // кредит замораживается только когда у клиента НЕТ открытых заказов;
+    // это — деньги, уже лежащие в пуле по открытым заказам, но ещё не
+    // покрывшие ни одну стадию оплаты целиком (см. paymentsService.
+    // getClientPoolLeftover — тир финансируется целиком-или-никак).
+    async function loadPoolLeftover() {
+      try {
+        const amount = await callServer('getMyPoolLeftover');
+        document.getElementById('pool-leftover-amount').textContent = `${amount.toFixed(2)} ₽`;
+      } catch (error) {
+        console.error('getMyPoolLeftover:', error.message);
       }
     }
 
