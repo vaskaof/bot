@@ -15,6 +15,7 @@ const ROUTES = [
   { path: 'wishlist', screen: 'wishlist', navKey: 'wishlist' },
   { path: 'orders', screen: 'orders', navKey: 'orders' },
   { path: 'contests', screen: 'contests', navKey: 'contests' },
+  { path: 'profile', screen: 'profile', navKey: 'profile' },
 ];
 const DEFAULT_ROUTE = 'news';
 

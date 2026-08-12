@@ -2,11 +2,15 @@
 
 /**
  * Экран "Конкурсы" — перенесён из client/contests.html (Phase 2 SPA,
- * 02.08.2026). Самый сложный экран (баланс/рефералка/лотереи/задания + две
- * модалки) — как и в wishlist.js, всё состояние и обвязка модалок, которые
+ * 02.08.2026). Как и в wishlist.js, всё состояние и обвязка модалок, которые
  * раньше жили на верхнем уровне <script> страницы, перенесены ВНУТРЬ render(),
  * чтобы не утекать между заходами на экран в общем SPA-контексте.
  * showSaveToast — общая функция из router.js.
+ *
+ * Баланс сов/билетов + рефералка ПЕРЕНЕСЕНЫ на новый экран "Профиль"
+ * (Подфаза 3.1+3.2 client_display_overhaul, 12.08.2026) — этот экран теперь
+ * только лотереи/задания. Помощь по «?» оставлена — билеты по-прежнему
+ * тратятся именно здесь (бронь ячеек лотерей Тип1).
  */
 window.Screens = window.Screens || {};
 window.Screens.contests = {
@@ -37,34 +41,6 @@ window.Screens.contests = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-              <span>🦉</span><span>Совы</span>
-            </div>
-            <span id="sovy-progress-label" class="text-xs text-gray-400">0/100</span>
-          </div>
-          <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-            <div id="sovy-progress-bar" class="h-full bg-indigo-500 rounded-full transition-all" style="width:0%"></div>
-          </div>
-          <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 mt-3">
-            <span>🎟️</span><span>Билеты: <span id="tickets-count">0</span></span>
-          </div>
-          <div class="text-[11px] text-gray-400 mt-2">100 Сов = 1 Билет для лотерей с ячейками (бейдж «Премиум») — подробнее по «?» в шапке</div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-          <div class="text-sm font-semibold text-gray-900 mb-1">🎁 Пригласите друга</div>
-          <div id="referral-text" class="text-[12px] text-gray-500 mb-2">Загрузка...</div>
-          <div class="flex items-center gap-2">
-            <input type="text" id="referral-link-input" readonly
-              class="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 bg-gray-50">
-            <button id="copy-referral-btn" type="button" class="shrink-0 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-medium">
-              Скопировать
-            </button>
-          </div>
-        </div>
-
         <div class="text-[11px] text-gray-400 px-1 mb-2">Лотереи</div>
         <div id="lotteries-list"></div>
         <div id="lotteries-empty-message" class="hidden text-center text-sm text-gray-400 py-10 mb-4">Активных лотерей пока нет.</div>
@@ -143,7 +119,7 @@ window.Screens.contests = {
     });
 
     async function loadAll() {
-      await Promise.all([loadReferralInfo(), loadTasks(), loadLotteries()]);
+      await Promise.all([loadTasks(), loadLotteries()]);
     }
 
     async function loadLotteries() {
@@ -245,27 +221,6 @@ window.Screens.contests = {
       }
 
       return card;
-    }
-
-    async function loadReferralInfo() {
-      try {
-        const info = await callServer('getReferralInfo');
-        document.getElementById('sovy-progress-label').textContent = `${info.balance.sovyProgress}/100`;
-        document.getElementById('sovy-progress-bar').style.width = `${info.balance.sovyProgress}%`;
-        document.getElementById('tickets-count').textContent = info.balance.tickets;
-
-        const referralText = document.getElementById('referral-text');
-        const referralInput = document.getElementById('referral-link-input');
-        if (info.link) {
-          referralText.textContent = `Друг получит ${info.inviteeReward} сов сразу, а вы — ${info.referrerReward} сов за его первый оплаченный заказ.`;
-          referralInput.value = info.link;
-        } else {
-          referralText.textContent = 'Не удалось собрать ссылку, попробуйте обновить страницу.';
-          referralInput.value = '';
-        }
-      } catch (error) {
-        document.getElementById('referral-text').textContent = `Ошибка загрузки: ${error.message}`;
-      }
     }
 
     async function loadTasks() {
@@ -425,18 +380,6 @@ window.Screens.contests = {
       boardModal.classList.remove('flex');
       boardLotteryId = null;
       if (reloadAll) reloadAll();
-    });
-
-    document.getElementById('copy-referral-btn').addEventListener('click', async () => {
-      const input = document.getElementById('referral-link-input');
-      if (!input.value) return;
-      try {
-        await navigator.clipboard.writeText(input.value);
-        showSaveToast(true, 'Ссылка скопирована');
-      } catch (error) {
-        input.select();
-        showSaveToast(false, 'Не удалось скопировать — выделите ссылку вручную');
-      }
     });
   }
 };
