@@ -33,6 +33,22 @@ window.Screens.orderNew = {
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
+        <div id="bulk-mode-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+
+        <!-- "Несколько сразу" (13.08.2026, bulk order creation) — общие поля
+             формы заполняются один раз, клиент+сумма — построчно. Отдельная
+             кнопка "Дублировать" на экране редактирования заказа открывает
+             этот же режим с 1 предзаполненной строкой. -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between">
+          <div>
+            <div class="text-sm font-medium text-gray-700">Несколько сразу</div>
+            <div class="text-[11px] text-gray-400">Общие поля ниже заполняются один раз, клиент и сумма — по каждой строке отдельно.</div>
+          </div>
+          <button type="button" id="bulk-mode-toggle" class="shrink-0 relative w-11 h-6 rounded-full bg-gray-200 transition-colors" data-value="0">
+            <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"></span>
+          </button>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
           <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -165,7 +181,7 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+          <div id="single-client-row" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0ea5e9] flex items-center justify-center shrink-0">
                 <i data-lucide="send" class="w-5 h-5"></i>
@@ -181,12 +197,26 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+          <div id="bulk-rows-section" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-3">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-gray-700">Клиенты и суммы</span>
+              <div class="flex items-center gap-2">
+                <button type="button" id="bulk-copy-amount-btn" class="text-[11px] text-indigo-600 font-medium">Скопировать сумму во все</button>
+                <button type="button" id="bulk-from-wishlist-btn" class="text-[11px] text-indigo-600 font-medium">Из листа ожидания</button>
+              </div>
+            </div>
+            <div id="bulk-rows-list" class="flex flex-col gap-2"></div>
+            <button type="button" id="bulk-add-row-btn" class="self-start text-sm text-indigo-600 font-medium flex items-center gap-1">
+              <i data-lucide="plus" class="w-4 h-4"></i> Добавить клиента
+            </button>
+          </div>
+
+          <div id="amount-section" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
                 <i data-lucide="dollar-sign" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Количество</span>
+              <span class="text-sm font-medium text-gray-700" id="amount-section-label">Количество</span>
             </div>
             <div class="flex-1 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div class="flex items-center gap-2 relative">
@@ -247,7 +277,7 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
+          <div id="total-payment-section" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                 <i data-lucide="wallet" class="w-5 h-5"></i>
@@ -262,7 +292,7 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 bg-[#f8fafc] rounded-b-2xl">
+          <div id="main-amount-received-section" class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 bg-[#f8fafc] rounded-b-2xl">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                 <i data-lucide="hand-coins" class="w-5 h-5"></i>
@@ -307,11 +337,12 @@ window.Screens.orderNew = {
       return callServer('refreshRate').then(rates => rates.finalRates || null);
     }
 
-    async function saveOrder() {
-      const client = manualClientData
-        ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
-        : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
-      const orderData = {
+    // Общие поля — одинаковы для одиночного заказа И для каждой строки
+    // "Несколько сразу" (13.08.2026). client/amount/bookingSum/bookingPaid/
+    // mainSum/mainAmountReceivedAtCreation — НЕ общие, передаются отдельно
+    // вызывающей стороной (см. saveOrder/saveBulkOrders ниже).
+    function buildSharedOrderData() {
+      return {
         remark: noteInput.value,
         productOriginal: releaseSearch.value,
         statusDelivery: document.querySelector('select[data-dict="statusDelivery"]').value,
@@ -320,18 +351,59 @@ window.Screens.orderNew = {
         purchaseAccount: document.querySelector('select[data-dict="purchaseAccount"]').value,
         cargo: document.querySelector('select[data-dict="cargo"]').value,
         dateOrder: dateInput.value,
-        client: client,
         currency: currencyCurrencyValue(),
+        notifyClient: document.getElementById('notify-client-checkbox').checked,
+        purchaseLink: purchaseLinkInput.value.trim()
+      };
+    }
+
+    async function saveOrder() {
+      const client = manualClientData
+        ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
+        : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
+      const orderData = {
+        ...buildSharedOrderData(),
+        client: client,
         amount: amountInput.value,
         bookingSum: feeRubInput.value,
         bookingPaid: document.getElementById('booking-paid-toggle').dataset.value,
         mainSum: totalPaymentInput.value,
         mainAmountReceivedAtCreation: mainAmountReceivedInput.value,
-        notifyClient: document.getElementById('notify-client-checkbox').checked,
-        purchaseLink: purchaseLinkInput.value.trim(),
         wishlistId: prefillWishlistId || ''
       };
       return callServer('createOrder', orderData);
+    }
+
+    // "Несколько сразу" — N полных orderData, backend (createOrdersBatch)
+    // просто вызывает createOrder на каждый по очереди, вся денежная логика
+    // переиспользуется как есть (см. личную память Architect'а про причину,
+    // почему это НЕ одна атомарная транзакция). "Оплачена ли бронь?"/
+    // "Основная оплата"/"Уже получено" сознательно не передаются — см.
+    // комментарий у setBulkMode.
+    async function saveBulkOrders() {
+      const shared = buildSharedOrderData();
+      const ordersDataList = bulkRows
+        .filter((row) => row.telegramId || row.manualClientData)
+        .map((row) => {
+          const amountRub = bulkAmountRub(row.amountEl.value);
+          const percent = parseFloat(feePercentInput.value) || 0;
+          const feeRub = amountRub * (percent / 100);
+          const mainSum = amountRub + feeRub;
+          const client = row.manualClientData
+            ? { telegramId: '', username: row.manualClientData.username, name: row.manualClientData.name }
+            : { telegramId: row.telegramId, username: row.username, name: row.name };
+          return {
+            ...shared,
+            client,
+            amount: row.amountEl.value,
+            bookingSum: feeRub > 0 ? feeRub.toFixed(2) : '',
+            mainSum: mainSum > 0 ? mainSum.toFixed(2) : ''
+          };
+        });
+      if (ordersDataList.length === 0) {
+        throw new Error('Не заполнено ни одной строки с клиентом');
+      }
+      return callServer('createOrdersBatch', ordersDataList);
     }
 
     function currencyCurrencyValue() {
@@ -582,6 +654,203 @@ window.Screens.orderNew = {
       }
     }, { signal });
 
+    // --- "Несколько сразу" (13.08.2026, bulk order creation) ---
+    // Общие поля формы (Выпуск/Доставка/Статус/Канал/Аккаунт/Карго/Дата/
+    // Валюта+курс/Комиссия %) используются как есть для КАЖДОЙ строки; поле
+    // "Телеграм" превращается в список строк "клиент + сумма". "Оплачена ли
+    // бронь?"/"Основная оплата"/"Уже получено при оформлении" в этом режиме
+    // НЕ показываются и НЕ отправляются (см. Implementation Plan, 13.08.2026) —
+    // каждый созданный заказ стартует с чистого "Нет"/пусто по этим полям,
+    // менеджер донастраивает их индивидуально на экране редактирования, если
+    // нужно (тот же принцип, что и явное требование VASY не копировать флаг
+    // брони при дублировании — здесь применено единообразно ко всей пачке).
+    let bulkMode = false;
+    let bulkRows = []; // { id, rowEl, searchEl, dropdownEl, amountEl, sumEl, telegramId, username, name, manualClientData }
+    let bulkRowSeq = 0;
+
+    const bulkModeToggle = document.getElementById('bulk-mode-toggle');
+    const bulkModeBanner = document.getElementById('bulk-mode-banner');
+    const singleClientRow = document.getElementById('single-client-row');
+    const bulkRowsSection = document.getElementById('bulk-rows-section');
+    const bulkRowsList = document.getElementById('bulk-rows-list');
+    const amountSectionLabel = document.getElementById('amount-section-label');
+    const totalPaymentSection = document.getElementById('total-payment-section');
+    const mainAmountReceivedSection = document.getElementById('main-amount-received-section');
+    const bookingPaidRow = document.getElementById('booking-paid-toggle').closest('.field-row');
+
+    function bulkAmountRub(rawAmount) {
+      const amountVal = parseFloat(rawAmount) || 0;
+      return amountVal * currentRate;
+    }
+
+    function recalcBulkRowSum(row) {
+      const amountRub = bulkAmountRub(row.amountEl.value);
+      const percent = parseFloat(feePercentInput.value) || 0;
+      const feeRub = amountRub * (percent / 100);
+      const mainSum = amountRub + feeRub;
+      row.sumEl.textContent = mainSum > 0 ? `${mainSum.toFixed(2)} ₽` : '—';
+    }
+
+    function recalcAllBulkRows() {
+      bulkRows.forEach(recalcBulkRowSum);
+    }
+
+    function updateBulkDuplicateWarnings() {
+      const idsSeen = {};
+      bulkRows.forEach((row) => {
+        if (row.telegramId) idsSeen[row.telegramId] = (idsSeen[row.telegramId] || 0) + 1;
+      });
+      bulkRows.forEach((row) => {
+        const warnEl = row.rowEl.querySelector('.bulk-dup-warning');
+        const isDup = row.telegramId && idsSeen[row.telegramId] > 1;
+        warnEl.classList.toggle('hidden', !isDup);
+      });
+    }
+
+    function removeBulkRow(id) {
+      const idx = bulkRows.findIndex((r) => r.id === id);
+      if (idx === -1) return;
+      bulkRows[idx].rowEl.remove();
+      bulkRows.splice(idx, 1);
+      updateBulkDuplicateWarnings();
+    }
+
+    function addBulkRow(prefill) {
+      const id = ++bulkRowSeq;
+      const rowEl = document.createElement('div');
+      rowEl.className = 'bulk-row bg-gray-50 rounded-xl p-2';
+      rowEl.innerHTML = `
+        <div class="flex items-center gap-2">
+          <div class="flex-1 relative">
+            <input type="text" class="bulk-client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
+            <ul class="bulk-client-dropdown dropdown-menu custom-scrollbar"></ul>
+          </div>
+          <input type="number" class="bulk-amount-input w-20 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Сумма" step="0.01">
+          <span class="bulk-main-sum text-[11px] text-gray-500 w-16 text-right shrink-0">—</span>
+          <button type="button" class="bulk-remove-row p-1 text-gray-300 hover:text-red-500 shrink-0"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="bulk-dup-warning hidden text-[11px] text-amber-600 mt-1">Этот клиент уже есть в списке выше.</div>
+      `;
+      bulkRowsList.appendChild(rowEl);
+      if (window.lucide) window.lucide.createIcons();
+
+      const row = {
+        id, rowEl,
+        searchEl: rowEl.querySelector('.bulk-client-search'),
+        dropdownEl: rowEl.querySelector('.bulk-client-dropdown'),
+        amountEl: rowEl.querySelector('.bulk-amount-input'),
+        sumEl: rowEl.querySelector('.bulk-main-sum'),
+        telegramId: '', username: '', name: '', manualClientData: null
+      };
+      bulkRows.push(row);
+
+      if (prefill) {
+        if (prefill.amount !== undefined) row.amountEl.value = prefill.amount;
+        if (prefill.telegramId) {
+          row.telegramId = prefill.telegramId;
+          row.username = prefill.username || '';
+          row.name = prefill.name || '';
+          row.searchEl.value = prefill.name && prefill.username ? `${prefill.name} (${prefill.username})` : (prefill.name || prefill.username || 'Клиент');
+        }
+      }
+      recalcBulkRowSum(row);
+
+      const handleSearch = debounce(async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 2) { row.dropdownEl.classList.remove('active'); return; }
+        const results = await searchClientStub(query);
+        FormHelpers.renderDropdown(row.dropdownEl, results, (item) => `
+          <div class="font-medium text-gray-800 text-sm">${item.displayName}</div>
+        `, (item) => {
+          row.searchEl.value = item.displayName;
+          row.telegramId = item.telegramId;
+          row.username = item.username;
+          row.name = item.name;
+          row.manualClientData = null;
+          row.dropdownEl.classList.remove('active');
+          updateBulkDuplicateWarnings();
+        });
+        row.dropdownEl.appendChild(Object.assign(document.createElement('li'), {
+          className: 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center',
+          textContent: '+ Ввести вручную'
+        })).addEventListener('click', () => {
+          row.dropdownEl.classList.remove('active');
+          const manualModal = ManualClientModal.init({
+            onSaved: ({ username, name }) => {
+              row.manualClientData = { username, name };
+              row.telegramId = '';
+              row.username = username;
+              row.name = name;
+              row.searchEl.value = name !== '' ? `${name} (${username || 'без username'})` : (username || 'Без данных');
+              updateBulkDuplicateWarnings();
+            }
+          });
+          manualModal.open();
+        });
+      }, 300);
+      row.searchEl.addEventListener('input', handleSearch);
+      row.searchEl.addEventListener('focus', () => { if (row.searchEl.value.trim().length >= 2) row.dropdownEl.classList.add('active'); });
+      row.amountEl.addEventListener('input', () => recalcBulkRowSum(row));
+      rowEl.querySelector('.bulk-remove-row').addEventListener('click', () => removeBulkRow(id));
+
+      return row;
+    }
+
+    function setBulkMode(enabled) {
+      bulkMode = enabled;
+      bulkModeToggle.dataset.value = enabled ? '1' : '0';
+      bulkModeToggle.classList.toggle('bg-indigo-600', enabled);
+      bulkModeToggle.classList.toggle('bg-gray-200', !enabled);
+      bulkModeToggle.querySelector('span').style.transform = enabled ? 'translateX(20px)' : '';
+
+      singleClientRow.classList.toggle('hidden', enabled);
+      bulkRowsSection.classList.toggle('hidden', !enabled);
+      totalPaymentSection.classList.toggle('hidden', enabled);
+      mainAmountReceivedSection.classList.toggle('hidden', enabled);
+      bookingPaidRow.classList.toggle('hidden', enabled);
+      amountSectionLabel.textContent = enabled ? 'Сумма по умолчанию' : 'Количество';
+      bulkModeBanner.classList.toggle('hidden', !enabled);
+      bulkModeBanner.textContent = 'Каждая строка ниже станет отдельным заказом. «Оплачена ли бронь?»/«Основная оплата»/«Уже получено» здесь не задаются — донастройте их индивидуально после создания, если нужно.';
+
+      if (enabled && bulkRows.length === 0) addBulkRow();
+    }
+
+    bulkModeToggle.addEventListener('click', () => setBulkMode(!bulkMode));
+
+    document.getElementById('bulk-add-row-btn').addEventListener('click', () => addBulkRow({ amount: amountInput.value }));
+
+    document.getElementById('bulk-copy-amount-btn').addEventListener('click', () => {
+      bulkRows.forEach((row) => { row.amountEl.value = amountInput.value; recalcBulkRowSum(row); });
+    });
+
+    document.getElementById('bulk-from-wishlist-btn').addEventListener('click', async () => {
+      const releaseKey = (selectedReleaseId || releaseSearch.value || '').trim();
+      if (!releaseKey) {
+        showSaveToast(false, 'Сначала выберите «Выпуск» — по нему ищем список ожидания');
+        return;
+      }
+      try {
+        const result = await callServer('getWishlistDemand');
+        const match = (result.demand || []).find((d) => d.skuOriginal.toLowerCase() === releaseKey.toLowerCase());
+        if (!match || match.clients.length === 0) {
+          showSaveToast(false, 'Для этой позиции нет клиентов в списке ожидания');
+          return;
+        }
+        const existingIds = new Set(bulkRows.map((r) => r.telegramId).filter(Boolean));
+        let added = 0;
+        match.clients.forEach((c) => {
+          if (c.telegramId && existingIds.has(c.telegramId)) return;
+          addBulkRow({ telegramId: c.telegramId, username: c.username, name: c.name, amount: amountInput.value });
+          if (c.telegramId) existingIds.add(c.telegramId);
+          added += 1;
+        });
+        updateBulkDuplicateWarnings();
+        showSaveToast(true, added > 0 ? `Добавлено клиентов: ${added}` : 'Все клиенты уже добавлены');
+      } catch (error) {
+        showSaveToast(false, `Не удалось загрузить список ожидания: ${error.message}`);
+      }
+    });
+
     // --- Расчёт суммы в рублях и комиссии (треугольник Сумма/Комиссия/Итог) ---
     function getAmountRub() {
       const amountUsd = parseFloat(amountInput.value) || 0;
@@ -654,8 +923,8 @@ window.Screens.orderNew = {
       updateFromTotalPayment();
     }
 
-    amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); });
-    feePercentInput.addEventListener('input', updateFeeRub);
+    amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); });
+    feePercentInput.addEventListener('input', () => { updateFeeRub(); recalcAllBulkRows(); });
     feeRubInput.addEventListener('input', updateFeePercent);
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
@@ -670,6 +939,7 @@ window.Screens.orderNew = {
       rateDisplay.textContent = currentRate.toFixed(2);
       updateCalc();
       updateFeeRub();
+      recalcAllBulkRows();
     }
 
     async function refreshRate() {
@@ -707,6 +977,31 @@ window.Screens.orderNew = {
 
       if (!releaseSearch.value.trim()) {
         showSaveToast(false, 'Не получилось сохранить заказ: не заполнено поле «Выпуск»');
+        return;
+      }
+
+      if (bulkMode) {
+        try {
+          const { results } = await saveBulkOrders();
+          const okCount = results.filter((r) => r.success).length;
+          const failCount = results.length - okCount;
+          if (failCount === 0) {
+            showSaveToast(true, `Создано заказов: ${okCount}`);
+          } else {
+            // Частичный успех (см. личную память Architect'а про
+            // createOrdersBatch) — успевшие строки НЕ откатываются, менеджер
+            // видит явно, сколько прошло и сколько нет, чтобы решить, что
+            // делать с оставшимися вручную.
+            showSaveToast(false, `Создано: ${okCount}, не удалось: ${failCount} — проверьте список заказов`);
+            setTimeout(() => {
+              const firstError = results.find((r) => !r.success);
+              if (firstError) showSaveToast(false, `Пример ошибки: ${firstError.error}`);
+            }, 4300);
+          }
+          navigateTo('orders');
+        } catch (error) {
+          showSaveToast(false, `Не получилось создать заказы: ${error.message}`);
+        }
         return;
       }
 
@@ -758,6 +1053,29 @@ window.Screens.orderNew = {
     if (params && params.wishlistId) {
       prefillWishlistId = params.wishlistId;
     }
+
+    // Кнопка "Дублировать" на экране редактирования заказа (13.08.2026,
+    // bulk order creation) — открывает этот экран в режиме "Несколько сразу"
+    // с 1 предзаполненной пустой строкой. НЕ копируются: клиент, примечание
+    // (уже не копируются по общей задумке дублирования) И "Оплачена ли
+    // бронь?" (явное требование VASY, 12.08.2026 — новый заказ всегда
+    // стартует с этим флагом сброшенным, ставится вручную) — оба и так
+    // отсутствуют в setBulkMode-режиме, отдельно исключать нечего.
+    if (params && params.duplicateFrom) {
+      const d = params.duplicateFrom;
+      if (d.productOriginal) { releaseSearch.value = d.productOriginal; selectedReleaseId = d.productOriginal; }
+      if (d.statusDelivery) document.querySelector('select[data-dict="statusDelivery"]').value = d.statusDelivery;
+      if (d.statusOrder) document.querySelector('select[data-dict="statusOrder"]').value = d.statusOrder;
+      if (d.purchaseChannel) document.querySelector('select[data-dict="purchaseChannel"]').value = d.purchaseChannel;
+      if (d.purchaseAccount) document.querySelector('select[data-dict="purchaseAccount"]').value = d.purchaseAccount;
+      if (d.cargo) document.querySelector('select[data-dict="cargo"]').value = d.cargo;
+      if (d.dateOrder) dateInput.value = d.dateOrder;
+      if (d.currency) { document.getElementById('currency-select').value = d.currency; currentCurrency = d.currency; }
+      if (d.amount) amountInput.value = d.amount;
+      if (d.feePercent) feePercentInput.value = d.feePercent;
+      setBulkMode(true);
+    }
+
     if (params && (params.telegramId || params.skuOriginal)) {
       maybeCheckWishlistMatch();
     }

@@ -31,6 +31,9 @@ window.Screens.orderEdit = {
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить
       </label>
+      <button id="duplicate-order-btn" title="Дублировать заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="copy" class="w-6 h-6"></i>
+      </button>
       <button id="save-order-btn" title="Сохранить изменения" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="save" class="w-6 h-6"></i>
       </button>
@@ -464,6 +467,9 @@ window.Screens.orderEdit = {
     // (уже есть техдолг про дублирование расчёта платежей), честнее пометить
     // как требующую перезагрузки.
     let originalCalcSnapshot = null;
+    // Снимок последней загруженной getOrderDetails — источник для кнопки
+    // "Дублировать" (13.08.2026, bulk order creation), см. её обработчик ниже.
+    let loadedDetails = null;
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -898,6 +904,7 @@ window.Screens.orderEdit = {
         showNotFound();
         return;
       }
+      loadedDetails = details;
 
       document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}`;
       noteInput.value = details.remark;
@@ -1047,6 +1054,35 @@ window.Screens.orderEdit = {
       } catch (error) {
         showSaveToast(false, `Не получилось сохранить: ${error.message}`);
       }
+    });
+
+    // "Дублировать" (13.08.2026, bulk order creation) — открывает "Новый
+    // заказ" в режиме "Несколько сразу" с общими полями этого заказа. НЕ
+    // копируются: клиент, примечание (не входят в общий набор), и "Оплачена
+    // ли бронь?" (явное требование VASY — новый заказ всегда стартует с
+    // этим флагом сброшенным, ставится вручную) — bulk-режим order-new.js и
+    // так не выставляет этот флаг ни для одной строки, здесь просто не
+    // передаём его вовсе, чтобы не создавать соблазн когда-нибудь его
+    // прокинуть по аналогии с остальными полями.
+    document.getElementById('duplicate-order-btn').addEventListener('click', () => {
+      if (!loadedDetails) return;
+      const bookingSum = parseFloat(loadedDetails.payments.booking.sum) || 0;
+      const amountRub = amountRubBase; // уже посчитан loadOrder() из mainSum-bookingSum
+      const feePercent = amountRub > 0 && bookingSum > 0 ? ((bookingSum / amountRub) * 100).toFixed(2) : '';
+      navigateTo('orders/new', {
+        duplicateFrom: {
+          productOriginal: loadedDetails.productOriginal,
+          statusDelivery: loadedDetails.statusDelivery,
+          statusOrder: loadedDetails.statusOrder,
+          purchaseChannel: loadedDetails.purchaseChannel,
+          purchaseAccount: loadedDetails.purchaseAccount,
+          cargo: loadedDetails.cargo,
+          dateOrder: loadedDetails.dateOrder,
+          currency: loadedDetails.currency,
+          amount: loadedDetails.amount,
+          feePercent
+        }
+      });
     });
 
     populateCollectiveSelect();
