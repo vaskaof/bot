@@ -228,14 +228,26 @@ window.Screens.orderNew = {
                 <input type="number" id="fee-rub" class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0" step="1">
                 <span class="text-sm text-gray-500 font-medium">₽</span>
               </div>
-              <div class="flex items-center gap-1 shrink-0 ml-auto" id="booking-paid-toggle" data-value="Нет">
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                <i data-lucide="badge-check" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Оплачена ли бронь?</span>
+            </div>
+            <div class="flex-1 w-full flex items-center justify-between gap-2">
+              <p class="text-[11px] text-gray-400 leading-tight max-w-[220px]">Отметьте «Да», если клиент уже перевёл бронь/комиссию за посредничество отдельно, до того как известна итоговая сумма выкупа.</p>
+              <div class="flex items-center gap-1 shrink-0" id="booking-paid-toggle" data-value="Нет">
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 bg-[#f8fafc] rounded-b-2xl">
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                 <i data-lucide="wallet" class="w-5 h-5"></i>
@@ -247,9 +259,21 @@ window.Screens.orderNew = {
                 <input type="number" id="total-payment-input" class="w-32 bg-transparent border-none outline-none text-lg font-bold text-gray-900 text-right sm:text-left placeholder-gray-300" placeholder="0.00" step="0.01">
                 <span class="text-lg font-bold text-gray-900">₽</span>
               </div>
-              <div class="flex items-center gap-1 shrink-0" id="main-paid-toggle" data-value="Нет">
-                <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-                <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 bg-[#f8fafc] rounded-b-2xl">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <i data-lucide="hand-coins" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Уже получено при оформлении</span>
+            </div>
+            <div class="flex-1 w-full flex items-center justify-between gap-2">
+              <p class="text-[11px] text-gray-400 leading-tight max-w-[220px]">Если клиент уже перевёл деньги до того, как вы завели заказ — впишите фактически полученную сумму (не обязательно всю). Она будет закреплена именно за этим заказом и не уйдёт на оплату других открытых заказов клиента.</p>
+              <div class="flex items-baseline gap-1 shrink-0">
+                <input type="number" id="main-amount-received-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 text-right placeholder-gray-300" placeholder="0.00" step="0.01">
+                <span class="text-sm text-gray-500 font-medium">₽</span>
               </div>
             </div>
           </div>
@@ -267,7 +291,7 @@ window.Screens.orderNew = {
     let noteInput, noteCounter, releaseSearch, shortNameInput, selectedReleaseId = null;
     let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
     let manualClientData = null;
-    let amountInput, feePercentInput, feeRubInput, totalPaymentInput, calculatedRub, rateDisplay, refreshRateBtn, dateInput;
+    let amountInput, feePercentInput, feeRubInput, totalPaymentInput, mainAmountReceivedInput, calculatedRub, rateDisplay, refreshRateBtn, dateInput;
     let currentCurrency = 'Доллар';
     let currentRates = {};
     let currentRate = 0;
@@ -302,7 +326,7 @@ window.Screens.orderNew = {
         bookingSum: feeRubInput.value,
         bookingPaid: document.getElementById('booking-paid-toggle').dataset.value,
         mainSum: totalPaymentInput.value,
-        mainPaid: document.getElementById('main-paid-toggle').dataset.value,
+        mainAmountReceivedAtCreation: mainAmountReceivedInput.value,
         notifyClient: document.getElementById('notify-client-checkbox').checked,
         purchaseLink: purchaseLinkInput.value.trim(),
         wishlistId: prefillWishlistId || ''
@@ -323,6 +347,7 @@ window.Screens.orderNew = {
     feePercentInput = document.getElementById('fee-percent');
     feeRubInput = document.getElementById('fee-rub');
     totalPaymentInput = document.getElementById('total-payment-input');
+    mainAmountReceivedInput = document.getElementById('main-amount-received-input');
     calculatedRub = document.getElementById('calculated-rub');
     rateDisplay = document.getElementById('rate-display');
     refreshRateBtn = document.getElementById('refresh-rate');
@@ -341,7 +366,6 @@ window.Screens.orderNew = {
     FormHelpers.populateSelect('select[data-dict="cargo"]', dictionaries.cargo);
 
     FormHelpers.initTagToggle('booking-paid-toggle');
-    FormHelpers.initTagToggle('main-paid-toggle');
 
     noteInput.addEventListener('input', (e) => {
       noteCounter.textContent = `${e.target.value.length}/300`;
@@ -693,13 +717,14 @@ window.Screens.orderNew = {
       feePercentInput.value = '';
       feeRubInput.value = '';
       totalPaymentInput.value = '';
+      mainAmountReceivedInput.value = '';
       calculatedRub.textContent = '0.00';
       document.getElementById('currency-select').value = 'Доллар';
       currentCurrency = 'Доллар';
       applyCurrentCurrencyRate();
       document.getElementById('notify-client-checkbox').checked = false;
 
-      ['booking-paid-toggle', 'main-paid-toggle'].forEach(id => FormHelpers.setTagToggle(id, 'Нет'));
+      FormHelpers.setTagToggle('booking-paid-toggle', 'Нет');
     }
 
     document.getElementById('save-order-btn').addEventListener('click', async (e) => {
@@ -715,6 +740,17 @@ window.Screens.orderNew = {
         showSaveToast(true, `Сохранено (Заказ ID: ${result.orderId})`);
         if (result.notifyWarning) {
           setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);
+        }
+        if (result.mainAmountPaymentFailed) {
+          // Хуже, чем earmarkFailed — сама запись платежа не удалась, деньги
+          // клиента НИГДЕ не учтены (money-gate Review, 12.08.2026, находка №1).
+          // Записать вручную — экран "Оплаты", "Записать платёж".
+          setTimeout(() => showSaveToast(false, 'Сумма «уже получено при оформлении» НЕ записана из-за сбоя — запишите платёж вручную на экране «Оплаты»'), 4300);
+        } else if (result.mainAmountEarmarkFailed) {
+          // Деньги реально записаны в пул клиента (не потеряны) — просто не
+          // закреплены за этим конкретным заказом (нет ещё известной цели, или
+          // транзиентный сбой). Закрепить вручную — экран "Оплаты", кнопка «Закрепить».
+          setTimeout(() => showSaveToast(false, 'Сумма записана в общий пул клиента, но не закреплена за этим заказом — закрепите вручную на экране «Оплаты»'), 4300);
         }
         clearFormAfterSave();
       } catch (error) {

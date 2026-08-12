@@ -305,12 +305,21 @@ window.Screens.orderEdit = {
                 <input type="number" id="fee-rub" class="w-full bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0" step="1">
                 <span class="text-sm text-gray-500 font-medium">₽</span>
               </div>
-              <div class="flex items-center gap-2 shrink-0 ml-auto">
-                <span class="text-[11px] text-gray-400 text-right leading-tight max-w-[80px]">Клиент оплатил комиссию как бронь?</span>
-                <div class="flex items-center gap-1 shrink-0" id="booking-paid-toggle" data-value="Нет">
-                  <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
-                  <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
-                </div>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                <i data-lucide="badge-check" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Оплачена ли бронь?</span>
+            </div>
+            <div class="flex-1 w-full flex items-center justify-between gap-2">
+              <p class="text-[11px] text-gray-400 leading-tight max-w-[220px]">Клиент оплатил комиссию как бронь? Отметьте «Да», если клиент уже перевёл бронь/комиссию за посредничество отдельно, до того как известна итоговая сумма выкупа.</p>
+              <div class="flex items-center gap-1 shrink-0" id="booking-paid-toggle" data-value="Нет">
+                <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
+                <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
             </div>
           </div>
