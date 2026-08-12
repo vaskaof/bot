@@ -76,12 +76,19 @@ window.Screens.questions = {
       // заказа, к которому переходить, карточка не кликабельна на переход.
       const hasOrder = q.orderId !== '';
 
+      // §G (12.08.2026) — юзернейм отдельной кликабельной ссылкой на чат с
+      // клиентом. clientDisplay уже "Имя (@username)" — рендерим текстом как
+      // раньше, ссылка добавляется отдельной строкой поверх (не режем
+      // clientDisplay регуляркой, чтобы не сломать случай "только username").
+      const hasUsername = !!q.clientUsername;
+      const chatLink = hasUsername ? `https://t.me/${encodeURIComponent(q.clientUsername.replace(/^@/, ''))}` : '';
+
       card.innerHTML = `
     <div class="${hasOrder ? 'cursor-pointer' : ''}" ${hasOrder ? 'data-open' : ''}>
       <div class="flex items-start justify-between gap-2">
         <div>
-          <div class="text-[11px] font-medium text-indigo-600 mb-0.5">${escapeHtmlClient(q.productDisplay)}${hasOrder ? ` · ${escapeHtmlClient(q.orderId)}` : ''}</div>
-          <div class="text-[13px] text-gray-500">${escapeHtmlClient(q.clientDisplay || 'Клиент не указан')}</div>
+          <div class="text-[11px] font-medium text-indigo-600 mb-0.5">${escapeHtmlClient(q.productDisplay)}${hasOrder ? ` · Заказ ${escapeHtmlClient(q.orderId)}` : ''}</div>
+          <div class="text-[13px] text-gray-500">${escapeHtmlClient(q.clientDisplay || 'Клиент не указан')}${hasUsername ? ` · <a href="${chatLink}" target="_blank" rel="noopener" class="chat-link text-indigo-500 underline">написать</a>` : ''}</div>
         </div>
         <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(q.createdAtDisplay)}</div>
       </div>
@@ -98,6 +105,10 @@ window.Screens.questions = {
           navigateTo(`orders/${encodeURIComponent(q.orderId)}/edit`);
         });
       }
+      // Ссылка "написать" сама открывает t.me в новой вкладке — не должна
+      // всплывать к [data-open] и запускать ещё и переход на заказ.
+      const chatLinkEl = card.querySelector('.chat-link');
+      if (chatLinkEl) chatLinkEl.addEventListener('click', (e) => e.stopPropagation());
 
       const saveBtn = card.querySelector('.save-answer-btn');
       const textarea = card.querySelector('.answer-input');
