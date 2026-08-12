@@ -71,11 +71,16 @@ window.Screens.questions = {
       const card = document.createElement('div');
       card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 ${isNew ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`;
 
+      // Вопрос без заказа (Подфаза 3.4 client_display_overhaul, 12.08.2026,
+      // "Задать общий вопрос"/"Сообщить о проблеме", orderId='') — нет
+      // заказа, к которому переходить, карточка не кликабельна на переход.
+      const hasOrder = q.orderId !== '';
+
       card.innerHTML = `
-    <div class="cursor-pointer" data-open>
+    <div class="${hasOrder ? 'cursor-pointer' : ''}" ${hasOrder ? 'data-open' : ''}>
       <div class="flex items-start justify-between gap-2">
         <div>
-          <div class="text-[11px] font-medium text-indigo-600 mb-0.5">${escapeHtmlClient(q.productDisplay)}</div>
+          <div class="text-[11px] font-medium text-indigo-600 mb-0.5">${escapeHtmlClient(q.productDisplay)}${hasOrder ? ` · ${escapeHtmlClient(q.orderId)}` : ''}</div>
           <div class="text-[13px] text-gray-500">${escapeHtmlClient(q.clientDisplay || 'Клиент не указан')}</div>
         </div>
         <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(q.createdAtDisplay)}</div>
@@ -88,9 +93,11 @@ window.Screens.questions = {
     </div>
   `;
 
-      card.querySelector('[data-open]').addEventListener('click', () => {
-        navigateTo(`orders/${encodeURIComponent(q.orderId)}/edit`);
-      });
+      if (hasOrder) {
+        card.querySelector('[data-open]').addEventListener('click', () => {
+          navigateTo(`orders/${encodeURIComponent(q.orderId)}/edit`);
+        });
+      }
 
       const saveBtn = card.querySelector('.save-answer-btn');
       const textarea = card.querySelector('.answer-input');

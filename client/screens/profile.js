@@ -116,7 +116,42 @@ window.Screens.profile = {
             <div id="notify-lottery-toggle" class="toggle-switch on" data-key="lottery"><div class="knob"></div></div>
           </div>
         </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">💬 Связь с нами</div>
+          <button id="ask-general-question-btn" type="button" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium mb-2">
+            Задать общий вопрос
+          </button>
+          <button id="report-problem-btn" type="button" class="w-full py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium">
+            Сообщить о проблеме или предложить
+          </button>
+        </div>
       </main>
+
+      <div id="contact-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 id="contact-modal-title" class="text-base font-semibold text-gray-900">Вопрос</h2>
+            <button id="contact-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4">
+            <textarea id="contact-text-input" rows="4" maxlength="300"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
+              placeholder="Опишите ваш вопрос..."></textarea>
+            <div class="text-right text-[10px] text-gray-400 mt-1" id="contact-counter">0/300</div>
+            <div id="contact-error-text" class="text-xs text-red-500 hidden mt-1"></div>
+          </div>
+
+          <div id="contact-rate-limit-banner" class="hidden mx-4 mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs"></div>
+
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="contact-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="contact-send-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
+          </div>
+        </div>
+      </div>
     `;
 
     const refreshBtn = document.getElementById('refresh-btn');
@@ -235,6 +270,74 @@ window.Screens.profile = {
           showSaveToast(false, `Не удалось изменить настройку: ${error.message}`);
         }
       });
+    });
+
+    // --- Свободная форма вопроса/жалобы (Подфаза 3.4, 12.08.2026) ---
+    // Одна и та же серверная функция (submitOrderQuestion, orderId='' — общий
+    // вопрос без привязки к заказу), два входа с разными заголовком/плейсхолдером
+    // модалки — только для понимания клиентом разницы намерения, см. Round 1 §D.5.
+    const contactModal = document.getElementById('contact-modal');
+    const contactTitle = document.getElementById('contact-modal-title');
+    const contactTextInput = document.getElementById('contact-text-input');
+    const contactCounter = document.getElementById('contact-counter');
+    const contactErrorText = document.getElementById('contact-error-text');
+
+    function openContactModal(title, placeholder) {
+      contactTitle.textContent = title;
+      contactTextInput.value = '';
+      contactTextInput.placeholder = placeholder;
+      contactCounter.textContent = '0/300';
+      contactErrorText.classList.add('hidden');
+      document.getElementById('contact-rate-limit-banner').classList.add('hidden');
+      contactModal.classList.remove('hidden');
+      contactModal.classList.add('flex');
+    }
+
+    function closeContactModal() {
+      contactModal.classList.add('hidden');
+      contactModal.classList.remove('flex');
+    }
+
+    document.getElementById('ask-general-question-btn').addEventListener('click', () => {
+      openContactModal('Задать общий вопрос', 'О чём хотите спросить?');
+    });
+    document.getElementById('report-problem-btn').addEventListener('click', () => {
+      openContactModal('Сообщить о проблеме или предложить', 'Опишите проблему или ваше предложение...');
+    });
+    document.getElementById('contact-modal-close').addEventListener('click', closeContactModal);
+    document.getElementById('contact-cancel-btn').addEventListener('click', closeContactModal);
+
+    contactTextInput.addEventListener('input', (e) => {
+      contactCounter.textContent = `${e.target.value.length}/300`;
+    });
+
+    document.getElementById('contact-send-btn').addEventListener('click', async () => {
+      const text = contactTextInput.value.trim();
+      contactErrorText.classList.add('hidden');
+      document.getElementById('contact-rate-limit-banner').classList.add('hidden');
+
+      if (text === '') {
+        contactErrorText.textContent = 'Введите текст сообщения.';
+        contactErrorText.classList.remove('hidden');
+        return;
+      }
+
+      const requestId = generateRequestId();
+
+      try {
+        await callServer('submitOrderQuestion', '', text, requestId);
+        closeContactModal();
+        showSaveToast(true, 'Сообщение отправлено');
+      } catch (error) {
+        if (error.message === 'RATE_LIMIT') {
+          const banner = document.getElementById('contact-rate-limit-banner');
+          banner.textContent = 'Вы уже отправляли сообщение недавно — повторите через 30 секунд.';
+          banner.classList.remove('hidden');
+        } else {
+          contactErrorText.textContent = error.message;
+          contactErrorText.classList.remove('hidden');
+        }
+      }
     });
   }
 };
