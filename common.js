@@ -121,6 +121,44 @@ function escapeHtmlClient(unsafe) {
 }
 
 /**
+ * Визуальная лестница статусов доставки (§H client_display_overhaul,
+ * 12.08.2026) — общий рендер для admin/client, список/детали. Позиция
+ * приходит с сервера (`deliveryLadder: {position,total}|null`,
+ * `server/src/orders/deliveryLadder.js` — единая точка правды, здесь ничего
+ * не пересчитывается). `ladder === null` — статус вне лестницы ("возврат
+ * средств" или нераспознанный) — рисуется отдельной строкой, не баром.
+ * @param {{position:number,total:number}|null} ladder
+ * @param {string} statusText Текст статуса для подписи/off-track строки
+ * @param {{compact?: boolean}} [opts] compact — тонкий бар без подписи (списки)
+ * @returns {string} HTML
+ */
+function buildDeliveryLadder(ladder, statusText, opts) {
+    opts = opts || {};
+    const compact = !!opts.compact;
+
+    if (!ladder) {
+        if (!statusText) return '';
+        return `<div class="${compact ? 'text-[10px]' : 'text-[11px]'} text-red-500 font-medium">${escapeHtmlClient(statusText)}</div>`;
+    }
+
+    const segments = [];
+    for (let i = 1; i <= ladder.total; i++) {
+        const filled = i <= ladder.position;
+        segments.push(`<div class="flex-1 ${compact ? 'h-1' : 'h-1.5'} rounded-full ${filled ? 'bg-indigo-500' : 'bg-gray-200'}"></div>`);
+    }
+    const bar = `<div class="flex gap-0.5">${segments.join('')}</div>`;
+
+    if (compact) return bar;
+
+    return `
+        <div>
+            ${bar}
+            <div class="text-[11px] text-gray-500 mt-1">Шаг ${ladder.position} из ${ladder.total} · ${escapeHtmlClient(statusText)}</div>
+        </div>
+    `;
+}
+
+/**
  * Запрашивает контекст текущего пользователя (роль + личные данные).
  * Единственный метод API, доступный ДО определения роли — используется
  * точкой входа (app.html) для маршрутизации и клиентскими страницами

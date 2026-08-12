@@ -134,6 +134,7 @@ window.Screens.orderEdit = {
             </div>
             <div class="flex-1 w-full">
               <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
+              <div id="delivery-ladder" class="mt-2"></div>
             </div>
           </div>
 
@@ -908,6 +909,11 @@ window.Screens.orderEdit = {
       purchaseLinkInput.value = details.purchaseLink || '';
 
       document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
+      // §H (12.08.2026) — снимок сохранённого состояния, НЕ живой пересчёт при
+      // смене select (та же принятая граница, что уже есть у "Итог по суммам",
+      // §17 личной памяти Architect'а — не дублируем позиционную таблицу на
+      // фронте, обновится после следующего сохранения+перезагрузки).
+      document.getElementById('delivery-ladder').innerHTML = buildDeliveryLadder(details.deliveryLadder, details.statusDelivery, {});
       document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;
       document.querySelector('select[data-dict="purchaseChannel"]').value = details.purchaseChannel;
       document.querySelector('select[data-dict="purchaseAccount"]').value = details.purchaseAccount;

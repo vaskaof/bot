@@ -183,6 +183,7 @@ window.Screens.orders = {
                 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">в каталоге</span>`
                 : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">не в каталоге</span>`}
             </div>
+            <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
           </div>
         </div>

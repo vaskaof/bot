@@ -51,6 +51,7 @@ window.Screens.orderDetails = {
             <span id="d-status-delivery" class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700"></span>
             <span id="d-status-order" class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700"></span>
           </div>
+          <div id="d-delivery-ladder" class="mt-3"></div>
           <div class="text-[13px] text-gray-500 mt-3 space-y-1">
             <div>Дата заказа: <span id="d-date-order"></span></div>
             <div id="d-date-received-row" class="hidden">Дата получения: <span id="d-date-received"></span></div>
@@ -212,6 +213,7 @@ window.Screens.orderDetails = {
       }
       document.getElementById('d-status-delivery').textContent = d.statusDelivery || '—';
       document.getElementById('d-status-order').textContent = d.statusOrder || '—';
+      document.getElementById('d-delivery-ladder').innerHTML = buildDeliveryLadder(d.deliveryLadder, d.statusDelivery, {});
       document.getElementById('d-date-order').textContent = d.dateOrderDisplay || '—';
 
       if (d.dateReceivedDisplay) {
