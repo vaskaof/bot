@@ -48,6 +48,23 @@ window.Screens.orderEdit = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
         <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
+        <div id="payment-summary-card" class="hidden mb-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div class="text-[11px] text-gray-400">Оплачено</div>
+              <div id="ps-paid" class="text-base font-semibold text-emerald-600">—</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-400">Осталось</div>
+              <div id="ps-remaining" class="text-base font-semibold text-amber-600">—</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-400">Итого расходов</div>
+              <div id="ps-total" class="text-base font-semibold text-gray-900">—</div>
+            </div>
+          </div>
+          <div id="ps-hint" class="hidden text-[11px] text-gray-400 mt-2 text-center"></div>
+        </div>
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
 
           <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -808,6 +825,69 @@ window.Screens.orderEdit = {
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
 
+    // Итог по суммам (12.08.2026, запрос VASY) — "сколько оплачено / осталось
+    // / сколько всего выходит расходов по заказу". Чисто фронтенд-подсчёт из
+    // уже загруженных `getOrderDetails` данных (тот же принцип, что "Доход
+    // Руб" — §17 личной памяти проекта, не дублирует backend-формулу, просто
+    // складывает уже посчитанные сервером числа).
+    //
+    // Бронь/комиссия НЕ прибавляется отдельной строкой — она УЖЕ часть цели
+    // "Основная" в обеих моделях (new-model: `getNewModelPaymentTarget`
+    // читает "Осталось", которое уже включает бронь; old-model:
+    // `getMainBalanceForOrder` строит target = Итог Руб + Бронь) — повторное
+    // прибавление задвоило бы её независимо от того, стоит тумблер "Оплачена
+    // ли бронь?" в Да или Нет (VASY явно попросил не допустить этого).
+    function renderPaymentSummary(details) {
+      const card = document.getElementById('payment-summary-card');
+      const hint = document.getElementById('ps-hint');
+      let total = 0, paid = 0, hasUnknownTarget = false;
+
+      if (details.isNewModel) {
+        (details.stagesBalance || []).forEach((s) => {
+          if (s.target > 0) {
+            total += s.target;
+            paid += s.paid;
+          } else {
+            hasUnknownTarget = true;
+          }
+        });
+      } else {
+        // Основная — уже посчитанный financeService-баланс (Итог Руб + Бронь,
+        // partial-tracking, Фаза 2) — единственная стадия old-model с реальным paid.
+        const mb = details.mainBalance || { target: 0, paid: 0 };
+        if (mb.target > 0) {
+          total += mb.target;
+          paid += mb.paid;
+        } else {
+          hasUnknownTarget = true;
+        }
+        // Вес/КЗ→РФ/РФ (old-model) — только boolean "оплачено?" + сырая сумма,
+        // без partial-tracking (задокументированная лимитация, та же, что в
+        // "Доход Руб"-формуле §17) — оплачено целиком или не оплачено вовсе.
+        ['weight', 'deliveryKzRf', 'deliveryRf'].forEach((key) => {
+          const p = details.payments[key];
+          const sum = parseFloat(p.sum) || 0;
+          if (sum > 0) {
+            total += sum;
+            if (p.paid === 'Да' || p.paid === 'да') paid += sum;
+          }
+        });
+      }
+
+      const remaining = Math.max(total - paid, 0);
+      document.getElementById('ps-paid').textContent = `${paid.toFixed(2)} ₽`;
+      document.getElementById('ps-remaining').textContent = `${remaining.toFixed(2)} ₽`;
+      document.getElementById('ps-total').textContent = `${total.toFixed(2)} ₽`;
+
+      if (hasUnknownTarget) {
+        hint.textContent = 'Не все суммы ещё известны — итог посчитан только по заполненным полям.';
+        hint.classList.remove('hidden');
+      } else {
+        hint.classList.add('hidden');
+      }
+      card.classList.remove('hidden');
+    }
+
     // --- Загрузка данных заказа и заполнение формы ---
     async function loadOrder() {
       let details;
@@ -907,6 +987,8 @@ window.Screens.orderEdit = {
       applyNewModelReadonlyStage('delivery-kzrf-paid-toggle', 'delivery-kzrf-paid-readonly', sdekStageName);
       applyNewModelReadonlyStage('delivery-rf-paid-toggle', 'delivery-rf-paid-readonly', 'Доставка_РФ');
 
+      renderPaymentSummary(details);
+
       weightSumInput.value = details.payments.weight.sum || '';
       deliveryKzRfSumInput.value = details.payments.deliveryKzRf.sum || '';
       deliveryRfSumInput.value = details.payments.deliveryRf.sum || '';
@@ -948,11 +1030,14 @@ window.Screens.orderEdit = {
       }
       try {
         const result = await saveOrder();
-        maybeRefreshTotalDisplay();
         showSaveToast(true, 'Изменения сохранены');
         if (result.notifyWarning) {
           setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);
         }
+        // По запросу VASY (12.08.2026) — закрывать экран после сохранения.
+        // save-toast переживает навигацию (элемент оболочки, не экрана), так
+        // что отложенное предупреждение выше всё равно успеет показаться.
+        navigateTo('orders');
       } catch (error) {
         showSaveToast(false, `Не получилось сохранить: ${error.message}`);
       }

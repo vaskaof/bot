@@ -697,35 +697,10 @@ window.Screens.orderNew = {
     });
 
     // --- Сохранение заказа ---
-    function clearFormAfterSave() {
-      noteInput.value = '';
-      noteCounter.textContent = '0/300';
-      releaseSearch.value = '';
-      shortNameInput.value = '';
-      selectedReleaseId = null;
-      setReleaseThumbnail(null);
-      purchaseLinkInput.value = '';
-      purchaseLinkHint.classList.add('hidden');
-      prefillWishlistId = null;
-      document.getElementById('wishlist-match-banner').classList.add('hidden');
-      clientSearch.value = '';
-      selectedClientId = null;
-      selectedClientUsername = '';
-      selectedClientName = '';
-      manualClientData = null;
-      amountInput.value = '';
-      feePercentInput.value = '';
-      feeRubInput.value = '';
-      totalPaymentInput.value = '';
-      mainAmountReceivedInput.value = '';
-      calculatedRub.textContent = '0.00';
-      document.getElementById('currency-select').value = 'Доллар';
-      currentCurrency = 'Доллар';
-      applyCurrentCurrencyRate();
-      document.getElementById('notify-client-checkbox').checked = false;
-
-      FormHelpers.setTagToggle('booking-paid-toggle', 'Нет');
-    }
+    // Раньше здесь была clearFormAfterSave() (сброс полей, экран оставался
+    // открытым для следующего заказа) — по запросу VASY (12.08.2026) заменено
+    // на закрытие экрана (navigateTo('orders')) сразу после успешного
+    // сохранения, функция стала не нужна, убрана.
 
     document.getElementById('save-order-btn').addEventListener('click', async (e) => {
       e.preventDefault();
@@ -752,7 +727,11 @@ window.Screens.orderNew = {
           // транзиентный сбой). Закрепить вручную — экран "Оплаты", кнопка «Закрепить».
           setTimeout(() => showSaveToast(false, 'Сумма записана в общий пул клиента, но не закреплена за этим заказом — закрепите вручную на экране «Оплаты»'), 4300);
         }
-        clearFormAfterSave();
+        // По запросу VASY (12.08.2026) — закрывать экран после сохранения,
+        // не оставаться на форме. save-toast — элемент общей оболочки
+        // (router.js), не самого экрана, переживает навигацию, поэтому
+        // отложенные предупреждения выше всё равно успеют показаться.
+        navigateTo('orders');
       } catch (error) {
         showSaveToast(false, `Не получилось сохранить заказ: ${error.message}`);
       }
