@@ -44,6 +44,7 @@ window.Screens.orderDetails = {
             <div class="min-w-0 flex-1">
               <div id="d-product" class="font-semibold text-gray-900 text-lg"></div>
               <div id="d-product-original" class="text-[12px] text-gray-400 mt-0.5"></div>
+              <div id="d-order-id" class="text-[11px] text-gray-300 mt-0.5"></div>
             </div>
           </div>
           <div class="flex flex-wrap gap-1.5 mt-3">
@@ -57,6 +58,7 @@ window.Screens.orderDetails = {
           </div>
           <div id="d-collective-row"
             class="hidden mt-3 p-3 rounded-xl bg-sky-50 border border-sky-100 text-sky-800 text-sm"></div>
+          <div id="d-sov-info" class="hidden mt-3 text-[12px] text-amber-600"></div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -189,6 +191,19 @@ window.Screens.orderDetails = {
     function render(d) {
       document.getElementById('d-product').textContent = d.productDisplay;
       document.getElementById('d-product-original').textContent = d.productOriginal || '';
+      document.getElementById('d-order-id').textContent = `№ ${d.orderId}`;
+
+      // Sov-инфо (B, client_display_overhaul, 12.08.2026) — формула считается
+      // на бэкенде (ordersService.computeSovInfoAmount), здесь только рендер.
+      const sovBox = document.getElementById('d-sov-info');
+      if (d.sovInfo && d.sovInfo.amount > 0) {
+        sovBox.textContent = d.sovInfo.accrued
+          ? `🎟️ ${d.sovInfo.amount} сов начислено за этот заказ`
+          : `🎟️ +${d.sovInfo.amount} сов при полной оплате основной суммы`;
+        sovBox.classList.remove('hidden');
+      } else {
+        sovBox.classList.add('hidden');
+      }
       const productImage = document.getElementById('d-product-image');
       if (d.imageUrl) {
         productImage.src = d.imageUrl;
@@ -216,7 +231,16 @@ window.Screens.orderDetails = {
       const list = document.getElementById('d-payments-list');
       list.innerHTML = '';
 
-      if (d.payments.lines.length === 0) {
+      // New-model: старый булево-флаговый список (d.payments.lines) может
+      // честно показывать "Нет" даже когда деньги уже реально лежат в пуле,
+      // просто ждут, пока весь тир (по ВСЕМ открытым заказам клиента) наберётся
+      // целиком (tier-batch, §19 личной памяти Architect'а) — тот же класс
+      // путаницы, что уже чинили на админском экране «Оплаты». Показываем
+      // здесь честную картину из d-rollup-card (renderOrderRollup ниже,
+      // считана из d.stagesBalance) вместо дублирующего/противоречащего списка.
+      if (d.isNewModel) {
+        list.innerHTML = '<div class="text-sm text-gray-400">Разбивка по оплате — ниже.</div>';
+      } else if (d.payments.lines.length === 0) {
         list.innerHTML = '<div class="text-sm text-green-600 font-medium">Все платежи получены, спасибо!</div>';
       } else {
         d.payments.lines.forEach(line => {

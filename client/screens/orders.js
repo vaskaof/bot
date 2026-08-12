@@ -182,6 +182,17 @@ window.Screens.orders = {
 
       const debtColor = o.debtSummary === 'Оплачено' ? 'text-green-600' : (o.debtSummary.startsWith('К оплате') ? 'text-red-500' : 'text-amber-500');
 
+      // Sov-строка (B, client_display_overhaul, 12.08.2026) — одна строка,
+      // либо "уже начислено", либо "будет начислено при полной оплате",
+      // никогда обе сразу (VASY: список слишком занят для двух чисел).
+      const sov = o.sovInfo;
+      let sovHtml = '';
+      if (sov && sov.amount > 0) {
+        sovHtml = sov.accrued
+          ? `<div class="text-[11px] text-amber-600 mt-1">🎟️ ${sov.amount} сов начислено</div>`
+          : `<div class="text-[11px] text-gray-400 mt-1">🎟️ +${sov.amount} сов при полной оплате</div>`;
+      }
+
       card.innerHTML = `
         <div class="flex items-start gap-3">
           ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
@@ -190,11 +201,16 @@ window.Screens.orders = {
               <div class="min-w-0">
                 <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(o.productDisplay)}</div>
                 ${o.productOriginal ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
+                <div class="text-[11px] text-gray-300 mt-0.5">№ ${escapeHtmlClient(o.orderId)}</div>
               </div>
               <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
             </div>
-            ${o.statusDelivery ? `<span class="inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+            <div class="flex flex-wrap items-center gap-1.5 mt-2">
+              ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+              ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
+            </div>
             <div class="text-[13px] font-medium mt-2 ${debtColor}">${escapeHtmlClient(o.debtSummary)}</div>
+            ${sovHtml}
           </div>
         </div>
       `;
