@@ -15,9 +15,14 @@
  *   конкретной активности заслуживают отдельного места). contests.js после
  *   этого переноса содержит только лотереи/задания.
  *
- * Ещё не построено (следующие подфазы): настройки уведомлений, свободная
- * форма вопроса/жалобы — см. личную память Architect'а
- * project_bot_knopka_client_display_overhaul.md, раздел D.
+ * Подфаза 3.3 (та же дата) — настройки уведомлений, 3 группы toggle
+ * (getMyNotificationSettings/setMyNotificationSettings), opt-out —
+ * реальное серверное состояние (не локальный optimistic-default, как у
+ * старого news.js/setNewsSubscription — тот не имел отдельного getter'а).
+ *
+ * Ещё не построено (следующая подфаза): свободная форма вопроса/жалобы —
+ * см. личную память Architect'а project_bot_knopka_client_display_overhaul.md,
+ * раздел D.
  */
 window.Screens = window.Screens || {};
 window.Screens.profile = {
@@ -82,6 +87,35 @@ window.Screens.profile = {
             Скопировать текст приглашения
           </button>
         </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-1">🔔 Уведомления</div>
+          <div class="text-[11px] text-gray-400 mb-3">Уведомления приходят только с 9:00 до 21:00 по Москве — ночью и рано утром бот вас не побеспокоит, сообщения просто придут чуть позже, как только окно откроется.</div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Заказы и оплаты</div>
+              <div class="text-[11px] text-gray-400">Оформление, смена статуса доставки, платежи</div>
+            </div>
+            <div id="notify-orders-payments-toggle" class="toggle-switch on" data-key="ordersPayments"><div class="knob"></div></div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Ответы на вопросы</div>
+              <div class="text-[11px] text-gray-400">Когда менеджер отвечает на ваш вопрос по заказу</div>
+            </div>
+            <div id="notify-question-answers-toggle" class="toggle-switch on" data-key="questionAnswers"><div class="knob"></div></div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Конкурсы и розыгрыши</div>
+              <div class="text-[11px] text-gray-400">Отмена билета, победа, итоги розыгрыша</div>
+            </div>
+            <div id="notify-lottery-toggle" class="toggle-switch on" data-key="lottery"><div class="knob"></div></div>
+          </div>
+        </div>
       </main>
     `;
 
@@ -97,7 +131,7 @@ window.Screens.profile = {
     loadAll();
 
     async function loadAll() {
-      await Promise.all([loadCreditBalance(), loadReferralInfo()]);
+      await Promise.all([loadCreditBalance(), loadReferralInfo(), loadNotificationSettings()]);
     }
 
     async function loadCreditBalance() {
@@ -169,6 +203,38 @@ window.Screens.profile = {
       } catch (error) {
         showSaveToast(false, 'Не удалось скопировать — выделите текст вручную');
       }
+    });
+
+    // --- Настройки уведомлений (Подфаза 3.3, 12.08.2026) ---
+    const notifyToggles = {
+      ordersPayments: document.getElementById('notify-orders-payments-toggle'),
+      questionAnswers: document.getElementById('notify-question-answers-toggle'),
+      lottery: document.getElementById('notify-lottery-toggle')
+    };
+    let notifyPrefs = { ordersPayments: true, questionAnswers: true, lottery: true };
+
+    async function loadNotificationSettings() {
+      try {
+        notifyPrefs = await callServer('getMyNotificationSettings');
+        Object.keys(notifyToggles).forEach((key) => {
+          notifyToggles[key].classList.toggle('on', !!notifyPrefs[key]);
+        });
+      } catch (error) {
+        console.error('getMyNotificationSettings:', error.message);
+      }
+    }
+
+    Object.entries(notifyToggles).forEach(([key, toggle]) => {
+      toggle.addEventListener('click', async () => {
+        const next = !notifyPrefs[key];
+        toggle.classList.toggle('on', next);
+        try {
+          notifyPrefs = await callServer('setMyNotificationSettings', { [key]: next });
+        } catch (error) {
+          toggle.classList.toggle('on', notifyPrefs[key]); // откат при ошибке
+          showSaveToast(false, `Не удалось изменить настройку: ${error.message}`);
+        }
+      });
     });
   }
 };
