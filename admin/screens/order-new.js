@@ -315,6 +315,65 @@ window.Screens.orderNew = {
           </div>
 
         </div>
+
+        <!-- "Прогноз расходов на заказ" (13.08.2026, Фаза 2 задачи "финансовые
+             настройки") — предзаполняется из getOrderForecast() при вводе
+             "Количество", поля остаются редактируемыми (прогноз, не факт).
+             Скрывается в режиме "Несколько сразу" — та же логика, что и
+             "Основная оплата"/"Уже получено", см. setBulkMode. -->
+        <div id="forecast-section" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mt-3">
+          <div class="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">Прогноз расходов (можно поправить)</div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="weight" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Вес</span>
+            </div>
+            <div class="flex-1 w-full flex flex-col gap-1">
+              <div class="flex items-baseline gap-1">
+                <input type="number" id="weight-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+                <span class="text-sm text-gray-500 font-medium">₽</span>
+              </div>
+              <!-- $→₽ калькулятор — оплата веса считается в долларах, менеджер
+                   вводит доллар, рубль подставляется по актуальному курсу
+                   (тому же, что уже загружен для "Количество" — currentRates). -->
+              <div class="flex items-center gap-1">
+                <span class="text-xs text-gray-400">$</span>
+                <input type="number" id="weight-usd-input" class="w-20 bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01" title="Сумма в долларах — рубль подставится по актуальному курсу">
+                <i data-lucide="arrow-right" class="w-3 h-3 text-gray-300"></i>
+                <span class="text-[11px] text-gray-400">≈<span id="weight-usd-rate-display">—</span>₽/$</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
+                <i data-lucide="plane" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доставка КЗ→РФ</span>
+            </div>
+            <div class="flex-1 w-full flex items-baseline gap-1">
+              <input type="number" id="delivery-kzrf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 rounded-b-2xl">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <i data-lucide="truck" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доставка по РФ</span>
+            </div>
+            <div class="flex-1 w-full flex items-baseline gap-1">
+              <input type="number" id="delivery-rf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
+              <span class="text-sm text-gray-500 font-medium">₽</span>
+            </div>
+          </div>
+        </div>
       </main>
 
       ${SkuModal.html()}
@@ -328,6 +387,9 @@ window.Screens.orderNew = {
     let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput, mainAmountReceivedInput, calculatedRub, rateDisplay, refreshRateBtn, dateInput;
+    // Прогноз расходов (13.08.2026, Фаза 2) — редактируемые, предзаполняются
+    // из getOrderForecast() при смене "Количество" (debounced, см. ниже).
+    let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput, weightUsdInput, weightUsdRateDisplay;
     let currentCurrency = 'Доллар';
     let currentRates = {};
     let currentRate = 0;
@@ -375,6 +437,9 @@ window.Screens.orderNew = {
         bookingPaid: document.getElementById('booking-paid-toggle').dataset.value,
         mainSum: totalPaymentInput.value,
         mainAmountReceivedAtCreation: mainAmountReceivedInput.value,
+        weightSum: weightSumInput.value,
+        deliveryKzRfSum: deliveryKzRfSumInput.value,
+        deliveryRfSum: deliveryRfSumInput.value,
         wishlistId: prefillWishlistId || ''
       };
       return callServer('createOrder', orderData);
@@ -433,6 +498,11 @@ window.Screens.orderNew = {
     purchaseLinkInput = document.getElementById('purchase-link-input');
     purchaseLinkHint = document.getElementById('purchase-link-hint');
     purchaseLinkResolveBtn = document.getElementById('purchase-link-resolve-btn');
+    weightSumInput = document.getElementById('weight-sum-input');
+    deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
+    deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
+    weightUsdInput = document.getElementById('weight-usd-input');
+    weightUsdRateDisplay = document.getElementById('weight-usd-rate-display');
 
     const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     dateInput.value = todayFormatter.format(new Date());
@@ -695,6 +765,7 @@ window.Screens.orderNew = {
     const amountSectionLabel = document.getElementById('amount-section-label');
     const totalPaymentSection = document.getElementById('total-payment-section');
     const mainAmountReceivedSection = document.getElementById('main-amount-received-section');
+    const forecastSection = document.getElementById('forecast-section');
     const bookingPaidRow = document.getElementById('booking-paid-toggle').closest('.field-row');
 
     function bulkAmountRub(rawAmount) {
@@ -826,6 +897,7 @@ window.Screens.orderNew = {
       bulkRowsSection.classList.toggle('hidden', !enabled);
       totalPaymentSection.classList.toggle('hidden', enabled);
       mainAmountReceivedSection.classList.toggle('hidden', enabled);
+      forecastSection.classList.toggle('hidden', enabled);
       bookingPaidRow.classList.toggle('hidden', enabled);
       amountSectionLabel.textContent = enabled ? 'Сумма по умолчанию' : 'Количество';
       bulkModeBanner.classList.toggle('hidden', !enabled);
@@ -942,13 +1014,54 @@ window.Screens.orderNew = {
       updateFromTotalPayment();
     }
 
-    amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); });
+    // --- Прогноз расходов (13.08.2026, Фаза 2) ---
+    // "Отредактировано вручную" — как только менеджер тронул поле сам, дальнейшие
+    // пересчёты прогноза по смене "Количество" его больше не перезаписывают
+    // (тот же принцип, что document.activeElement-проверки у треугольника
+    // Сумма/Комиссия/Итог выше, просто через явный флаг — поле не обязано быть
+    // в фокусе именно в момент прихода ответа от сервера, запрос асинхронный).
+    const forecastEdited = { weight: false, deliveryKzRf: false, deliveryRf: false };
+    weightSumInput.addEventListener('input', () => { forecastEdited.weight = true; });
+    deliveryKzRfSumInput.addEventListener('input', () => { forecastEdited.deliveryKzRf = true; });
+    deliveryRfSumInput.addEventListener('input', () => { forecastEdited.deliveryRf = true; });
+
+    const fetchForecast = debounce(async () => {
+      if (bulkMode) return; // "Несколько сразу" — у каждой строки своя сумма, единого прогноза на форме нет
+      try {
+        const forecast = await callServer('getOrderForecast', amountInput.value);
+        if (!forecastEdited.weight) weightSumInput.value = forecast.weight > 0 ? forecast.weight.toFixed(2) : '';
+        if (!forecastEdited.deliveryKzRf) deliveryKzRfSumInput.value = forecast.deliveryKzRf > 0 ? forecast.deliveryKzRf.toFixed(2) : '';
+        if (!forecastEdited.deliveryRf) deliveryRfSumInput.value = forecast.deliveryRf > 0 ? forecast.deliveryRf.toFixed(2) : '';
+      } catch (error) {
+        // Прогноз — необязательное удобство, сбой не должен мешать оформлению заказа.
+      }
+    }, 400);
+
+    // $→₽ калькулятор веса — курс берём из currentRates['Доллар'], уже
+    // загруженного для селектора валюты (см. applyCurrentCurrencyRate ниже),
+    // отдельного запроса не делаем.
+    weightUsdInput.addEventListener('input', () => {
+      forecastEdited.weight = true;
+      const usd = parseFloat(weightUsdInput.value) || 0;
+      const rate = parseFloat((currentRates['Доллар'] || '').toString().replace(',', '.'));
+      if (usd > 0 && !isNaN(rate) && rate > 0) {
+        weightSumInput.value = (usd * rate).toFixed(2);
+      }
+    });
+
+    amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); fetchForecast(); });
     feePercentInput.addEventListener('input', () => { updateFeeRub(); recalcAllBulkRows(); });
     feeRubInput.addEventListener('input', updateFeePercent);
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
 
     function applyCurrentCurrencyRate() {
+      // Вес всегда в долларах (13.08.2026, независимо от валюты самого заказа) —
+      // обновляем индикатор курса рядом с $-полем на каждый refreshRate,
+      // даже если выбранная валюта заказа — не "Доллар".
+      const usdRate = parseFloat((currentRates['Доллар'] || '').toString().replace(',', '.'));
+      if (!isNaN(usdRate) && usdRate > 0) weightUsdRateDisplay.textContent = usdRate.toFixed(2);
+
       const rawRate = currentRates[currentCurrency];
       if (rawRate === undefined || rawRate === "") return;
 

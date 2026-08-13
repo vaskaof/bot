@@ -377,7 +377,8 @@ window.Screens.orderEdit = {
               </div>
               <span class="text-sm font-medium text-gray-700">Вес</span>
             </div>
-            <div class="flex-1 w-full flex items-center justify-between gap-2">
+            <div class="flex-1 w-full flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-2">
               <div class="flex items-baseline gap-1">
                 <input type="number" id="weight-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
                 <span class="text-sm text-gray-500 font-medium">₽</span>
@@ -387,6 +388,17 @@ window.Screens.orderEdit = {
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
               </div>
               <div id="weight-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
+            </div>
+            <!-- $→₽ калькулятор (13.08.2026, Фаза 2) — оплата веса считается в
+                 долларах, менеджер вводит доллар, рубль подставляется по
+                 актуальному курсу; итоговое поле ("Цена веса") остаётся
+                 обычным редактируемым ₽-полем, доллар нигде не сохраняется. -->
+            <div class="flex items-center gap-1 self-end">
+              <span class="text-xs text-gray-400">$</span>
+              <input type="number" id="weight-usd-input" class="w-20 bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01" title="Сумма в долларах — рубль подставится по актуальному курсу">
+              <i data-lucide="arrow-right" class="w-3 h-3 text-gray-300"></i>
+              <span class="text-[11px] text-gray-400">≈<span id="weight-usd-rate-display">—</span>₽/$</span>
+            </div>
             </div>
           </div>
 
@@ -452,6 +464,8 @@ window.Screens.orderEdit = {
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
+    let weightUsdInput, weightUsdRateDisplay;
+    let usdToRubRate = 0; // курс "Доллар" из finalRates (13.08.2026, $→₽ калькулятор веса) — этот экран раньше курсы вообще не запрашивал
     let collectiveSelect, sdekTypeSelect;
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
@@ -563,6 +577,8 @@ window.Screens.orderEdit = {
     weightSumInput = document.getElementById('weight-sum-input');
     deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
     deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
+    weightUsdInput = document.getElementById('weight-usd-input');
+    weightUsdRateDisplay = document.getElementById('weight-usd-rate-display');
     collectiveSelect = document.getElementById('collective-select');
     purchaseLinkInput = document.getElementById('purchase-link-input');
     purchaseLinkHint = document.getElementById('purchase-link-hint');
@@ -576,6 +592,26 @@ window.Screens.orderEdit = {
 
     ['booking-paid-toggle', 'main-paid-toggle', 'weight-paid-toggle', 'delivery-kzrf-paid-toggle', 'delivery-rf-paid-toggle']
       .forEach(id => FormHelpers.initTagToggle(id));
+
+    // $→₽ калькулятор веса (13.08.2026, Фаза 2) — этот экран раньше курсы не
+    // запрашивал вообще (в отличие от order-new.js, где они уже нужны для
+    // "Количество"); тот же callServer('refreshRate') — проксируется на GAS,
+    // родного Node-метода под это ещё нет (см. currencyService.js — только
+    // серверное использование при createOrder/updateOrder, наружу не отдаётся).
+    callServer('refreshRate').then(rates => {
+      const rate = rates && rates.finalRates ? parseFloat((rates.finalRates['Доллар'] || '').toString().replace(',', '.')) : NaN;
+      if (!isNaN(rate) && rate > 0) {
+        usdToRubRate = rate;
+        weightUsdRateDisplay.textContent = rate.toFixed(2);
+      }
+    }).catch(() => {}); // курс — необязательное удобство, сбой не должен мешать редактированию заказа
+
+    weightUsdInput.addEventListener('input', () => {
+      const usd = parseFloat(weightUsdInput.value) || 0;
+      if (usdToRubRate > 0 && usd > 0) {
+        weightSumInput.value = (usd * usdToRubRate).toFixed(2);
+      }
+    });
 
     noteInput.addEventListener('input', (e) => {
       noteCounter.textContent = `${e.target.value.length}/300`;
