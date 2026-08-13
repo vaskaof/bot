@@ -754,6 +754,13 @@ window.Screens.orderNew = {
     // нужно (тот же принцип, что и явное требование VASY не копировать флаг
     // брони при дублировании — здесь применено единообразно ко всей пачке).
     let bulkMode = false;
+    // "Дублировать" технически включает bulkMode (1 предзаполненная строка,
+    // см. dupMode ниже) — но, в отличие от настоящего "Несколько сразу",
+    // прогноз расходов здесь осмыслен (ОДИН заказ, известная сумма скопирована
+    // из источника). ИСПРАВЛЕНО (13.08.2026, репорт VASY — "при копировании не
+    // ставятся"): секция прогноза раньше скрывалась безусловно при enabled,
+    // не различая настоящий bulk от дублирования. isDuplicateFlow — этот флаг.
+    let isDuplicateFlow = false;
     let bulkRows = []; // { id, rowEl, searchEl, dropdownEl, amountEl, sumEl, telegramId, username, name, manualClientData }
     let bulkRowSeq = 0;
 
@@ -897,7 +904,7 @@ window.Screens.orderNew = {
       bulkRowsSection.classList.toggle('hidden', !enabled);
       totalPaymentSection.classList.toggle('hidden', enabled);
       mainAmountReceivedSection.classList.toggle('hidden', enabled);
-      forecastSection.classList.toggle('hidden', enabled);
+      forecastSection.classList.toggle('hidden', enabled && !isDuplicateFlow);
       bookingPaidRow.classList.toggle('hidden', enabled);
       amountSectionLabel.textContent = enabled ? 'Сумма по умолчанию' : 'Количество';
       bulkModeBanner.classList.toggle('hidden', !enabled);
@@ -1025,13 +1032,28 @@ window.Screens.orderNew = {
     deliveryKzRfSumInput.addEventListener('input', () => { forecastEdited.deliveryKzRf = true; });
     deliveryRfSumInput.addEventListener('input', () => { forecastEdited.deliveryRf = true; });
 
+    // Комиссия (13.08.2026, VASY — "сделай чтобы комиссия тоже автоматически
+    // ставилась") — тот же принцип, что и прогноз расходов: подставляется из
+    // настройки category='commission', пока менеджер не тронул поле сам ИЛИ
+    // пока не пришло реальное значение источника ("Дублировать" — dupFeePercent
+    // ниже, см. его обработчик, тоже помечает этот флаг).
+    let feePercentEdited = false;
+
     const fetchForecast = debounce(async () => {
-      if (bulkMode) return; // "Несколько сразу" — у каждой строки своя сумма, единого прогноза на форме нет
+      // Дублирование — исключение: bulkMode формально включён (см. isDuplicateFlow
+      // выше), но сумма ОДНА и известна (скопирована из источника), прогноз
+      // осмыслен. Настоящий "Несколько сразу" (isDuplicateFlow=false) — у каждой
+      // строки своя сумма, единого прогноза на форме нет, пропускаем.
+      if (bulkMode && !isDuplicateFlow) return;
       try {
         const forecast = await callServer('getOrderForecast', amountInput.value);
         if (!forecastEdited.weight) weightSumInput.value = forecast.weight > 0 ? forecast.weight.toFixed(2) : '';
         if (!forecastEdited.deliveryKzRf) deliveryKzRfSumInput.value = forecast.deliveryKzRf > 0 ? forecast.deliveryKzRf.toFixed(2) : '';
         if (!forecastEdited.deliveryRf) deliveryRfSumInput.value = forecast.deliveryRf > 0 ? forecast.deliveryRf.toFixed(2) : '';
+        if (!feePercentEdited && forecast.commissionPercent > 0) {
+          feePercentInput.value = forecast.commissionPercent.toFixed(2);
+          updateFeeRub();
+        }
       } catch (error) {
         // Прогноз — необязательное удобство, сбой не должен мешать оформлению заказа.
       }
@@ -1050,7 +1072,7 @@ window.Screens.orderNew = {
     });
 
     amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); fetchForecast(); });
-    feePercentInput.addEventListener('input', () => { updateFeeRub(); recalcAllBulkRows(); });
+    feePercentInput.addEventListener('input', () => { feePercentEdited = true; updateFeeRub(); recalcAllBulkRows(); });
     feeRubInput.addEventListener('input', updateFeePercent);
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
@@ -1222,6 +1244,10 @@ window.Screens.orderNew = {
     // прогоне через encodeURIComponent, все поля терялись молча. Теперь —
     // плоские top-level ключи с префиксом dup*, как и остальные params здесь.
     if (params && params.dupMode) {
+      // ИСПРАВЛЕНО (13.08.2026, репорт VASY — "при копировании не ставятся") —
+      // см. isDuplicateFlow выше: дублирование включает bulkMode технически,
+      // но прогноз здесь осмыслен (одна сумма, известна сразу).
+      isDuplicateFlow = true;
       if (params.dupProductOriginal) {
         releaseSearch.value = params.dupProductOriginal;
         selectedReleaseId = params.dupProductOriginal;
@@ -1240,9 +1266,13 @@ window.Screens.orderNew = {
       if (params.dupDateOrder) dateInput.value = params.dupDateOrder;
       if (params.dupCurrency) { document.getElementById('currency-select').value = params.dupCurrency; currentCurrency = params.dupCurrency; }
       if (params.dupAmount) amountInput.value = params.dupAmount;
-      if (params.dupFeePercent) feePercentInput.value = params.dupFeePercent;
+      if (params.dupFeePercent) { feePercentInput.value = params.dupFeePercent; feePercentEdited = true; }
       setBulkMode(true);
       updateDeliveryLadderPreview();
+      // Прогноз веса/доставки по скопированной сумме — .value= выше не бьёт
+      // 'input' событие сам по себе, fetchForecast() без явного вызова не
+      // запустился бы (тот же класс проблемы, что и у dup* полей раньше).
+      fetchForecast();
     }
 
     if (params && (params.telegramId || params.skuOriginal)) {
@@ -1250,5 +1280,10 @@ window.Screens.orderNew = {
     }
 
     refreshRate();
+    // Комиссия подставляется сразу при открытии экрана, не дожидаясь ввода
+    // "Количество" (сама по себе от суммы не зависит) — в режиме дублирования
+    // уже вызвана выше вместе с прогнозом по скопированной сумме, повторный
+    // вызов здесь безвреден (debounce схлопнет).
+    fetchForecast();
   }
 };
