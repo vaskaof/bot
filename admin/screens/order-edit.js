@@ -1061,7 +1061,8 @@ window.Screens.orderEdit = {
       saveOrderBtn.disabled = true;
       saveOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
       const icon = saveOrderBtn.querySelector('svg');
-      if (icon) icon.classList.add('animate-spin');
+      // Пульсация, не вращение — см. .save-pulse в admin/app.html.
+      if (icon) icon.classList.add('save-pulse');
       try {
         const result = await saveOrder();
         showSaveToast(true, 'Изменения сохранены');
@@ -1077,7 +1078,7 @@ window.Screens.orderEdit = {
       } finally {
         saveOrderBtn.disabled = false;
         saveOrderBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        if (icon) icon.classList.remove('animate-spin');
+        if (icon) icon.classList.remove('save-pulse');
       }
     });
 
@@ -1101,6 +1102,14 @@ window.Screens.orderEdit = {
       navigateTo('orders/new', {
         dupMode: '1',
         dupProductOriginal: loadedDetails.productOriginal,
+        // ИСПРАВЛЕНО (13.08.2026, репорт VASY после первого фикса — "Выпуск"
+        // копировался как голый текст, не как выбранная позиция каталога):
+        // короткое название/фото раньше вообще не передавались, order-new.js
+        // не могло их проставить — releaseSearch.value выглядел заполненным,
+        // но без short-name/thumbnail это не совпадало с тем, что видно при
+        // обычном выборе через поиск. Теперь оба поля идут вместе с позицией.
+        dupProductShort: loadedDetails.productShort,
+        dupImageUrl: loadedDetails.imageUrl,
         dupStatusDelivery: loadedDetails.statusDelivery,
         dupStatusOrder: loadedDetails.statusOrder,
         dupPurchaseChannel: loadedDetails.purchaseChannel,

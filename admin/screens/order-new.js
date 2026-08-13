@@ -1013,7 +1013,9 @@ window.Screens.orderNew = {
       saveOrderBtn.disabled = true;
       saveOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
       const icon = saveOrderBtn.querySelector('svg');
-      if (icon) icon.classList.add('animate-spin');
+      // Пульсация (масштаб), не вращение — по фидбеку VASY: вращающаяся
+      // дискета выглядела странно, см. .save-pulse в admin/app.html.
+      if (icon) icon.classList.add('save-pulse');
 
       try {
         if (bulkMode) {
@@ -1066,7 +1068,7 @@ window.Screens.orderNew = {
         // любом случае, страхует именно ветку ошибки, где форма остаётся.
         saveOrderBtn.disabled = false;
         saveOrderBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        if (icon) icon.classList.remove('animate-spin');
+        if (icon) icon.classList.remove('save-pulse');
       }
     });
 
@@ -1107,7 +1109,16 @@ window.Screens.orderNew = {
     // прогоне через encodeURIComponent, все поля терялись молча. Теперь —
     // плоские top-level ключи с префиксом dup*, как и остальные params здесь.
     if (params && params.dupMode) {
-      if (params.dupProductOriginal) { releaseSearch.value = params.dupProductOriginal; selectedReleaseId = params.dupProductOriginal; }
+      if (params.dupProductOriginal) {
+        releaseSearch.value = params.dupProductOriginal;
+        selectedReleaseId = params.dupProductOriginal;
+        // ИСПРАВЛЕНО (13.08.2026) — раньше не проставлялись короткое
+        // название/фото, поэтому "Выпуск" выглядел скопированным как голый
+        // текст, а не как выбранная позиция каталога (см. комментарий у
+        // dupProductShort в order-edit.js).
+        shortNameInput.value = params.dupProductShort || params.dupProductOriginal;
+        setReleaseThumbnail(params.dupImageUrl || null);
+      }
       if (params.dupStatusDelivery) document.querySelector('select[data-dict="statusDelivery"]').value = params.dupStatusDelivery;
       if (params.dupStatusOrder) document.querySelector('select[data-dict="statusOrder"]').value = params.dupStatusOrder;
       if (params.dupPurchaseChannel) document.querySelector('select[data-dict="purchaseChannel"]').value = params.dupPurchaseChannel;

@@ -47,6 +47,15 @@
       border: 1px solid #f3f4f6;
     }
     .dropdown-menu.active { display: block; }
+    /* Индикатор "идёт сохранение" (13.08.2026, по фидбеку VASY) —
+       вращение (animate-spin) на иконке дискеты выглядело странно, заменено
+       пульсацией (масштаб, как сердцебиение), используется на save-order-btn
+       в order-new.js/order-edit.js на время запроса. */
+    @keyframes save-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.25); }
+    }
+    .save-pulse { animation: save-pulse 0.7s ease-in-out infinite; }
   </style>
 </head>
 
