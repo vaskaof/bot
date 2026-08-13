@@ -23,6 +23,21 @@ const CATEGORY_LABELS = {
 const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
+// Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
+// доли добавляются отдельной кнопкой "+ Добавить долю" в своём блоке, см.
+// wireSharesSection). Подписи/описания показываются прямо в выпадающем списке
+// формы — VASY попросил 13.08.2026 заменить свободный ввод категории на выбор
+// с объяснением, чтобы нельзя было опечататься.
+const ADDABLE_CATEGORIES = [
+  { value: 'commission', label: 'Комиссия', help: 'Проценты, связанные с самой комиссией/бронью посредничества по заказу.' },
+  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' },
+  { value: 'forecast', label: 'Прогноз расходов на заказ', help: 'Прогнозная сумма или процент для полей расхода на заказе (вес, доставка) — предзаполняет форму нового заказа.' }
+];
+const TYPE_OPTIONS = [
+  { value: 'percent', label: 'Процент (%)', help: 'Значение — процент от базы (например, от суммы товара или от комиссии).' },
+  { value: 'fixed', label: 'Фиксированная сумма (₽)', help: 'Значение — фиксированная сумма в рублях, не зависит от суммы заказа.' }
+];
+
 function slugKey(label) {
   return label.trim().replace(/\s+/g, '_');
 }
@@ -235,36 +250,89 @@ window.Screens.settings = {
       if (window.lucide) window.lucide.createIcons();
     }
 
+    function addPositionFormHtml() {
+      return `
+        <div id="add-position-form" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mt-2 space-y-3">
+          <div>
+            <label class="text-xs font-medium text-gray-500 mb-1 block">Название параметра</label>
+            <input type="text" id="new-position-label" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Например, «Прогноз цены веса»" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-500 mb-1 block">Категория</label>
+            <select id="new-position-category" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              ${ADDABLE_CATEGORIES.map(c => `<option value="${c.value}">${c.label}</option>`).join('')}
+            </select>
+            <div id="new-position-category-help" class="text-[11px] text-gray-400 mt-1"></div>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-500 mb-1 block">Тип значения</label>
+            <select id="new-position-type" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              ${TYPE_OPTIONS.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+            </select>
+            <div id="new-position-type-help" class="text-[11px] text-gray-400 mt-1"></div>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-500 mb-1 block">Значение</label>
+            <input type="number" step="0.01" id="new-position-value" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" value="0" />
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button type="button" id="cancel-position-btn" class="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-500">Отмена</button>
+            <button type="button" id="confirm-position-btn" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">Добавить</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function addPositionButtonHtml() {
+      return `<button type="button" id="add-position-btn" class="w-full py-2.5 rounded-xl border border-dashed border-gray-300 text-sm font-medium text-gray-500">+ Добавить позицию</button>`;
+    }
+
     function wireAddPosition() {
       const body = document.getElementById('settings-body');
       const addSection = document.createElement('div');
       addSection.className = 'mt-2';
-      addSection.innerHTML = `<button type="button" id="add-position-btn" class="w-full py-2.5 rounded-xl border border-dashed border-gray-300 text-sm font-medium text-gray-500">+ Добавить позицию</button>`;
       body.appendChild(addSection);
-      document.getElementById('add-position-btn').addEventListener('click', async () => {
-        const label = prompt('Название параметра:');
-        if (!label || !label.trim()) return;
-        const category = prompt('Категория — commission / tax_reserve / forecast:', 'forecast');
-        if (!category || !['commission', 'tax_reserve', 'forecast'].includes(category.trim())) {
-          showSaveToast(false, 'Категория должна быть commission, tax_reserve или forecast.');
-          return;
-        }
-        const type = prompt('Тип — percent / fixed:', 'percent');
-        if (!type || !['percent', 'fixed'].includes(type.trim())) {
-          showSaveToast(false, 'Тип должен быть percent или fixed.');
-          return;
-        }
-        const valueRaw = prompt('Значение:', '0');
-        const value = parseFloat(valueRaw);
-        if (isNaN(value)) { showSaveToast(false, 'Значение должно быть числом.'); return; }
-        try {
-          await callServer('upsertFinancialSetting', { key: slugKey(label), label: label.trim(), value, type: type.trim(), category: category.trim() });
-          showSaveToast(true, 'Добавлено.');
-          load();
-        } catch (error) {
-          showSaveToast(false, error.message);
-        }
-      });
+
+      function showButton() {
+        addSection.innerHTML = addPositionButtonHtml();
+        document.getElementById('add-position-btn').addEventListener('click', showForm);
+      }
+
+      function showForm() {
+        addSection.innerHTML = addPositionFormHtml();
+
+        const categorySelect = document.getElementById('new-position-category');
+        const categoryHelp = document.getElementById('new-position-category-help');
+        const typeSelect = document.getElementById('new-position-type');
+        const typeHelp = document.getElementById('new-position-type-help');
+
+        const updateCategoryHelp = () => { categoryHelp.textContent = ADDABLE_CATEGORIES.find(c => c.value === categorySelect.value).help; };
+        const updateTypeHelp = () => { typeHelp.textContent = TYPE_OPTIONS.find(t => t.value === typeSelect.value).help; };
+        updateCategoryHelp();
+        updateTypeHelp();
+        categorySelect.addEventListener('change', updateCategoryHelp);
+        typeSelect.addEventListener('change', updateTypeHelp);
+
+        document.getElementById('cancel-position-btn').addEventListener('click', showButton);
+
+        document.getElementById('confirm-position-btn').addEventListener('click', async () => {
+          const label = document.getElementById('new-position-label').value.trim();
+          if (!label) { showSaveToast(false, 'Название параметра обязательно.'); return; }
+          const category = categorySelect.value;
+          const type = typeSelect.value;
+          const value = parseFloat(document.getElementById('new-position-value').value);
+          if (isNaN(value)) { showSaveToast(false, 'Значение должно быть числом.'); return; }
+          try {
+            await callServer('upsertFinancialSetting', { key: slugKey(label), label, value, type, category });
+            showSaveToast(true, 'Добавлено.');
+            load();
+          } catch (error) {
+            showSaveToast(false, error.message);
+          }
+        });
+      }
+
+      showButton();
     }
   }
 };
