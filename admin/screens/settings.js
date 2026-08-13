@@ -9,8 +9,18 @@
  * целиком через `replacePayoutShares` (сервер отказывает целиком, если сумма
  * ≠ 100%, см. `financialSettingsRepository.js`) — правки долей копятся
  * локально (`sharesDraft`), кнопка "Сохранить доли" неактивна, пока сумма ≠
- * 100%. Остальные категории (`commission`/`tax_reserve`/`forecast`)
- * редактируются построчно, сохранение сразу по кнопке у строки.
+ * 100%. `commission`/`tax_reserve` редактируются построчно через общую форму
+ * "Добавить позицию", сохранение сразу по кнопке у строки.
+ *
+ * Категория `forecast` (прогноз расходов) — ТОЖЕ особый блок, редизайн
+ * 13.08.2026 (тот же день, по итогам ручной проверки Фазы 2): ФИКСИРОВАННЫЕ
+ * 5 позиций (см. FORECAST_FIELD_DEFS, ключи СОВПАДАЮТ с backend
+ * financialSettingsService.FORECAST_KEYS) — БОЛЬШЕ НЕ входит в "Добавить
+ * позицию" (ключ там генерируется из лейбла, непредсказуем, ломает
+ * getOrderForecast). "Вес" — единственная позиция с выбором единицы
+ * (%/₽/$, VASY явно попросил); остальные 4 — только ₽, без выбора.
+ * "Доставка КЗ→РФ" на заказе больше НЕ настраивается напрямую здесь —
+ * складывается из "Такси КЗ"/"СДЭК"/"Такси РФ" на самом заказе.
  */
 window.Screens = window.Screens || {};
 
@@ -25,17 +35,36 @@ const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
 // доли добавляются отдельной кнопкой "+ Добавить долю" в своём блоке, см.
-// wireSharesSection). Подписи/описания показываются прямо в выпадающем списке
-// формы — VASY попросил 13.08.2026 заменить свободный ввод категории на выбор
-// с объяснением, чтобы нельзя было опечататься.
+// wireSharesSection; forecast сюда БОЛЬШЕ НЕ входит с 13.08.2026 — 5
+// фиксированных позиций редактируются своим отдельным блоком, см.
+// forecastSectionHtml, ключ через эту форму непредсказуем). Подписи/описания
+// показываются прямо в выпадающем списке формы.
 const ADDABLE_CATEGORIES = [
   { value: 'commission', label: 'Комиссия', help: 'Проценты, связанные с самой комиссией/бронью посредничества по заказу.' },
-  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' },
-  { value: 'forecast', label: 'Прогноз расходов на заказ', help: 'Прогнозная сумма или процент для полей расхода на заказе (вес, доставка) — предзаполняет форму нового заказа.' }
+  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' }
 ];
 const TYPE_OPTIONS = [
   { value: 'percent', label: 'Процент (%)', help: 'Значение — процент от базы (например, от суммы товара или от комиссии).' },
   { value: 'fixed', label: 'Фиксированная сумма (₽)', help: 'Значение — фиксированная сумма в рублях, не зависит от суммы заказа.' }
+];
+
+// 5 фиксированных позиций прогноза расходов (13.08.2026, редизайн) — ключи
+// СОВПАДАЮТ с backend financialSettingsService.FORECAST_KEYS, менять только
+// синхронно с обеих сторон. `unitOptions.length > 1` — показывает выбор
+// единицы вместо статичного значка ₽ (сейчас это только "Вес").
+const FORECAST_FIELD_DEFS = [
+  {
+    key: 'Прогноз_Вес', label: 'Вес',
+    unitOptions: [
+      { value: 'percent', badge: '%' },
+      { value: 'fixed', badge: '₽' },
+      { value: 'fixed_usd', badge: '$' }
+    ]
+  },
+  { key: 'Прогноз_Такси_КЗ', label: 'Такси КЗ', unitOptions: [{ value: 'fixed', badge: '₽' }] },
+  { key: 'Прогноз_Стоимость_СДЭК', label: 'СДЭК', unitOptions: [{ value: 'fixed', badge: '₽' }] },
+  { key: 'Прогноз_Такси_РФ', label: 'Такси РФ', unitOptions: [{ value: 'fixed', badge: '₽' }] },
+  { key: 'Прогноз_Доставка_РФ', label: 'Доставка по РФ', unitOptions: [{ value: 'fixed', badge: '₽' }] }
 ];
 
 function slugKey(label) {
@@ -80,14 +109,20 @@ window.Screens.settings = {
       const body = document.getElementById('settings-body');
       const byCategory = {};
       settings.forEach(s => {
-        if (s.category === 'payout_share') return; // рендерится из sharesDraft, не из сырого списка
+        if (s.category === 'payout_share' || s.category === 'forecast') return; // свои особые блоки, не общий цикл
         (byCategory[s.category] = byCategory[s.category] || []).push(s);
       });
+      const forecastRows = settings.filter(s => s.category === 'forecast');
 
-      body.innerHTML = CATEGORY_ORDER.map(cat => cat === 'payout_share' ? sharesSectionHtml() : plainSectionHtml(cat, byCategory[cat] || [])).join('');
+      body.innerHTML = CATEGORY_ORDER.map(cat => {
+        if (cat === 'payout_share') return sharesSectionHtml();
+        if (cat === 'forecast') return forecastSectionHtml(forecastRows);
+        return plainSectionHtml(cat, byCategory[cat] || []);
+      }).join('');
 
-      CATEGORY_ORDER.filter(c => c !== 'payout_share').forEach(cat => wirePlainSection(cat));
+      CATEGORY_ORDER.filter(c => c !== 'payout_share' && c !== 'forecast').forEach(cat => wirePlainSection(cat));
       wireSharesSection();
+      wireForecastSection();
       wireAddPosition();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -146,6 +181,60 @@ window.Screens.settings = {
             await callServer('deleteFinancialSetting', key);
             showSaveToast(true, 'Удалено.');
             load();
+          } catch (error) {
+            showSaveToast(false, error.message);
+          }
+        });
+      });
+    }
+
+    function forecastRowHtml(def, setting) {
+      const value = setting ? setting.value : 0;
+      const type = setting ? setting.type : def.unitOptions[0].value;
+      const unitControl = def.unitOptions.length > 1
+        ? `<select class="forecast-type-select bg-transparent border-none outline-none text-xs text-gray-500 shrink-0">
+             ${def.unitOptions.map(u => `<option value="${u.value}" ${u.value === type ? 'selected' : ''}>${u.badge}</option>`).join('')}
+           </select>`
+        : `<span class="text-sm text-gray-400 w-4">${def.unitOptions[0].badge}</span>`;
+      return `
+        <div class="flex items-center gap-2 p-3" data-forecast-key="${def.key}" data-forecast-label="${escapeHtmlClient(def.label)}">
+          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+          <input type="number" step="0.01" class="forecast-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${value}" />
+          ${unitControl}
+          <button type="button" class="forecast-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function forecastSectionHtml(rows) {
+      return `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.forecast}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="forecast">
+            ${FORECAST_FIELD_DEFS.map(def => forecastRowHtml(def, rows.find(r => r.key === def.key))).join('')}
+          </div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">«Доставка КЗ→РФ» на самом заказе складывается из «Такси КЗ» + «СДЭК» + «Такси РФ» — здесь задаются только прогнозы для предзаполнения формы.</div>
+        </section>
+      `;
+    }
+
+    function wireForecastSection() {
+      const container = document.querySelector('[data-category="forecast"]');
+      if (!container) return;
+
+      container.querySelectorAll('[data-forecast-key]').forEach(row => {
+        const key = row.dataset.forecastKey;
+        const label = row.dataset.forecastLabel;
+        row.querySelector('.forecast-save-btn').addEventListener('click', async () => {
+          const value = parseFloat(row.querySelector('.forecast-value-input').value);
+          if (isNaN(value)) { showSaveToast(false, 'Значение должно быть числом.'); return; }
+          const typeSelect = row.querySelector('.forecast-type-select');
+          const type = typeSelect ? typeSelect.value : 'fixed';
+          try {
+            await callServer('upsertFinancialSetting', { key, label, value, type, category: 'forecast' });
+            showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);
           }

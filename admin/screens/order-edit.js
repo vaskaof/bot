@@ -402,18 +402,34 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+          <!-- "Доставка КЗ→РФ" (13.08.2026, редизайн по запросу VASY тем же
+               днём) — БОЛЬШЕ НЕ одно вводимое число, складывается из 3
+               отдельных сумм (Такси КЗ/СДЭК/Такси РФ), которые менеджер
+               заполняет здесь по факту — нужно для точной разбивки расходов
+               позже. Итог — read-only, живой sum трёх полей ниже. -->
+          <div class="field-row flex flex-col p-4 border-b border-gray-100 gap-2">
+            <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
                 <i data-lucide="plane" class="w-5 h-5"></i>
               </div>
               <span class="text-sm font-medium text-gray-700">Доставка КЗ→РФ</span>
+              <span class="ml-auto text-[15px] font-semibold text-gray-900"><span id="delivery-kzrf-total-display">0.00</span> ₽</span>
             </div>
-            <div class="flex-1 w-full flex items-center justify-between gap-2">
-              <div class="flex items-baseline gap-1">
-                <input type="number" id="delivery-kzrf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
-                <span class="text-sm text-gray-500 font-medium">₽</span>
+            <div class="grid grid-cols-3 gap-2 pl-12">
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси КЗ</label>
+                <input type="number" id="taxi-kz-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
               </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">СДЭК</label>
+                <input type="number" id="sdek-cost-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси РФ</label>
+                <input type="number" id="taxi-rf-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+            </div>
+            <div class="flex items-center justify-end gap-1 pl-12">
               <div class="flex items-center gap-1 shrink-0" id="delivery-kzrf-paid-toggle" data-value="Нет">
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
@@ -463,8 +479,11 @@ window.Screens.orderEdit = {
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
-    let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput;
+    let weightSumInput, deliveryRfSumInput;
     let weightUsdInput, weightUsdRateDisplay;
+    // "Доставка КЗ→РФ" (13.08.2026, редизайн) — больше не одно поле, сумма
+    // 3 живых полей ниже; deliveryKzRfTotalDisplay — read-only, не input.
+    let taxiKzSumInput, sdekCostSumInput, taxiRfSumInput, deliveryKzRfTotalDisplay;
     let usdToRubRate = 0; // курс "Доллар" из finalRates (13.08.2026, $→₽ калькулятор веса) — этот экран раньше курсы вообще не запрашивал
     let collectiveSelect, sdekTypeSelect;
     let amountRubBase = 0;
@@ -515,7 +534,14 @@ window.Screens.orderEdit = {
         mainPaid: document.getElementById('main-paid-toggle').dataset.value,
         weightSum: weightSumInput.value,
         weightPaid: document.getElementById('weight-paid-toggle').dataset.value,
-        deliveryKzRfSum: deliveryKzRfSumInput.value,
+        // "Доставка КЗ→РФ" (13.08.2026, редизайн) — 3 отдельных поля, каждое
+        // пишется отдельной колонкой на сервере (для разбивки расходов) +
+        // computeDeliveryKzRfTotal() — их живая сумма, та же колонка "Стоимость
+        // доставки КЗ→РФ", что и раньше (платёжный движок её и читает).
+        taxiKzSum: taxiKzSumInput.value,
+        sdekSum: sdekCostSumInput.value,
+        taxiRfSum: taxiRfSumInput.value,
+        deliveryKzRfSum: computeDeliveryKzRfTotal().toFixed(2),
         deliveryKzRfPaid: document.getElementById('delivery-kzrf-paid-toggle').dataset.value,
         deliveryRfSum: deliveryRfSumInput.value,
         deliveryRfPaid: document.getElementById('delivery-rf-paid-toggle').dataset.value,
@@ -575,10 +601,23 @@ window.Screens.orderEdit = {
     rateKztInput = document.getElementById('rate-kzt-input');
     rateRubInput = document.getElementById('rate-rub-input');
     weightSumInput = document.getElementById('weight-sum-input');
-    deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
     deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
     weightUsdInput = document.getElementById('weight-usd-input');
     weightUsdRateDisplay = document.getElementById('weight-usd-rate-display');
+    taxiKzSumInput = document.getElementById('taxi-kz-sum-input');
+    sdekCostSumInput = document.getElementById('sdek-cost-sum-input');
+    taxiRfSumInput = document.getElementById('taxi-rf-sum-input');
+    deliveryKzRfTotalDisplay = document.getElementById('delivery-kzrf-total-display');
+
+    // "Доставка КЗ→РФ" — живой sum трёх полей, обновляется в display на
+    // каждый ввод (13.08.2026, редизайн).
+    function computeDeliveryKzRfTotal() {
+      return (parseFloat(taxiKzSumInput.value) || 0) + (parseFloat(sdekCostSumInput.value) || 0) + (parseFloat(taxiRfSumInput.value) || 0);
+    }
+    function updateDeliveryKzRfTotalDisplay() {
+      deliveryKzRfTotalDisplay.textContent = computeDeliveryKzRfTotal().toFixed(2);
+    }
+    [taxiKzSumInput, sdekCostSumInput, taxiRfSumInput].forEach((input) => input.addEventListener('input', updateDeliveryKzRfTotalDisplay));
     collectiveSelect = document.getElementById('collective-select');
     purchaseLinkInput = document.getElementById('purchase-link-input');
     purchaseLinkHint = document.getElementById('purchase-link-hint');
@@ -1050,7 +1089,14 @@ window.Screens.orderEdit = {
       renderPaymentSummary(details);
 
       weightSumInput.value = details.payments.weight.sum || '';
-      deliveryKzRfSumInput.value = details.payments.deliveryKzRf.sum || '';
+      // "Доставка КЗ→РФ" (13.08.2026, редизайн) — заполняем 3 отдельных поля
+      // из сохранённой разбивки; итог пересчитывается сразу же тем же кодом,
+      // что и на ручной ввод (updateDeliveryKzRfTotalDisplay), не полагаемся
+      // на details.payments.deliveryKzRf.sum напрямую здесь.
+      taxiKzSumInput.value = details.payments.deliveryKzRf.taxiKz || '';
+      sdekCostSumInput.value = details.payments.deliveryKzRf.sdek || '';
+      taxiRfSumInput.value = details.payments.deliveryKzRf.taxiRf || '';
+      updateDeliveryKzRfTotalDisplay();
       deliveryRfSumInput.value = details.payments.deliveryRf.sum || '';
 
       if (details.client.telegramId) {

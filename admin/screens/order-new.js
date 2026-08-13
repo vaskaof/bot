@@ -348,16 +348,29 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+          <!-- "Доставка КЗ→РФ" (13.08.2026, редизайн) — складывается из 3
+               отдельных сумм (см. order-edit.js для того же паттерна). -->
+          <div class="field-row flex flex-col p-4 border-b border-gray-100 gap-2">
+            <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
                 <i data-lucide="plane" class="w-5 h-5"></i>
               </div>
               <span class="text-sm font-medium text-gray-700">Доставка КЗ→РФ</span>
+              <span class="ml-auto text-[15px] font-semibold text-gray-900"><span id="delivery-kzrf-total-display">0.00</span> ₽</span>
             </div>
-            <div class="flex-1 w-full flex items-baseline gap-1">
-              <input type="number" id="delivery-kzrf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
-              <span class="text-sm text-gray-500 font-medium">₽</span>
+            <div class="grid grid-cols-3 gap-2 pl-12">
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси КЗ</label>
+                <input type="number" id="taxi-kz-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">СДЭК</label>
+                <input type="number" id="sdek-cost-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси РФ</label>
+                <input type="number" id="taxi-rf-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
             </div>
           </div>
 
@@ -389,7 +402,10 @@ window.Screens.orderNew = {
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput, mainAmountReceivedInput, calculatedRub, rateDisplay, refreshRateBtn, dateInput;
     // Прогноз расходов (13.08.2026, Фаза 2) — редактируемые, предзаполняются
     // из getOrderForecast() при смене "Количество" (debounced, см. ниже).
-    let weightSumInput, deliveryKzRfSumInput, deliveryRfSumInput, weightUsdInput, weightUsdRateDisplay;
+    let weightSumInput, deliveryRfSumInput, weightUsdInput, weightUsdRateDisplay;
+    // "Доставка КЗ→РФ" (13.08.2026, редизайн) — 3 отдельных поля + read-only
+    // сумма, тот же паттерн, что order-edit.js.
+    let taxiKzSumInput, sdekCostSumInput, taxiRfSumInput, deliveryKzRfTotalDisplay;
     let currentCurrency = 'Доллар';
     let currentRates = {};
     let currentRate = 0;
@@ -438,7 +454,10 @@ window.Screens.orderNew = {
         mainSum: totalPaymentInput.value,
         mainAmountReceivedAtCreation: mainAmountReceivedInput.value,
         weightSum: weightSumInput.value,
-        deliveryKzRfSum: deliveryKzRfSumInput.value,
+        taxiKzSum: taxiKzSumInput.value,
+        sdekSum: sdekCostSumInput.value,
+        taxiRfSum: taxiRfSumInput.value,
+        deliveryKzRfSum: computeDeliveryKzRfTotal().toFixed(2),
         deliveryRfSum: deliveryRfSumInput.value,
         wishlistId: prefillWishlistId || ''
       };
@@ -499,10 +518,21 @@ window.Screens.orderNew = {
     purchaseLinkHint = document.getElementById('purchase-link-hint');
     purchaseLinkResolveBtn = document.getElementById('purchase-link-resolve-btn');
     weightSumInput = document.getElementById('weight-sum-input');
-    deliveryKzRfSumInput = document.getElementById('delivery-kzrf-sum-input');
     deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
     weightUsdInput = document.getElementById('weight-usd-input');
     weightUsdRateDisplay = document.getElementById('weight-usd-rate-display');
+    taxiKzSumInput = document.getElementById('taxi-kz-sum-input');
+    sdekCostSumInput = document.getElementById('sdek-cost-sum-input');
+    taxiRfSumInput = document.getElementById('taxi-rf-sum-input');
+    deliveryKzRfTotalDisplay = document.getElementById('delivery-kzrf-total-display');
+
+    function computeDeliveryKzRfTotal() {
+      return (parseFloat(taxiKzSumInput.value) || 0) + (parseFloat(sdekCostSumInput.value) || 0) + (parseFloat(taxiRfSumInput.value) || 0);
+    }
+    function updateDeliveryKzRfTotalDisplay() {
+      deliveryKzRfTotalDisplay.textContent = computeDeliveryKzRfTotal().toFixed(2);
+    }
+    [taxiKzSumInput, sdekCostSumInput, taxiRfSumInput].forEach((input) => input.addEventListener('input', updateDeliveryKzRfTotalDisplay));
 
     const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     dateInput.value = todayFormatter.format(new Date());
@@ -1027,9 +1057,11 @@ window.Screens.orderNew = {
     // (тот же принцип, что document.activeElement-проверки у треугольника
     // Сумма/Комиссия/Итог выше, просто через явный флаг — поле не обязано быть
     // в фокусе именно в момент прихода ответа от сервера, запрос асинхронный).
-    const forecastEdited = { weight: false, deliveryKzRf: false, deliveryRf: false };
+    const forecastEdited = { weight: false, taxiKz: false, sdek: false, taxiRf: false, deliveryRf: false };
     weightSumInput.addEventListener('input', () => { forecastEdited.weight = true; });
-    deliveryKzRfSumInput.addEventListener('input', () => { forecastEdited.deliveryKzRf = true; });
+    taxiKzSumInput.addEventListener('input', () => { forecastEdited.taxiKz = true; });
+    sdekCostSumInput.addEventListener('input', () => { forecastEdited.sdek = true; });
+    taxiRfSumInput.addEventListener('input', () => { forecastEdited.taxiRf = true; });
     deliveryRfSumInput.addEventListener('input', () => { forecastEdited.deliveryRf = true; });
 
     // Комиссия (13.08.2026, VASY — "сделай чтобы комиссия тоже автоматически
@@ -1048,7 +1080,10 @@ window.Screens.orderNew = {
       try {
         const forecast = await callServer('getOrderForecast', amountInput.value);
         if (!forecastEdited.weight) weightSumInput.value = forecast.weight > 0 ? forecast.weight.toFixed(2) : '';
-        if (!forecastEdited.deliveryKzRf) deliveryKzRfSumInput.value = forecast.deliveryKzRf > 0 ? forecast.deliveryKzRf.toFixed(2) : '';
+        if (!forecastEdited.taxiKz) taxiKzSumInput.value = forecast.taxiKz > 0 ? forecast.taxiKz.toFixed(2) : '';
+        if (!forecastEdited.sdek) sdekCostSumInput.value = forecast.sdek > 0 ? forecast.sdek.toFixed(2) : '';
+        if (!forecastEdited.taxiRf) taxiRfSumInput.value = forecast.taxiRf > 0 ? forecast.taxiRf.toFixed(2) : '';
+        updateDeliveryKzRfTotalDisplay();
         if (!forecastEdited.deliveryRf) deliveryRfSumInput.value = forecast.deliveryRf > 0 ? forecast.deliveryRf.toFixed(2) : '';
         if (!feePercentEdited && forecast.commissionPercent > 0) {
           feePercentInput.value = forecast.commissionPercent.toFixed(2);
