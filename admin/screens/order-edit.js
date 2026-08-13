@@ -1050,6 +1050,22 @@ window.Screens.orderEdit = {
     // см. личную память Architect'а про инцидент с дублями заказов) —
     // применена здесь тоже для единообразия, хотя updateOrder безопаснее
     // при повторе (перезаписывает ту же строку, не плодит новые).
+    // Закрывающие статусы — тот же литерал, что backend
+    // ordersSheetsClient.ORDER_CLOSING_STATUSES (Config.js-конвенция: копируем
+    // значение как есть, не изобретаем свой код, см. личную память
+    // feedback_gas_original_contract_values). Заказ в одном из этих статусов
+    // выходит из платёжного движка целиком (ни waterfall, ни точечное
+    // распределение больше не тронут его стадии — getOpenOrdersForClient его
+    // не отдаёт) — предупреждение при переходе, по запросу VASY (13.08.2026,
+    // найдено на живом заказе 3E7473: заказ дошёл до "Получено клиентом" при
+    // непокрытом долге, оплата "молча" перестала быть возможной).
+    const ORDER_CLOSING_STATUSES = ['Получено клиентом', 'возврат средств'];
+
+    function findUnpaidNewModelStages() {
+      if (!loadedDetails || !loadedDetails.isNewModel) return [];
+      return (loadedDetails.stagesBalance || []).filter((s) => s.target > 0 && s.remaining > 0.01);
+    }
+
     const saveOrderBtn = document.getElementById('save-order-btn');
     saveOrderBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -1058,6 +1074,21 @@ window.Screens.orderEdit = {
         showSaveToast(false, 'Не получилось сохранить: не заполнено поле «Выпуск»');
         return;
       }
+
+      const nextStatusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
+      if (ORDER_CLOSING_STATUSES.includes(nextStatusDelivery)) {
+        const unpaidStages = findUnpaidNewModelStages();
+        if (unpaidStages.length > 0) {
+          const debtText = unpaidStages.map((s) => `${s.stage}: ${s.remaining.toFixed(2)} ₽`).join(', ');
+          const proceed = confirm(
+            `Заказ переходит в статус «${nextStatusDelivery}», но по нему остаётся непокрытый долг (${debtText}).\n\n` +
+            `После этого заказ выходит из платёжного движка — ни обычное распределение, ни закрепление меткой больше не смогут принять по нему оплату, даже если у клиента есть деньги в пуле.\n\n` +
+            `Всё равно сохранить с этим статусом?`
+          );
+          if (!proceed) return;
+        }
+      }
+
       saveOrderBtn.disabled = true;
       saveOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
       const icon = saveOrderBtn.querySelector('svg');
