@@ -22,6 +22,7 @@ const ROUTES = [
   { path: 'catalog', screen: 'catalog', navKey: 'catalog', showNav: true },
   { path: 'contests', screen: 'contests', navKey: 'contests', showNav: true },
   { path: 'payments', screen: 'payments', navKey: 'payments', showNav: true },
+  { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
