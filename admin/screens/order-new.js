@@ -118,6 +118,7 @@ window.Screens.orderNew = {
             </div>
             <div class="flex-1 w-full">
               <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
+              <div id="delivery-ladder" class="mt-2"></div>
             </div>
           </div>
 
@@ -197,20 +198,6 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div id="bulk-rows-section" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-3">
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium text-gray-700">Клиенты и суммы</span>
-              <div class="flex items-center gap-2">
-                <button type="button" id="bulk-copy-amount-btn" class="text-[11px] text-indigo-600 font-medium">Скопировать сумму во все</button>
-                <button type="button" id="bulk-from-wishlist-btn" class="text-[11px] text-indigo-600 font-medium">Из листа ожидания</button>
-              </div>
-            </div>
-            <div id="bulk-rows-list" class="flex flex-col gap-2"></div>
-            <button type="button" id="bulk-add-row-btn" class="self-start text-sm text-indigo-600 font-medium flex items-center gap-1">
-              <i data-lucide="plus" class="w-4 h-4"></i> Добавить клиента
-            </button>
-          </div>
-
           <div id="amount-section" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -259,6 +246,25 @@ window.Screens.orderNew = {
                 <span class="text-sm text-gray-500 font-medium">₽</span>
               </div>
             </div>
+          </div>
+
+          <!-- "Клиенты и суммы" перемещено сюда, НИЖЕ курса/комиссии
+               (13.08.2026, по фидбеку VASY — раньше стояло выше "Количество",
+               из-за чего приходилось сначала скроллить вниз считать курс,
+               потом возвращаться назад добавлять клиентов). Кнопки — с явным
+               фоном/рамкой (были голым цветным текстом, непонятно нажимаемое). -->
+          <div id="bulk-rows-section" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <span class="text-sm font-medium text-gray-700">Клиенты и суммы</span>
+              <div class="flex items-center gap-2">
+                <button type="button" id="bulk-copy-amount-btn" class="px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-medium hover:bg-indigo-100 transition-colors">Скопировать сумму во все</button>
+                <button type="button" id="bulk-from-wishlist-btn" class="px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-medium hover:bg-indigo-100 transition-colors">Из листа ожидания</button>
+              </div>
+            </div>
+            <div id="bulk-rows-list" class="flex flex-col gap-2"></div>
+            <button type="button" id="bulk-add-row-btn" class="self-start px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium flex items-center gap-1 hover:bg-indigo-100 transition-colors">
+              <i data-lucide="plus" class="w-4 h-4"></i> Добавить клиента
+            </button>
           </div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -436,6 +442,19 @@ window.Screens.orderNew = {
     FormHelpers.populateSelect('select[data-dict="purchaseChannel"]', dictionaries.purchaseChannel);
     FormHelpers.populateSelect('select[data-dict="purchaseAccount"]', dictionaries.purchaseAccount);
     FormHelpers.populateSelect('select[data-dict="cargo"]', dictionaries.cargo);
+
+    // Лестница статусов доставки (13.08.2026, VASY-репорт: "на новом заказе
+    // не вижу") — новый заказ ещё не сохранён, сервер её посчитать не может
+    // (getOrderDetails требует существующий orderId), поэтому здесь чисто
+    // клиентский расчёт (computeDeliveryLadderPosition, common.js), живой на
+    // каждую смену select'а — тот же select, что уходит в orderData.
+    function updateDeliveryLadderPreview() {
+      const select = document.querySelector('select[data-dict="statusDelivery"]');
+      const ladder = computeDeliveryLadderPosition(select.value);
+      document.getElementById('delivery-ladder').innerHTML = buildDeliveryLadder(ladder, select.value, { compact: true });
+    }
+    document.querySelector('select[data-dict="statusDelivery"]').addEventListener('change', updateDeliveryLadderPreview);
+    updateDeliveryLadderPreview();
 
     FormHelpers.initTagToggle('booking-paid-toggle');
 
@@ -972,16 +991,32 @@ window.Screens.orderNew = {
     // на закрытие экрана (navigateTo('orders')) сразу после успешного
     // сохранения, функция стала не нужна, убрана.
 
-    document.getElementById('save-order-btn').addEventListener('click', async (e) => {
+    const saveOrderBtn = document.getElementById('save-order-btn');
+
+    // ИСПРАВЛЕНО (13.08.2026, реальный инцидент — заказы задублировались в
+    // проде): createOrder/createOrdersBatch делают много последовательных
+    // Sheets API запросов, сохранение батча заметно небыстрое, а кнопка
+    // раньше оставалась активной и не давала никакой видимой обратной связи
+    // во время ожидания — VASY кликал повторно, думая что не сработало,
+    // каждый клик заново создавал всю пачку. Теперь кнопка блокируется на
+    // всё время запроса + крутится иконка, разблокируется в finally
+    // независимо от исхода.
+    saveOrderBtn.addEventListener('click', async (e) => {
       e.preventDefault();
+      if (saveOrderBtn.disabled) return;
 
       if (!releaseSearch.value.trim()) {
         showSaveToast(false, 'Не получилось сохранить заказ: не заполнено поле «Выпуск»');
         return;
       }
 
-      if (bulkMode) {
-        try {
+      saveOrderBtn.disabled = true;
+      saveOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      const icon = saveOrderBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+
+      try {
+        if (bulkMode) {
           const { results } = await saveBulkOrders();
           const okCount = results.filter((r) => r.success).length;
           const failCount = results.length - okCount;
@@ -999,13 +1034,9 @@ window.Screens.orderNew = {
             }, 4300);
           }
           navigateTo('orders');
-        } catch (error) {
-          showSaveToast(false, `Не получилось создать заказы: ${error.message}`);
+          return;
         }
-        return;
-      }
 
-      try {
         const result = await saveOrder();
         showSaveToast(true, `Сохранено (Заказ ID: ${result.orderId})`);
         if (result.notifyWarning) {
@@ -1028,7 +1059,14 @@ window.Screens.orderNew = {
         // отложенные предупреждения выше всё равно успеют показаться.
         navigateTo('orders');
       } catch (error) {
-        showSaveToast(false, `Не получилось сохранить заказ: ${error.message}`);
+        showSaveToast(false, bulkMode ? `Не получилось создать заказы: ${error.message}` : `Не получилось сохранить заказ: ${error.message}`);
+      } finally {
+        // navigateTo() выше при успехе уже сменил экран (AbortController
+        // роутера убьёт этот render() целиком) — сброс здесь безвреден в
+        // любом случае, страхует именно ветку ошибки, где форма остаётся.
+        saveOrderBtn.disabled = false;
+        saveOrderBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        if (icon) icon.classList.remove('animate-spin');
       }
     });
 
@@ -1061,19 +1099,26 @@ window.Screens.orderNew = {
     // бронь?" (явное требование VASY, 12.08.2026 — новый заказ всегда
     // стартует с этим флагом сброшенным, ставится вручную) — оба и так
     // отсутствуют в setBulkMode-режиме, отдельно исключать нечего.
-    if (params && params.duplicateFrom) {
-      const d = params.duplicateFrom;
-      if (d.productOriginal) { releaseSearch.value = d.productOriginal; selectedReleaseId = d.productOriginal; }
-      if (d.statusDelivery) document.querySelector('select[data-dict="statusDelivery"]').value = d.statusDelivery;
-      if (d.statusOrder) document.querySelector('select[data-dict="statusOrder"]').value = d.statusOrder;
-      if (d.purchaseChannel) document.querySelector('select[data-dict="purchaseChannel"]').value = d.purchaseChannel;
-      if (d.purchaseAccount) document.querySelector('select[data-dict="purchaseAccount"]').value = d.purchaseAccount;
-      if (d.cargo) document.querySelector('select[data-dict="cargo"]').value = d.cargo;
-      if (d.dateOrder) dateInput.value = d.dateOrder;
-      if (d.currency) { document.getElementById('currency-select').value = d.currency; currentCurrency = d.currency; }
-      if (d.amount) amountInput.value = d.amount;
-      if (d.feePercent) feePercentInput.value = d.feePercent;
+    // ИСПРАВЛЕНО (13.08.2026, реальный баг репорта VASY — позиция не
+    // копировалась): navigateTo/matchRoute (admin/router.js) сериализуют
+    // params ТОЛЬКО как плоскую query-строку (buildQueryString по своему
+    // же комментарию рассчитан на плоский объект) — вложенный объект
+    // duplicateFrom превращался в бесполезную строку "[object Object]" при
+    // прогоне через encodeURIComponent, все поля терялись молча. Теперь —
+    // плоские top-level ключи с префиксом dup*, как и остальные params здесь.
+    if (params && params.dupMode) {
+      if (params.dupProductOriginal) { releaseSearch.value = params.dupProductOriginal; selectedReleaseId = params.dupProductOriginal; }
+      if (params.dupStatusDelivery) document.querySelector('select[data-dict="statusDelivery"]').value = params.dupStatusDelivery;
+      if (params.dupStatusOrder) document.querySelector('select[data-dict="statusOrder"]').value = params.dupStatusOrder;
+      if (params.dupPurchaseChannel) document.querySelector('select[data-dict="purchaseChannel"]').value = params.dupPurchaseChannel;
+      if (params.dupPurchaseAccount) document.querySelector('select[data-dict="purchaseAccount"]').value = params.dupPurchaseAccount;
+      if (params.dupCargo) document.querySelector('select[data-dict="cargo"]').value = params.dupCargo;
+      if (params.dupDateOrder) dateInput.value = params.dupDateOrder;
+      if (params.dupCurrency) { document.getElementById('currency-select').value = params.dupCurrency; currentCurrency = params.dupCurrency; }
+      if (params.dupAmount) amountInput.value = params.dupAmount;
+      if (params.dupFeePercent) feePercentInput.value = params.dupFeePercent;
       setBulkMode(true);
+      updateDeliveryLadderPreview();
     }
 
     if (params && (params.telegramId || params.skuOriginal)) {

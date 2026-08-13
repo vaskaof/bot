@@ -916,11 +916,22 @@ window.Screens.orderEdit = {
       purchaseLinkInput.value = details.purchaseLink || '';
 
       document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
-      // §H (12.08.2026) — снимок сохранённого состояния, НЕ живой пересчёт при
-      // смене select (та же принятая граница, что уже есть у "Итог по суммам",
-      // §17 личной памяти Architect'а — не дублируем позиционную таблицу на
-      // фронте, обновится после следующего сохранения+перезагрузки).
-      document.getElementById('delivery-ladder').innerHTML = buildDeliveryLadder(details.deliveryLadder, details.statusDelivery, {});
+      // §H (12.08.2026) исходно рисовала только снимок с сервера при загрузке,
+      // не обновляясь при смене select до сохранения — сознательный компромисс
+      // на тот момент ("не дублируем позиционную таблицу на фронте"). VASY
+      // (13.08.2026) отметил это багом на практике — исправлено: снимок с
+      // сервера используется как стартовое значение (он же источник правды на
+      // момент загрузки), а дальше 'change' пересчитывает через клиентский
+      // computeDeliveryLadderPosition (common.js — тот же порт, что теперь
+      // использует и order-new.js, уже не первое дублирование этой маленькой
+      // таблицы, а согласованный приём).
+      const deliveryLadderEl = document.getElementById('delivery-ladder');
+      const statusDeliverySelect = document.querySelector('select[data-dict="statusDelivery"]');
+      deliveryLadderEl.innerHTML = buildDeliveryLadder(details.deliveryLadder, details.statusDelivery, {});
+      statusDeliverySelect.addEventListener('change', () => {
+        const ladder = computeDeliveryLadderPosition(statusDeliverySelect.value);
+        deliveryLadderEl.innerHTML = buildDeliveryLadder(ladder, statusDeliverySelect.value, {});
+      });
       document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;
       document.querySelector('select[data-dict="purchaseChannel"]').value = details.purchaseChannel;
       document.querySelector('select[data-dict="purchaseAccount"]').value = details.purchaseAccount;
@@ -1035,12 +1046,22 @@ window.Screens.orderEdit = {
       if (window.lucide) window.lucide.createIcons();
     }
 
-    document.getElementById('save-order-btn').addEventListener('click', async (e) => {
+    // Та же защита от повторного клика, что и в order-new.js (13.08.2026,
+    // см. личную память Architect'а про инцидент с дублями заказов) —
+    // применена здесь тоже для единообразия, хотя updateOrder безопаснее
+    // при повторе (перезаписывает ту же строку, не плодит новые).
+    const saveOrderBtn = document.getElementById('save-order-btn');
+    saveOrderBtn.addEventListener('click', async (e) => {
       e.preventDefault();
+      if (saveOrderBtn.disabled) return;
       if (!releaseSearch.value.trim()) {
         showSaveToast(false, 'Не получилось сохранить: не заполнено поле «Выпуск»');
         return;
       }
+      saveOrderBtn.disabled = true;
+      saveOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      const icon = saveOrderBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
       try {
         const result = await saveOrder();
         showSaveToast(true, 'Изменения сохранены');
@@ -1053,6 +1074,10 @@ window.Screens.orderEdit = {
         navigateTo('orders');
       } catch (error) {
         showSaveToast(false, `Не получилось сохранить: ${error.message}`);
+      } finally {
+        saveOrderBtn.disabled = false;
+        saveOrderBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        if (icon) icon.classList.remove('animate-spin');
       }
     });
 
@@ -1069,19 +1094,22 @@ window.Screens.orderEdit = {
       const bookingSum = parseFloat(loadedDetails.payments.booking.sum) || 0;
       const amountRub = amountRubBase; // уже посчитан loadOrder() из mainSum-bookingSum
       const feePercent = amountRub > 0 && bookingSum > 0 ? ((bookingSum / amountRub) * 100).toFixed(2) : '';
+      // ИСПРАВЛЕНО (13.08.2026) — params должны быть ПЛОСКИМ объектом
+      // (navigateTo/buildQueryString в admin/router.js не умеют вложенные
+      // объекты, см. комментарий в order-new.js у обработчика dupMode; сюда
+      // раньше уходил вложенный duplicateFrom, что молча теряло все поля).
       navigateTo('orders/new', {
-        duplicateFrom: {
-          productOriginal: loadedDetails.productOriginal,
-          statusDelivery: loadedDetails.statusDelivery,
-          statusOrder: loadedDetails.statusOrder,
-          purchaseChannel: loadedDetails.purchaseChannel,
-          purchaseAccount: loadedDetails.purchaseAccount,
-          cargo: loadedDetails.cargo,
-          dateOrder: loadedDetails.dateOrder,
-          currency: loadedDetails.currency,
-          amount: loadedDetails.amount,
-          feePercent
-        }
+        dupMode: '1',
+        dupProductOriginal: loadedDetails.productOriginal,
+        dupStatusDelivery: loadedDetails.statusDelivery,
+        dupStatusOrder: loadedDetails.statusOrder,
+        dupPurchaseChannel: loadedDetails.purchaseChannel,
+        dupPurchaseAccount: loadedDetails.purchaseAccount,
+        dupCargo: loadedDetails.cargo,
+        dupDateOrder: loadedDetails.dateOrder,
+        dupCurrency: loadedDetails.currency,
+        dupAmount: loadedDetails.amount,
+        dupFeePercent: feePercent
       });
     });
 

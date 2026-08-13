@@ -121,6 +121,41 @@ function escapeHtmlClient(unsafe) {
 }
 
 /**
+ * Клиентский порт `server/src/orders/deliveryLadder.js`'s STATUS_TO_POSITION
+ * (13.08.2026) — нужен ТОЛЬКО там, где лестницу нужно показать ДО того, как
+ * заказ вообще сохранён (order-new.js — ещё нет `orderId`, сервер посчитать
+ * не может) или ЖИВО при смене select'а (order-edit.js — VASY-репорт:
+ * лестница раньше не менялась до сохранения, только на снимке при загрузке).
+ * Тот же приём, что уже есть у `guessPurchaseChannel` (клиентский порт
+ * справочника ради живого UI без похода на сервер). Единая точка правды по
+ * СОДЕРЖАНИЮ таблицы всё равно server-side — если она когда-нибудь изменится,
+ * эту копию тоже нужно поправить (маленький, редко меняющийся спpavочник,
+ * не стоит городить отдельный API-метод ради него).
+ * @param {string} statusDelivery
+ * @returns {{position:number,total:number}|null}
+ */
+function computeDeliveryLadderPosition(statusDelivery) {
+    const DELIVERY_POSITIONS = [
+        { position: 1, statuses: ["Ожидает выкупа"] },
+        { position: 2, statuses: ["Ожидает отправки с магазина"] },
+        { position: 3, statuses: ["Магазин отправил на склад в США"] },
+        { position: 4, statuses: ["На складе в США (карго)"] },
+        { position: 5, statuses: ["В пути США→КЗ (карго)"] },
+        { position: 6, statuses: ["На складе КЗ (карго)"] },
+        { position: 7, statuses: ["Курьер со склада до посредника в КЗ", "Локер в КЗ (карго)"] },
+        { position: 8, statuses: ["У посредника в КЗ"] },
+        { position: 9, statuses: ["В пути КЗ→РФ (СДЭК)", "В пути КЗ→РФ (личная)"] },
+        { position: 10, statuses: ["У посредника в РФ"] },
+        { position: 11, statuses: ["В пути по РФ до клиента"] },
+        { position: 12, statuses: ["Получено клиентом"] }
+    ];
+    for (const { position, statuses } of DELIVERY_POSITIONS) {
+        if (statuses.includes(statusDelivery)) return { position, total: DELIVERY_POSITIONS.length };
+    }
+    return null;
+}
+
+/**
  * Визуальная лестница статусов доставки (§H client_display_overhaul,
  * 12.08.2026) — общий рендер для admin/client, список/детали. Позиция
  * приходит с сервера (`deliveryLadder: {position,total}|null`,
