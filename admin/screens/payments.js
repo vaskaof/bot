@@ -534,6 +534,18 @@ window.Screens.payments = {
       const earmarked = marks.reduce((sum, m) => sum + m.amount, 0);
       const byPriority = Math.max(0, s.paid - earmarked);
       const remaining = Math.max(0, s.remaining);
+      // Найдено 13.08.2026 (клиент 6741261992, заказ 3E7473, память
+      // project_bot_knopka_staged_payments_refactor) — `s.remaining` с бэка
+      // это target МИНУС уже РЕАЛЬНО распределённое (paid), оно НЕ падает
+      // сразу после создания метки, если в пуле клиента пока нет реальных
+      // денег на её покрытие (метка резервирует будущее, а не текущее — см.
+      // paymentsService.recomputeForClient). Раньше кнопка «Закрепить»
+      // оставалась активной с той же суммой в подсказке даже когда стадия
+      // УЖЕ полностью закреплена — ничего не мешало нажать её второй раз и
+      // создать дублирующую метку (ровно это и произошло: две метки по
+      // 4407.71 ₽ на одну и ту же стадию). Кнопка/предзаполнение теперь
+      // учитывают уже АКТИВНЫЕ метки, не только фактически распределённое.
+      const earmarkable = Math.max(0, remaining - earmarked);
       // target=0 в stagesBalance неотличимо на бэке от "стадия ещё не участвует
       // в приоритетном списке" (§8a — цель ещё не известна, а не буквально
       // бесплатно) — реальных нулевых стадий в этом бизнесе не бывает, поэтому
@@ -551,7 +563,7 @@ window.Screens.payments = {
               </div>
             `}
           </div>
-          ${remaining > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${remaining}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Закрепить</button>` : ''}
+          ${earmarkable > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${earmarkable}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Закрепить</button>` : ''}
         </div>
       `;
     }
@@ -747,11 +759,16 @@ window.Screens.payments = {
     const rpError = document.getElementById('rp-error');
 
     function stageOptionsForSplit() {
+      // Тот же учёт активных меток, что renderStageRow (13.08.2026, см. её
+      // комментарий) — иначе инлайн-разбивка при "Записать платёж" тоже могла
+      // предложить закрепиться ещё раз на уже полностью закреплённую стадию.
       const options = [];
       currentOrders.filter((o) => o.isNewModel).forEach((o) => {
         (o.details.stagesBalance || []).forEach((s) => {
-          if (s.remaining > 0.01) {
-            options.push({ orderId: o.orderId, stage: s.stage, label: `${o.orderId} — ${o.productDisplay} — ${stageLabel(s.stage)} (ещё нужно: ${money(s.remaining)} ₽)`, remaining: s.remaining });
+          const earmarked = earmarksForStage(o.orderId, s.stage).reduce((sum, m) => sum + m.amount, 0);
+          const earmarkable = Math.max(0, s.remaining - earmarked);
+          if (earmarkable > 0.01) {
+            options.push({ orderId: o.orderId, stage: s.stage, label: `${o.orderId} — ${o.productDisplay} — ${stageLabel(s.stage)} (ещё нужно: ${money(earmarkable)} ₽)`, remaining: earmarkable });
           }
         });
       });
