@@ -611,8 +611,14 @@ window.Screens.orderNew = {
       const bookingPaid = document.getElementById('booking-paid-toggle').dataset.value;
       const bookingAmount = parseFloat(feeRubInput.value) || 0;
       const mainReceivedAmount = parseFloat(mainAmountReceivedInput.value) || 0;
+      // Бронь НЕ МОЖЕТ быть "включена" в сумму, которая меньше самой брони
+      // (VASY, 15.08.2026) — если бронь > "уже получено", вопрос не задаём
+      // вообще, это не двусмысленность, это логически невозможно, ответ
+      // очевиден (отдельно). Сервер это тоже проверяет как последняя линия
+      // защиты (см. ordersService.createOrder), но здесь не даём менеджеру
+      // выбрать противоречивый ответ.
       let bookingAlreadyInMainAmount = false;
-      if (bookingPaid === 'Да' && bookingAmount > 0 && mainReceivedAmount > 0) {
+      if (bookingPaid === 'Да' && bookingAmount > 0 && mainReceivedAmount > 0 && bookingAmount <= mainReceivedAmount) {
         bookingAlreadyInMainAmount = await askBookingOverlap(bookingAmount);
       }
 
