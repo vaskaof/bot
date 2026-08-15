@@ -242,6 +242,49 @@ function _writeCachedClientContext(context) {
 }
 
 /**
+ * Черновики "заказ ещё не подтверждён сервером" (15.08.2026, баг "заказы
+ * могут не сохраняться при зависании Telegram") — localStorage, не
+ * sessionStorage: должен пережить не только смену экрана, но и полную
+ * перезагрузку/убийство Telegram WebView ОС (см. диагноз в
+ * project_bot_knopka_financial_settings_ui.md/анализ бага). Общие функции —
+ * переиспользуются order-new.js сейчас, задел на updateOrder/saveBulkOrders
+ * позже (тот же класс риска, отдельно не чинится этим раундом).
+ *
+ * Формат хранимого значения — {payload, savedAt} — payload это ПОЛНЫЙ
+ * orderData (включая requestId, см. generateRequestId), готовый к повторной
+ * отправке как есть, без пересборки из DOM (форма могла уже не существовать
+ * к моменту восстановления).
+ */
+function saveOrderDraft(draftKey, payload) {
+    try {
+        localStorage.setItem(draftKey, JSON.stringify({ payload, savedAt: Date.now() }));
+    } catch (error) {
+        // localStorage недоступен/переполнен — черновик просто не переживёт
+        // сбой, не хуже прежнего поведения (без черновиков вообще).
+    }
+}
+
+function loadOrderDraft(draftKey) {
+    try {
+        const raw = localStorage.getItem(draftKey);
+        if (!raw) return null;
+        const { payload, savedAt } = JSON.parse(raw);
+        if (!payload || typeof savedAt !== 'number') return null;
+        return { payload, savedAt };
+    } catch (error) {
+        return null; // повреждённая запись — не блокируем экран, ведём себя как "черновика нет"
+    }
+}
+
+function clearOrderDraft(draftKey) {
+    try {
+        localStorage.removeItem(draftKey);
+    } catch (error) {
+        // недоступен — уже некритично, черновик и так не мог быть сохранён
+    }
+}
+
+/**
  * Проверка доступа для клиентских страниц — аналог initAccessCheck() из
  * админки, но вместо getDictionaries использует getUserContext (единственный
  * метод, не требующий вхождения в CLIENT_ALLOWED_METHODS). Если роль не

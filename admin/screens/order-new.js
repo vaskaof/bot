@@ -10,6 +10,13 @@
  * внутрь render() — иначе утекали бы между заходами на экран в общем
  * SPA-контексте (тот же класс фикса, что и на client-стороне Phase 2).
  */
+// Черновик "заказ ещё не подтверждён сервером" (15.08.2026, баг "заказы
+// могут не сохраняться при зависании Telegram") — общий ключ на весь экран,
+// НЕ внутри render() (нарочно, в отличие от остального состояния формы —
+// черновик обязан пережить именно то, что убивает состояние render(),
+// перезагрузку/убийство WebView). См. common.js saveOrderDraft/loadOrderDraft.
+const NEW_ORDER_DRAFT_KEY = 'pendingNewOrderDraft';
+
 window.Screens = window.Screens || {};
 window.Screens.orderNew = {
   render(root, dictionaries, params, signal) {
@@ -32,6 +39,7 @@ window.Screens.orderNew = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
         <div id="bulk-mode-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
 
@@ -414,6 +422,55 @@ window.Screens.orderNew = {
     // из "Спрос клиентов", несёт связь с исходной позицией вишлиста насквозь до
     // saveOrder(). null для обычного пути создания заказа (без изменений).
     let prefillWishlistId = null;
+    // Идемпотентность createOrder (15.08.2026) — один requestId на ВСЮ жизнь
+    // этого захода на экран (не на каждый клик "Сохранить"): если сохранение
+    // не удалось (в т.ч. Telegram завис и запрос не долетел/ответ потерялся)
+    // и менеджер жмёт "Сохранить" ещё раз БЕЗ перезагрузки — сервер увидит
+    // тот же requestId и не задвоит заказ, даже если первая попытка на самом
+    // деле уже прошла. См. server ordersService.createOrder + common.js.
+    const newOrderRequestId = generateRequestId();
+
+    // Восстановление черновика (15.08.2026) — если ПРЕДЫДУЩИЙ заход на этот
+    // экран оставил неподтверждённый черновик (зависание/убийство WebView
+    // ДО ответа сервера), пробуем тихо отправить его повторно тем же
+    // requestId (безопасно — сервер задедупит, даже если та попытка на самом
+    // деле уже прошла). Только если тихая попытка тоже не удаётся — просим
+    // менеджера решить руками (баннер), не молчим и не удаляем черновик сами.
+    const draftBanner = document.getElementById('draft-recovery-banner');
+    function hideDraftBanner() {
+      draftBanner.classList.add('hidden');
+      draftBanner.innerHTML = '';
+    }
+    function showDraftBanner(draft) {
+      const when = new Date(draft.savedAt).toLocaleString('ru-RU');
+      draftBanner.classList.remove('hidden');
+      draftBanner.innerHTML = `
+        <div class="mb-2">Есть несохранённый заказ от ${escapeHtmlClient(when)} — попытка отправить его после сбоя связи не удалась.</div>
+        <div class="flex gap-2">
+          <button type="button" id="draft-retry-btn" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">Отправить снова</button>
+          <button type="button" id="draft-discard-btn" class="px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 text-xs font-medium">Удалить черновик</button>
+        </div>
+      `;
+      document.getElementById('draft-retry-btn').addEventListener('click', () => attemptDraftRecovery(true));
+      document.getElementById('draft-discard-btn').addEventListener('click', () => {
+        clearOrderDraft(NEW_ORDER_DRAFT_KEY);
+        hideDraftBanner();
+      });
+    }
+    async function attemptDraftRecovery(manualRetry) {
+      const draft = loadOrderDraft(NEW_ORDER_DRAFT_KEY);
+      if (!draft) { hideDraftBanner(); return; }
+      try {
+        const result = await callServer('createOrder', draft.payload);
+        clearOrderDraft(NEW_ORDER_DRAFT_KEY);
+        hideDraftBanner();
+        showSaveToast(true, `Восстановлен ранее не отправленный заказ (Заказ ID: ${result.orderId})`);
+      } catch (error) {
+        showDraftBanner(draft);
+        if (manualRetry) showSaveToast(false, `Не получилось отправить черновик: ${error.message}`);
+      }
+    }
+    attemptDraftRecovery(false);
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -459,9 +516,17 @@ window.Screens.orderNew = {
         taxiRfSum: taxiRfSumInput.value,
         deliveryKzRfSum: computeDeliveryKzRfTotal().toFixed(2),
         deliveryRfSum: deliveryRfSumInput.value,
-        wishlistId: prefillWishlistId || ''
+        wishlistId: prefillWishlistId || '',
+        requestId: newOrderRequestId
       };
-      return callServer('createOrder', orderData);
+      // Черновик пишется ДО отправки, не после — если Telegram зависнет прямо
+      // на этом fetch()/ответ потеряется, данные уже лежат в localStorage
+      // (см. attemptDraftRecovery ниже, срабатывает при следующем открытии
+      // этого экрана). Очищается ТОЛЬКО при подтверждённом успехе.
+      saveOrderDraft(NEW_ORDER_DRAFT_KEY, orderData);
+      const result = await callServer('createOrder', orderData);
+      clearOrderDraft(NEW_ORDER_DRAFT_KEY);
+      return result;
     }
 
     // "Несколько сразу" — N полных orderData, backend (createOrdersBatch)
