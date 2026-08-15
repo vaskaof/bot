@@ -16,6 +16,12 @@
 // черновик обязан пережить именно то, что убивает состояние render(),
 // перезагрузку/убийство WebView). См. common.js saveOrderDraft/loadOrderDraft.
 const NEW_ORDER_DRAFT_KEY = 'pendingNewOrderDraft';
+// Отдельный ключ для "Несколько сразу" (15.08.2026, тот же риск, что у
+// одиночного заказа — каждая строка пачки идёт через createOrder, который
+// сам по себе не идемпотентен, requestId защищает per-строку). Отдельный от
+// NEW_ORDER_DRAFT_KEY: одиночный и bulk-черновик не должны затирать друг друга,
+// даже если менеджер переключил режим между заходами на экран.
+const BULK_ORDER_DRAFT_KEY = 'pendingBulkOrderDraft';
 
 window.Screens = window.Screens || {};
 window.Screens.orderNew = {
@@ -430,47 +436,98 @@ window.Screens.orderNew = {
     // деле уже прошла. См. server ordersService.createOrder + common.js.
     const newOrderRequestId = generateRequestId();
 
-    // Восстановление черновика (15.08.2026) — если ПРЕДЫДУЩИЙ заход на этот
-    // экран оставил неподтверждённый черновик (зависание/убийство WebView
-    // ДО ответа сервера), пробуем тихо отправить его повторно тем же
-    // requestId (безопасно — сервер задедупит, даже если та попытка на самом
-    // деле уже прошла). Только если тихая попытка тоже не удаётся — просим
-    // менеджера решить руками (баннер), не молчим и не удаляем черновик сами.
+    // Восстановление черновика (15.08.2026, расширено 16.08.2026 на "Несколько
+    // сразу") — если ПРЕДЫДУЩИЙ заход на этот экран оставил неподтверждённый
+    // черновик (зависание/убийство WebView ДО ответа сервера), пробуем тихо
+    // отправить его повторно тем же requestId (безопасно — сервер задедупит,
+    // даже если та попытка на самом деле уже прошла). Только если тихая
+    // попытка тоже не удаётся — просим менеджера решить руками (баннер), не
+    // молчим и не удаляем черновик сами. Один общий баннер на оба вида
+    // черновика (одиночный/bulk) — оба одновременно на практике не бывают,
+    // а два независимых баннера только путали бы менеджера.
     const draftBanner = document.getElementById('draft-recovery-banner');
     function hideDraftBanner() {
       draftBanner.classList.add('hidden');
       draftBanner.innerHTML = '';
     }
-    function showDraftBanner(draft) {
-      const when = new Date(draft.savedAt).toLocaleString('ru-RU');
+    function showDraftBanner(message, onRetry, onDiscard) {
       draftBanner.classList.remove('hidden');
       draftBanner.innerHTML = `
-        <div class="mb-2">Есть несохранённый заказ от ${escapeHtmlClient(when)} — попытка отправить его после сбоя связи не удалась.</div>
+        <div class="mb-2">${message}</div>
         <div class="flex gap-2">
           <button type="button" id="draft-retry-btn" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">Отправить снова</button>
           <button type="button" id="draft-discard-btn" class="px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 text-xs font-medium">Удалить черновик</button>
         </div>
       `;
-      document.getElementById('draft-retry-btn').addEventListener('click', () => attemptDraftRecovery(true));
+      document.getElementById('draft-retry-btn').addEventListener('click', onRetry);
       document.getElementById('draft-discard-btn').addEventListener('click', () => {
-        clearOrderDraft(NEW_ORDER_DRAFT_KEY);
+        onDiscard();
         hideDraftBanner();
       });
     }
-    async function attemptDraftRecovery(manualRetry) {
+
+    async function attemptSingleDraftRecovery(manualRetry) {
       const draft = loadOrderDraft(NEW_ORDER_DRAFT_KEY);
-      if (!draft) { hideDraftBanner(); return; }
+      if (!draft) return false;
       try {
         const result = await callServer('createOrder', draft.payload);
         clearOrderDraft(NEW_ORDER_DRAFT_KEY);
         hideDraftBanner();
         showSaveToast(true, `Восстановлен ранее не отправленный заказ (Заказ ID: ${result.orderId})`);
       } catch (error) {
-        showDraftBanner(draft);
+        const when = new Date(draft.savedAt).toLocaleString('ru-RU');
+        showDraftBanner(
+          `Есть несохранённый заказ от ${escapeHtmlClient(when)} — попытка отправить его после сбоя связи не удалась.`,
+          () => attemptSingleDraftRecovery(true),
+          () => clearOrderDraft(NEW_ORDER_DRAFT_KEY)
+        );
         if (manualRetry) showSaveToast(false, `Не получилось отправить черновик: ${error.message}`);
       }
+      return true;
     }
-    attemptDraftRecovery(false);
+
+    // Пачка ("Несколько сразу", 16.08.2026) — тот же принцип, но исход
+    // частичный: каждая строка своим requestId, повторная отправка ВСЕГО
+    // списка целиком безопасна (уже успевшие строки просто вернут
+    // существующий orderId, не задвоятся, см. createOrder). Черновик
+    // очищается ТОЛЬКО когда все строки без исключения успешны.
+    async function attemptBulkDraftRecovery(manualRetry) {
+      const draft = loadOrderDraft(BULK_ORDER_DRAFT_KEY);
+      if (!draft) return false;
+      try {
+        const { results } = await callServer('createOrdersBatch', draft.payload);
+        const okCount = results.filter((r) => r.success).length;
+        const failCount = results.length - okCount;
+        if (failCount === 0) {
+          clearOrderDraft(BULK_ORDER_DRAFT_KEY);
+          hideDraftBanner();
+          showSaveToast(true, `Восстановлена ранее не отправленная пачка заказов: создано ${okCount}`);
+        } else {
+          showDraftBanner(
+            `Есть не полностью отправленная пачка заказов от ${escapeHtmlClient(new Date(draft.savedAt).toLocaleString('ru-RU'))} — прошло ${okCount} из ${results.length}.`,
+            () => attemptBulkDraftRecovery(true),
+            () => clearOrderDraft(BULK_ORDER_DRAFT_KEY)
+          );
+        }
+      } catch (error) {
+        const when = new Date(draft.savedAt).toLocaleString('ru-RU');
+        showDraftBanner(
+          `Есть неотправленная пачка заказов от ${escapeHtmlClient(when)} — попытка отправить после сбоя связи не удалась.`,
+          () => attemptBulkDraftRecovery(true),
+          () => clearOrderDraft(BULK_ORDER_DRAFT_KEY)
+        );
+        if (manualRetry) showSaveToast(false, `Не получилось отправить черновик пачки: ${error.message}`);
+      }
+      return true;
+    }
+
+    // Одиночный черновик приоритетнее — если найден и обработан (даже с
+    // неудачей, баннер уже показан), bulk-черновик проверяем на СЛЕДУЮЩЕМ
+    // заходе на экран, не одновременно (см. комментарий про общий баннер).
+    (async () => {
+      const hadSingle = await attemptSingleDraftRecovery(false);
+      if (!hadSingle) await attemptBulkDraftRecovery(false);
+    })();
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
@@ -552,13 +609,27 @@ window.Screens.orderNew = {
             client,
             amount: row.amountEl.value,
             bookingSum: feeRub > 0 ? feeRub.toFixed(2) : '',
-            mainSum: mainSum > 0 ? mainSum.toFixed(2) : ''
+            mainSum: mainSum > 0 ? mainSum.toFixed(2) : '',
+            // Идемпотентность (16.08.2026) — requestId закреплён за СТРОКОЙ при
+            // её добавлении (row.requestId, см. addBulkRow), не генерируется
+            // заново здесь — переживает повторную отправку всей пачки после
+            // сбоя (та же строка = тот же requestId = сервер не задвоит).
+            requestId: row.requestId
           };
         });
       if (ordersDataList.length === 0) {
         throw new Error('Не заполнено ни одной строки с клиентом');
       }
-      return callServer('createOrdersBatch', ordersDataList);
+      // Черновик ДО отправки — та же защита, что у одиночного заказа (см.
+      // saveOrder). Очищается ТОЛЬКО когда все строки без исключения успешны
+      // (attemptBulkDraftRecovery оставляет черновик при частичном успехе —
+      // повторная отправка ВСЕГО списка безопасна, успевшие строки просто
+      // вернут уже созданный orderId, не задвоятся).
+      saveOrderDraft(BULK_ORDER_DRAFT_KEY, ordersDataList);
+      const response = await callServer('createOrdersBatch', ordersDataList);
+      const failCount = response.results.filter((r) => !r.success).length;
+      if (failCount === 0) clearOrderDraft(BULK_ORDER_DRAFT_KEY);
+      return response;
     }
 
     function currencyCurrencyValue() {
@@ -932,7 +1003,11 @@ window.Screens.orderNew = {
         dropdownEl: rowEl.querySelector('.bulk-client-dropdown'),
         amountEl: rowEl.querySelector('.bulk-amount-input'),
         sumEl: rowEl.querySelector('.bulk-main-sum'),
-        telegramId: '', username: '', name: '', manualClientData: null
+        telegramId: '', username: '', name: '', manualClientData: null,
+        // Идемпотентность (16.08.2026) — закреплён за строкой один раз при
+        // добавлении, не за кликом "Сохранить" (та же логика, что
+        // newOrderRequestId у одиночного заказа) — см. saveBulkOrders.
+        requestId: generateRequestId()
       };
       bulkRows.push(row);
 
