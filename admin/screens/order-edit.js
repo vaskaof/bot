@@ -12,6 +12,17 @@
  * модули (_sku-modal.js/_manual-client-modal.js/_form-helpers.js),
  * идентичные тем, что использует order-new.js.
  */
+// Черновик правки (16.08.2026, тот же UX, что у order-new.js — см. память
+// project_bot_knopka_order_save_idempotency, Round 2). В ОТЛИЧИЕ от createOrder,
+// updateOrder пишет в ТУ ЖЕ Sheets-строку по orderId и не создаёт вторую — риска
+// задвоить заказ здесь нет, денежные под-операции внутри updateOrder уже либо
+// идемпотентны по конструкции, либо используют детерминированный requestId
+// (`booking-<orderId>`). Это ЧИСТО клиентское неудобство: если Telegram
+// зависнет посреди сохранения правки, менеджер не узнает, применилась ли она —
+// черновик нужен только чтобы не оставлять его в неведении, requestId серверу
+// не передаётся (updateOrder его не принимает и не нуждается в нём).
+const ORDER_EDIT_DRAFT_KEY = 'pendingOrderEditDraft';
+
 window.Screens = window.Screens || {};
 window.Screens.orderEdit = {
   render(root, dictionaries, params, signal) {
@@ -49,6 +60,7 @@ window.Screens.orderEdit = {
       </div>
 
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
         <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
         <div id="payment-summary-card" class="hidden mb-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -504,6 +516,52 @@ window.Screens.orderEdit = {
     // "Дублировать" (13.08.2026, bulk order creation), см. её обработчик ниже.
     let loadedDetails = null;
 
+    // Восстановление черновика правки (16.08.2026) — см. комментарий у
+    // ORDER_EDIT_DRAFT_KEY выше про то, почему это чисто UX-подстраховка, не
+    // защита от денежного дубля. Черновик может относиться к ДРУГОМУ заказу,
+    // чем открыт сейчас (менеджер мог зайти на редактирование заказа X уже
+    // после незавершённой правки заказа Y) — восстановление всё равно
+    // пытается уйти в фон независимо от currentOrderId этого захода.
+    const draftBanner = document.getElementById('draft-recovery-banner');
+    function hideDraftBanner() {
+      draftBanner.classList.add('hidden');
+      draftBanner.innerHTML = '';
+    }
+    function showDraftBanner(message, onRetry, onDiscard) {
+      draftBanner.classList.remove('hidden');
+      draftBanner.innerHTML = `
+        <div class="mb-2">${message}</div>
+        <div class="flex gap-2">
+          <button type="button" id="draft-retry-btn" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">Отправить снова</button>
+          <button type="button" id="draft-discard-btn" class="px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 text-xs font-medium">Удалить черновик</button>
+        </div>
+      `;
+      document.getElementById('draft-retry-btn').addEventListener('click', onRetry);
+      document.getElementById('draft-discard-btn').addEventListener('click', () => {
+        onDiscard();
+        hideDraftBanner();
+      });
+    }
+    async function attemptEditDraftRecovery(manualRetry) {
+      const draft = loadOrderDraft(ORDER_EDIT_DRAFT_KEY);
+      if (!draft) return;
+      try {
+        await callServer('updateOrder', draft.payload.orderId, draft.payload.fields);
+        clearOrderDraft(ORDER_EDIT_DRAFT_KEY);
+        hideDraftBanner();
+        showSaveToast(true, `Восстановлена ранее не сохранённая правка заказа (ID: ${draft.payload.orderId})`);
+      } catch (error) {
+        const when = new Date(draft.savedAt).toLocaleString('ru-RU');
+        showDraftBanner(
+          `Есть не сохранённая правка заказа ${escapeHtmlClient(draft.payload.orderId)} от ${escapeHtmlClient(when)} — попытка отправить после сбоя связи не удалась.`,
+          () => attemptEditDraftRecovery(true),
+          () => clearOrderDraft(ORDER_EDIT_DRAFT_KEY)
+        );
+        if (manualRetry) showSaveToast(false, `Не получилось отправить черновик: ${error.message}`);
+      }
+    }
+    attemptEditDraftRecovery(false);
+
     function searchReleaseStub(query) { return callServer('searchSku', query); }
     function searchClientStub(query) { return callServer('searchClient', query); }
 
@@ -549,7 +607,14 @@ window.Screens.orderEdit = {
         purchaseLink: purchaseLinkInput.value.trim()
       };
 
-      return callServer('updateOrder', currentOrderId, fields);
+      // Черновик — ДО отправки, как у order-new.js, только чисто UX-цель
+      // (см. ORDER_EDIT_DRAFT_KEY выше) — updateOrder сам по себе безопасен
+      // к повтору, черновик просто не даёт менеджеру остаться в неведении,
+      // применилась ли правка, если Telegram зависнет посреди запроса.
+      saveOrderDraft(ORDER_EDIT_DRAFT_KEY, { orderId: currentOrderId, fields });
+      const result = await callServer('updateOrder', currentOrderId, fields);
+      clearOrderDraft(ORDER_EDIT_DRAFT_KEY);
+      return result;
     }
 
     // Пересчитывает "Итог Руб" на экране без обращения к серверу, если
