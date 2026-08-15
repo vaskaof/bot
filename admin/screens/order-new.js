@@ -403,6 +403,22 @@ window.Screens.orderNew = {
         </div>
       </main>
 
+      <!-- Уточнение "бронь входит в основную сумму?" (project_bot_knopka_
+           order_notification_sum_wording, 15.08.2026) — появляется ТОЛЬКО
+           когда заполнены ОБА поля («Оплачена ли бронь?»+сумма И «Уже
+           получено при оформлении»), иначе двусмысленности нет, вопрос не
+           нужен. См. askBookingOverlap() ниже. -->
+      <div id="booking-overlap-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4">
+          <h2 class="text-base font-semibold text-gray-900 mb-2">Уточнение по сумме</h2>
+          <p id="bo-question" class="text-sm text-gray-600 mb-4"></p>
+          <div class="flex gap-2">
+            <button id="bo-yes" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Да, включена</button>
+            <button id="bo-no" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Нет, отдельно</button>
+          </div>
+        </div>
+      </div>
+
       ${SkuModal.html()}
       ${ManualClientModal.html()}
     `;
@@ -555,16 +571,58 @@ window.Screens.orderNew = {
       };
     }
 
+    // Уточнение "бронь входит в основную сумму?" (project_bot_knopka_order_
+    // notification_sum_wording, 15.08.2026) — реальный денежный риск, найден
+    // VASY на живом тесте: если менеджер отдельно отмечает бронь оплаченной
+    // (с суммой) И заполняет "Уже получено при оформлении", сервер раньше
+    // считал бы это ДВУМЯ отдельными платежами, даже если по факту это одна
+    // и та же сумма, вписанная дважды. Модалка показывается ТОЛЬКО когда оба
+    // поля реально заполнены — иначе двусмысленности нет, спрашивать нечего.
+    // Возвращает true ("да, уже включена" — сервер пропустит отдельный
+    // платёж за бронь) / false ("нет, отдельно" — оба платежа как раньше).
+    function askBookingOverlap(bookingAmount) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('booking-overlap-modal');
+        document.getElementById('bo-question').textContent =
+          `Сумма «Уже получено при оформлении» уже включает бронь (${bookingAmount.toFixed(2)} ₽)?`;
+        const yesBtn = document.getElementById('bo-yes');
+        const noBtn = document.getElementById('bo-no');
+        const cleanup = (value) => {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+          yesBtn.removeEventListener('click', onYes);
+          noBtn.removeEventListener('click', onNo);
+          resolve(value);
+        };
+        const onYes = () => cleanup(true);
+        const onNo = () => cleanup(false);
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      });
+    }
+
     async function saveOrder() {
       const client = manualClientData
         ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
         : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
+
+      const bookingPaid = document.getElementById('booking-paid-toggle').dataset.value;
+      const bookingAmount = parseFloat(feeRubInput.value) || 0;
+      const mainReceivedAmount = parseFloat(mainAmountReceivedInput.value) || 0;
+      let bookingAlreadyInMainAmount = false;
+      if (bookingPaid === 'Да' && bookingAmount > 0 && mainReceivedAmount > 0) {
+        bookingAlreadyInMainAmount = await askBookingOverlap(bookingAmount);
+      }
+
       const orderData = {
         ...buildSharedOrderData(),
         client: client,
         amount: amountInput.value,
         bookingSum: feeRubInput.value,
-        bookingPaid: document.getElementById('booking-paid-toggle').dataset.value,
+        bookingPaid: bookingPaid,
+        bookingAlreadyInMainAmount: bookingAlreadyInMainAmount,
         mainSum: totalPaymentInput.value,
         mainAmountReceivedAtCreation: mainAmountReceivedInput.value,
         weightSum: weightSumInput.value,
