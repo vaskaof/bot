@@ -45,6 +45,9 @@ window.Screens.orderEdit = {
       <button id="duplicate-order-btn" title="Дублировать заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy" class="w-6 h-6"></i>
       </button>
+      <button id="delete-order-btn" title="Удалить заказ" class="p-2 text-red-500 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="trash-2" class="w-6 h-6"></i>
+      </button>
       <button id="save-order-btn" title="Сохранить изменения" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="save" class="w-6 h-6"></i>
       </button>
@@ -475,6 +478,7 @@ window.Screens.orderEdit = {
 
       ${SkuModal.html()}
       ${ManualClientModal.html()}
+      ${DeleteOrderModal.html()}
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
@@ -1298,6 +1302,45 @@ window.Screens.orderEdit = {
         dupAmount: loadedDetails.amount,
         dupFeePercent: feePercent
       });
+    });
+
+    // --- Удаление заказа (16.08.2026, см. личную память Architect'а
+    // project_bot_knopka_order_deletion) — двойной гейт против случайного
+    // удаления: сначала явный выбор по каждому активному платежу заказа
+    // (модалка, только если такие платежи есть), затем финальный confirm().
+    const deleteOrderModal = DeleteOrderModal.init({
+      onConfirmed: async (resolutions) => {
+        await finishDeleteOrder(resolutions);
+      }
+    });
+
+    async function finishDeleteOrder(resolutions) {
+      if (!confirm(`Заказ ${currentOrderId} будет удалён. Действие можно отменить только вручную через базу. Продолжить?`)) return;
+      try {
+        await callServer('deleteOrder', currentOrderId, resolutions);
+        showSaveToast(true, 'Заказ удалён');
+        navigateTo('orders');
+      } catch (error) {
+        showSaveToast(false, `Не получилось удалить: ${error.message}`);
+      }
+    }
+
+    document.getElementById('delete-order-btn').addEventListener('click', async () => {
+      if (!currentOrderId) return;
+      let preview;
+      try {
+        preview = await callServer('getOrderDeletionPreview', currentOrderId);
+      } catch (error) {
+        showSaveToast(false, `Не получилось проверить оплаты: ${error.message}`);
+        return;
+      }
+
+      if (!preview.payments || preview.payments.length === 0) {
+        await finishDeleteOrder([]);
+        return;
+      }
+
+      deleteOrderModal.open(preview.payments, preview.isNewModel);
     });
 
     populateCollectiveSelect();
