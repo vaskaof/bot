@@ -184,7 +184,7 @@ window.Screens.orderNew = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div id="date-field-row" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
                 <i data-lucide="calendar" class="w-5 h-5"></i>
@@ -193,6 +193,11 @@ window.Screens.orderNew = {
             </div>
             <div class="flex-1 w-full">
               <input type="date" id="date-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+              <!-- Подсказка при дублировании (16.08.2026, backlog из bulk_order_creation:
+                   раньше дата молча копировалась со старого заказа) — дата по умолчанию
+                   ставится на сегодня (см. dupMode-обработчик ниже, dupDateOrder больше
+                   не читается), эта подпись просто напоминает менеджеру проверить её. -->
+              <span id="date-dup-hint" class="hidden text-xs text-amber-600 mt-1 block">Дата выкупа — сегодняшняя, при необходимости измените вручную</span>
             </div>
           </div>
 
@@ -1502,7 +1507,13 @@ window.Screens.orderNew = {
       if (params.dupPurchaseChannel) document.querySelector('select[data-dict="purchaseChannel"]').value = params.dupPurchaseChannel;
       if (params.dupPurchaseAccount) document.querySelector('select[data-dict="purchaseAccount"]').value = params.dupPurchaseAccount;
       if (params.dupCargo) document.querySelector('select[data-dict="cargo"]').value = params.dupCargo;
-      if (params.dupDateOrder) dateInput.value = params.dupDateOrder;
+      // ИСПРАВЛЕНО (16.08.2026, репорт VASY — дата молча копировалась со
+      // старого заказа, менеджер мог не заметить и сохранить с ней): дата
+      // НЕ копируется из источника, dateInput.value уже стоит на "сегодня"
+      // (проставлено выше при инициализации экрана) — просто подсвечиваем
+      // поле как напоминание проверить/поменять его вручную.
+      document.getElementById('date-field-row').classList.add('bg-amber-50', 'border-amber-200');
+      document.getElementById('date-dup-hint').classList.remove('hidden');
       if (params.dupCurrency) { document.getElementById('currency-select').value = params.dupCurrency; currentCurrency = params.dupCurrency; }
       if (params.dupAmount) amountInput.value = params.dupAmount;
       if (params.dupFeePercent) { feePercentInput.value = params.dupFeePercent; feePercentEdited = true; }

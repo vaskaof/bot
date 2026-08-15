@@ -1297,7 +1297,9 @@ window.Screens.orderEdit = {
         dupPurchaseChannel: loadedDetails.purchaseChannel,
         dupPurchaseAccount: loadedDetails.purchaseAccount,
         dupCargo: loadedDetails.cargo,
-        dupDateOrder: loadedDetails.dateOrder,
+        // dupDateOrder больше НЕ передаётся (16.08.2026, багфикс "дата молча
+        // копировалась со старого заказа") — order-new.js больше не читает
+        // это поле, дата всегда стартует на сегодня в режиме дублирования.
         dupCurrency: loadedDetails.currency,
         dupAmount: loadedDetails.amount,
         dupFeePercent: feePercent
