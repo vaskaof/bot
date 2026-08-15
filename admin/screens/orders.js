@@ -22,6 +22,9 @@ window.Screens.orders = {
       <button id="collectives-btn" title="Коллективки" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="package-2" class="w-6 h-6"></i>
       </button>
+      <button id="deleted-orders-btn" title="Удалённые" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="trash-2" class="w-5 h-5"></i>
+      </button>
       <button id="refresh-orders" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -29,6 +32,10 @@ window.Screens.orders = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
     document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
+    // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
+    // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
+    // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
+    document.getElementById('deleted-orders-btn').addEventListener('click', () => navigateTo('orders/deleted'));
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">

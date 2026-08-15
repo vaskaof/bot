@@ -1314,18 +1314,28 @@ window.Screens.orderEdit = {
       }
     });
 
+    const deleteOrderBtn = document.getElementById('delete-order-btn');
+    const deleteOrderIcon = deleteOrderBtn.querySelector('svg');
+
     async function finishDeleteOrder(resolutions) {
-      if (!confirm(`Заказ ${currentOrderId} будет удалён. Действие можно отменить только вручную через базу. Продолжить?`)) return;
+      // Экран "Удалённые" (16.08.2026) — восстановление доступно оттуда,
+      // текст ниже больше не говорит "только вручную через базу".
+      if (!confirm(`Заказ ${currentOrderId} будет удалён. Его можно будет восстановить на экране «Удалённые». Продолжить?`)) return;
+      deleteOrderBtn.disabled = true;
+      if (deleteOrderIcon) deleteOrderIcon.classList.add('save-pulse'); // та же пульсация, что у save-order-btn
       try {
         await callServer('deleteOrder', currentOrderId, resolutions);
         showSaveToast(true, 'Заказ удалён');
         navigateTo('orders');
       } catch (error) {
         showSaveToast(false, `Не получилось удалить: ${error.message}`);
+      } finally {
+        deleteOrderBtn.disabled = false;
+        if (deleteOrderIcon) deleteOrderIcon.classList.remove('save-pulse');
       }
     }
 
-    document.getElementById('delete-order-btn').addEventListener('click', async () => {
+    deleteOrderBtn.addEventListener('click', async () => {
       if (!currentOrderId) return;
       let preview;
       try {

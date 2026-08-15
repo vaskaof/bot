@@ -25,6 +25,7 @@ const ROUTES = [
   { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
+  { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
 ];
 const DEFAULT_ROUTE = 'news';
