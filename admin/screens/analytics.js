@@ -45,6 +45,16 @@
  *   так на экране), кнопка в шапке рядом с "Обновить". Сервер режет на
  *   MAX_EXPORT_ROWS=20000 строк молча (см. analyticsService) — экран это
  *   никак не сигналит, риск принят как разумный для внутреннего инструмента.
+ *   Доп. правка тем же днём — CSV-разделитель `,`→`;` (Excel в ru-локали
+ *   Windows иначе кладёт всё в один столбец, см. webapp-api.md).
+ *
+ * Воронка каталог→вишлист→заказ (17.08.2026, п.9 бэклога, `getUsageFunnel
+ * (days)`, тоже только на общей сводке) — согласовано с VASY ДВА раздельных
+ * числа, не единая 3-ступенчатая воронка (см. `funnelBlock`): "Вишлист →
+ * Заказ" точный (Wishlist_ID match, серверная сторона в `funnelService.js`),
+ * "Поиск → Вишлист" — эвристика (Postgres, соседство по времени в
+ * `analyticsRepository.getSearchToWishlistConversion`), помечена на экране
+ * как "оценка", не смешивается с точной цифрой в один общий процент.
  */
 window.Screens = window.Screens || {};
 window.Screens.analytics = {
@@ -150,13 +160,14 @@ window.Screens.analytics = {
           renderUser(summary);
         } else {
           subtitle.textContent = 'Кто и как пользуется приложением';
-          const [summary, topUsers, retention, errorTrend] = await Promise.all([
+          const [summary, topUsers, retention, errorTrend, funnel] = await Promise.all([
             callServer('getUsageAnalytics', days),
             callServer('getUsageTopUsers', days, 10),
             callServer('getUsageRetention', days),
-            callServer('getUsageErrorTrend', days)
+            callServer('getUsageErrorTrend', days),
+            callServer('getUsageFunnel', days)
           ]);
-          render(summary, topUsers, retention, errorTrend, days);
+          render(summary, topUsers, retention, errorTrend, funnel, days);
         }
       } catch (error) {
         body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -168,7 +179,7 @@ window.Screens.analytics = {
       load();
     }
 
-    function render(summary, topUsers, retention, errorTrend, days) {
+    function render(summary, topUsers, retention, errorTrend, funnel, days) {
       const { totals, prevTotals, byMethod, byDay, recentErrors, slowMethods, byHourDow } = summary;
       const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
       const prevSuccessRate = prevTotals.total > 0 ? Math.round((prevTotals.success / prevTotals.total) * 100) : 0;
@@ -210,6 +221,11 @@ window.Screens.analytics = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Тренд ошибок по методам</div>
           ${errorTrend.totalByDay.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Ошибок нет 🎉</div>' : errorTrendChart(errorTrend)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Каталог → Вишлист → Заказ</div>
+          ${funnelBlock(funnel)}
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -437,6 +453,33 @@ window.Screens.analytics = {
           <div class="flex items-center gap-1 text-[10px] text-gray-400">
             <span class="w-2 h-2 rounded-full shrink-0 bg-gray-300"></span>
             <span>Прочее</span>
+          </div>
+        </div>
+      `;
+    }
+
+    /**
+     * Воронка каталог→вишлист→заказ — ДВА раздельных числа, не единая
+     * 3-ступенчатая воронка с общим процентом (согласовано с VASY явно —
+     * см. backend webapp-api.md/funnelService.js): "Вишлист → Заказ" точный
+     * (Wishlist_ID match), "Поиск → Вишлист" — эвристика по соседству во
+     * времени, помечена как оценка, не факт.
+     */
+    function funnelBlock(funnel) {
+      const { wishlistToOrder, searchToWishlist } = funnel;
+      const pctOrDash = (v) => (v === null ? '—' : `${v}%`);
+
+      return `
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-[11px] text-gray-400 mb-1">Вишлист → Заказ</div>
+            <div class="text-xl font-semibold text-gray-900">${pctOrDash(wishlistToOrder.conversionPct)}</div>
+            <div class="text-[10px] text-gray-400 mt-1">${wishlistToOrder.converted} из ${wishlistToOrder.total} позиций, точно (по Wishlist_ID)</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-[11px] text-gray-400 mb-1">Поиск → Вишлист <span class="italic">(оценка)</span></div>
+            <div class="text-xl font-semibold text-gray-900">${pctOrDash(searchToWishlist.conversionPct)}</div>
+            <div class="text-[10px] text-gray-400 mt-1">${searchToWishlist.converted} из ${searchToWishlist.total} поисков, приблизительно</div>
           </div>
         </div>
       `;
