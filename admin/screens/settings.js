@@ -28,9 +28,10 @@ const CATEGORY_LABELS = {
   commission: 'Комиссия',
   tax_reserve: 'Налоговый резерв',
   forecast: 'Прогноз расходов на заказ',
-  payout_share: 'Доли выплат'
+  payout_share: 'Доли выплат',
+  delivery_position_threshold: 'Пороги для "Доход Руб"'
 };
-const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -65,6 +66,21 @@ const FORECAST_FIELD_DEFS = [
   { key: 'Прогноз_Стоимость_СДЭК', label: 'СДЭК', unitOptions: [{ value: 'fixed', badge: '₽' }] },
   { key: 'Прогноз_Такси_РФ', label: 'Такси РФ', unitOptions: [{ value: 'fixed', badge: '₽' }] },
   { key: 'Прогноз_Доставка_РФ', label: 'Доставка по РФ', unitOptions: [{ value: 'fixed', badge: '₽' }] }
+];
+
+// UX-аудит, Шаг 2 (16.08.2026) — редизайн "Доход Руб" под финансовый
+// рефакторинг. 4 фиксированных ключа, ключи СОВПАДАЮТ с backend миграцией
+// (…_seed-delivery-position-thresholds.js). Значение — номер позиции
+// (1-12) в 12-шаговой лестнице доставки (server/src/orders/deliveryLadder.js),
+// НЕ деньги и не проценты — неоплаченный расход по этому этапу считается
+// вычетом из дохода только когда заказ уже ДОШЁЛ до этой позиции (VASY,
+// 16.08.2026: "делает большую погрешность", если считать неоплаченное
+// расходом всегда, независимо от того, наступил ли этот этап на самом деле).
+const DELIVERY_POSITION_THRESHOLD_DEFS = [
+  { key: 'Позиция_Порог_Основная', label: 'Основная' },
+  { key: 'Позиция_Порог_Вес', label: 'Вес' },
+  { key: 'Позиция_Порог_СДЭК', label: 'СДЭК' },
+  { key: 'Позиция_Порог_Доставка_РФ', label: 'Доставка по РФ' }
 ];
 
 function slugKey(label) {
@@ -109,20 +125,23 @@ window.Screens.settings = {
       const body = document.getElementById('settings-body');
       const byCategory = {};
       settings.forEach(s => {
-        if (s.category === 'payout_share' || s.category === 'forecast') return; // свои особые блоки, не общий цикл
+        if (s.category === 'payout_share' || s.category === 'forecast' || s.category === 'delivery_position_threshold') return; // свои особые блоки, не общий цикл
         (byCategory[s.category] = byCategory[s.category] || []).push(s);
       });
       const forecastRows = settings.filter(s => s.category === 'forecast');
+      const positionThresholdRows = settings.filter(s => s.category === 'delivery_position_threshold');
 
       body.innerHTML = CATEGORY_ORDER.map(cat => {
         if (cat === 'payout_share') return sharesSectionHtml();
         if (cat === 'forecast') return forecastSectionHtml(forecastRows);
+        if (cat === 'delivery_position_threshold') return positionThresholdSectionHtml(positionThresholdRows);
         return plainSectionHtml(cat, byCategory[cat] || []);
       }).join('');
 
-      CATEGORY_ORDER.filter(c => c !== 'payout_share' && c !== 'forecast').forEach(cat => wirePlainSection(cat));
+      CATEGORY_ORDER.filter(c => c !== 'payout_share' && c !== 'forecast' && c !== 'delivery_position_threshold').forEach(cat => wirePlainSection(cat));
       wireSharesSection();
       wireForecastSection();
+      wirePositionThresholdSection();
       wireAddPosition();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -237,6 +256,64 @@ window.Screens.settings = {
             showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);
+          }
+        });
+      });
+    }
+
+    function positionThresholdRowHtml(def, setting) {
+      const value = setting ? setting.value : '';
+      return `
+        <div class="flex items-center gap-2 p-3" data-position-key="${def.key}" data-position-label="${escapeHtmlClient(def.label)}">
+          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+          <input type="number" step="1" min="1" max="12" class="position-value-input w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${value}" />
+          <span class="text-[11px] text-gray-400 w-10">шаг</span>
+          <button type="button" class="position-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function positionThresholdSectionHtml(rows) {
+      return `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.delivery_position_threshold}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="delivery_position_threshold">
+            ${DELIVERY_POSITION_THRESHOLD_DEFS.map(def => positionThresholdRowHtml(def, rows.find(r => r.key === def.key))).join('')}
+          </div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Номер шага в лестнице статуса доставки (1-12) — неоплаченный расход по этой статье считается вычетом из "Доход Руб" только когда заказ уже прошёл этот шаг, не раньше.</div>
+        </section>
+      `;
+    }
+
+    // ИСПРАВЛЕНО 16.08.2026 (fail-safe чек-лист, frontend-contract.md) —
+    // disable-guard на время запроса: правки настроек, влияющих на "Доход
+    // Руб" во всей таблице, должны быть особенно защищены от двойного тапа.
+    function wirePositionThresholdSection() {
+      const container = document.querySelector('[data-category="delivery_position_threshold"]');
+      if (!container) return;
+
+      container.querySelectorAll('[data-position-key]').forEach(row => {
+        const key = row.dataset.positionKey;
+        const label = row.dataset.positionLabel;
+        const saveBtn = row.querySelector('.position-save-btn');
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return;
+          const raw = row.querySelector('.position-value-input').value;
+          const value = parseInt(raw, 10);
+          if (isNaN(value) || value < 1 || value > 12 || value.toString() !== raw.trim()) {
+            showSaveToast(false, 'Значение должно быть целым числом от 1 до 12.');
+            return;
+          }
+          saveBtn.disabled = true;
+          try {
+            await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category: 'delivery_position_threshold' });
+            showSaveToast(true, 'Сохранено.');
+          } catch (error) {
+            showSaveToast(false, error.message);
+          } finally {
+            saveBtn.disabled = false;
           }
         });
       });
