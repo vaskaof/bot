@@ -47,11 +47,11 @@ window.Screens.orders = {
           <div id="completed-list"></div>
         </div>
 
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">
-          У вас пока нет заказов. Если вы уже оформляли заказ — напишите менеджеру.
+        <div id="empty-message" class="hidden">
+          ${buildEmptyState('package', 'У вас пока нет заказов. Если вы уже оформляли заказ — напишите менеджеру.')}
         </div>
-        <div id="no-results-message" class="hidden text-center text-sm text-gray-400 py-10">
-          По этому запросу ничего не найдено.
+        <div id="no-results-message" class="hidden">
+          ${buildEmptyState('search-x', 'По этому запросу ничего не найдено.')}
         </div>
       </main>
     `;

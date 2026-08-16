@@ -25,7 +25,7 @@ window.Screens.news = {
         </div>
 
         <div id="news-list"></div>
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Новостей пока нет.</div>
+        <div id="empty-message" class="hidden">${buildEmptyState('megaphone', 'Новостей пока нет.')}</div>
       </main>
     `;
 

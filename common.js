@@ -194,6 +194,33 @@ function buildDeliveryLadder(ladder, statusText, opts) {
 }
 
 /**
+ * Единый паттерн пустого состояния (UX-аудит, Шаг 7, 16.08.2026) — иконка +
+ * текст + опциональная CTA-кнопка. До этой правки каждый список ("Мои
+ * заказы"/"Вишлист"/"Мои вопросы"/"Новости"/лотереи/задания) рисовал пустое
+ * состояние точечно (одинаковый CSS-класс на div, но без иконки, без единого
+ * подхода к CTA) — не баг, но заметная разница между экранами при обходе
+ * приложения подряд. Возвращает HTML; если передан `cta`, кнопка получает
+ * `id=cta.btnId` — вызывающий экран сам вешает свой обработчик клика ПОСЛЕ
+ * вставки в DOM (тот же принцип, что и остальные built-разметку хелперы
+ * этого файла — верстка отдельно, обработчики отдельно).
+ * @param {string} icon Имя lucide-иконки (например 'package', 'heart')
+ * @param {string} text Основной текст
+ * @param {{label:string, btnId:string}} [cta] Необязательная кнопка-действие
+ * @returns {string} HTML
+ */
+function buildEmptyState(icon, text, cta) {
+    return `
+        <div class="text-center py-10">
+            <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center text-gray-300">
+                <i data-lucide="${escapeHtmlClient(icon)}" class="w-7 h-7"></i>
+            </div>
+            <div class="text-sm text-gray-400">${text}</div>
+            ${cta ? `<button type="button" id="${escapeHtmlClient(cta.btnId)}" class="mt-3 text-sm text-indigo-600 font-medium">${escapeHtmlClient(cta.label)}</button>` : ''}
+        </div>
+    `;
+}
+
+/**
  * Запрашивает контекст текущего пользователя (роль + личные данные).
  * Единственный метод API, доступный ДО определения роли — используется
  * точкой входа (app.html) для маршрутизации и клиентскими страницами

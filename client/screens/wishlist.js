@@ -35,8 +35,8 @@ window.Screens.wishlist = {
           <div id="purchased-list"></div>
         </div>
 
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">
-          Список желаний пуст. Нажмите «+», чтобы добавить куклу.
+        <div id="empty-message" class="hidden">
+          ${buildEmptyState('heart', 'Список желаний пуст.', { label: 'Добавить куклу', btnId: 'empty-add-item-btn' })}
         </div>
       </main>
 
@@ -231,6 +231,7 @@ window.Screens.wishlist = {
     }
 
     document.getElementById('add-item-btn').addEventListener('click', () => openModalForCreate());
+    document.getElementById('empty-add-item-btn').addEventListener('click', () => openModalForCreate());
 
     // --- Модалка добавления/редактирования ---
     const itemModal = document.getElementById('item-modal');

@@ -43,11 +43,11 @@ window.Screens.contests = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="text-[11px] text-gray-400 px-1 mb-2">Лотереи</div>
         <div id="lotteries-list"></div>
-        <div id="lotteries-empty-message" class="hidden text-center text-sm text-gray-400 py-10 mb-4">Активных лотерей пока нет.</div>
+        <div id="lotteries-empty-message" class="hidden">${buildEmptyState('ticket', 'Активных лотерей пока нет.')}</div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2">Задания</div>
         <div id="tasks-list"></div>
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заданий пока нет.</div>
+        <div id="empty-message" class="hidden">${buildEmptyState('clipboard-list', 'Заданий пока нет.')}</div>
       </main>
 
       <div id="proof-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">

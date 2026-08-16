@@ -17,8 +17,8 @@ window.Screens.questions = {
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="questions-list"></div>
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">
-          Вы ещё не задавали вопросов по заказам.
+        <div id="empty-message" class="hidden">
+          ${buildEmptyState('message-circle', 'Вы ещё не задавали вопросов по заказам.', { label: 'Задать вопрос', btnId: 'empty-ask-question-btn' })}
         </div>
       </main>
     `;
@@ -26,6 +26,9 @@ window.Screens.questions = {
     const listContainer = document.getElementById('questions-list');
     const emptyMessage = document.getElementById('empty-message');
     const refreshBtn = document.getElementById('refresh-btn');
+    // Форма "Задать вопрос" переехала в Профиль (Подфаза 3.4, 12.08.2026,
+    // client_display_overhaul) — здесь нет своей модалки, CTA просто ведёт туда.
+    document.getElementById('empty-ask-question-btn').addEventListener('click', () => navigateTo('profile'));
 
     loadQuestions();
 
