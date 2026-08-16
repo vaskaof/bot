@@ -44,6 +44,7 @@ const ROUTES = [
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
+  { path: 'clients', screen: 'clients', navKey: null, showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 

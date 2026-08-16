@@ -34,6 +34,7 @@ window.Screens.more = {
 
     const items = [
       { route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' },
+      { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
       { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },
       { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' }
     ];
