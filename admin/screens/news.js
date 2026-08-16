@@ -236,7 +236,14 @@ window.Screens.news = {
     document.getElementById('news-modal-close').addEventListener('click', closeNewsModal);
     document.getElementById('news-modal-cancel').addEventListener('click', closeNewsModal);
 
-    document.getElementById('news-modal-save').addEventListener('click', async () => {
+    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 5): не блокировалась на время
+    // запроса — двойной тап на "Сохранить" в режиме создания мог породить
+    // ДВЕ новости-черновика (createNews не идемпотентен, каждый вызов —
+    // новая строка) — клиент-видимый дубль контента при публикации, тот же
+    // класс риска, что уже 4+ раза находили в разных углах проекта.
+    const newsModalSaveBtn = document.getElementById('news-modal-save');
+    newsModalSaveBtn.addEventListener('click', async () => {
+      if (newsModalSaveBtn.disabled) return;
       errorText.classList.add('hidden');
       const title = titleInput.value.trim();
       const text = textInput.value.trim();
@@ -253,6 +260,7 @@ window.Screens.news = {
         return;
       }
 
+      newsModalSaveBtn.disabled = true;
       try {
         if (editingNewsId) {
           await callServer('updateNews', editingNewsId, title, text, audience);
@@ -265,6 +273,8 @@ window.Screens.news = {
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
+      } finally {
+        newsModalSaveBtn.disabled = false;
       }
     });
   }

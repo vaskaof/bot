@@ -176,14 +176,23 @@ window.Screens.collectives = {
     }
     document.getElementById('create-collective-close').addEventListener('click', closeCreateModal);
     document.getElementById('create-collective-cancel').addEventListener('click', closeCreateModal);
-    document.getElementById('create-collective-save').addEventListener('click', async () => {
+    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 5): ни одна из write-кнопок этого
+    // экрана не блокировалась на время запроса — двойной тап на "Создать"
+    // мог породить две коллективки подряд (тот же класс риска, что уже
+    // 4+ раза находили в разных углах проекта).
+    const createSaveBtn = document.getElementById('create-collective-save');
+    createSaveBtn.addEventListener('click', async () => {
+      if (createSaveBtn.disabled) return;
       const trackNumber = document.getElementById('new-collective-track').value.trim();
+      createSaveBtn.disabled = true;
       try {
         await callServer('createCollective', { trackNumber });
         closeCreateModal();
         loadCollectives();
       } catch (error) {
         alert('Не удалось создать коллективку: ' + error.message);
+      } finally {
+        createSaveBtn.disabled = false;
       }
     });
 
@@ -257,7 +266,10 @@ window.Screens.collectives = {
       if (window.lucide) window.lucide.createIcons();
     }
 
-    document.getElementById('detail-save-btn').addEventListener('click', async () => {
+    const detailSaveBtn = document.getElementById('detail-save-btn');
+    detailSaveBtn.addEventListener('click', async () => {
+      if (detailSaveBtn.disabled) return;
+      detailSaveBtn.disabled = true;
       try {
         await callServer('updateCollective', currentDetailId, { trackNumber: detailTrack.value.trim(), status: detailStatus.value });
         loadCollectives();
@@ -266,6 +278,8 @@ window.Screens.collectives = {
         detailErrorText.textContent = error.message;
         detailErrorText.classList.remove('hidden');
         showSaveToast(false, `Не удалось сохранить: ${error.message}`);
+      } finally {
+        detailSaveBtn.disabled = false;
       }
     });
 
@@ -319,8 +333,11 @@ window.Screens.collectives = {
     }
     document.getElementById('collective-detail-close').addEventListener('click', closeDetailModal);
 
-    document.getElementById('detail-delete-btn').addEventListener('click', async () => {
+    const detailDeleteBtn = document.getElementById('detail-delete-btn');
+    detailDeleteBtn.addEventListener('click', async () => {
+      if (detailDeleteBtn.disabled) return;
       if (!confirm(`Удалить коллективку «${currentDetailId}»?`)) return;
+      detailDeleteBtn.disabled = true;
       try {
         await callServer('deleteCollective', currentDetailId);
         closeDetailModal();
@@ -328,6 +345,8 @@ window.Screens.collectives = {
       } catch (error) {
         detailErrorText.textContent = error.message;
         detailErrorText.classList.remove('hidden');
+      } finally {
+        detailDeleteBtn.disabled = false;
       }
     });
   }

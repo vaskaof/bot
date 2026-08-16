@@ -194,9 +194,21 @@ window.Screens.catalog = {
       `;
     }
 
+    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 5): ни одна из двух кнопок этого
+    // диалога не блокировалась на время запроса — двойной тап (тот же класс
+    // риска, что уже 4+ раза находили в разных углах этого проекта) мог
+    // вызвать performMerge дважды подряд для одной и той же пары позиций,
+    // причём именно эта функция ЯВНО удаляет одну из двух записей каталога
+    // на сервере (см. подсказку выше кнопок) — самый чувствительный из всех
+    // найденных при аудите write-путей без disable-guard.
     async function performMerge(targetDetails, sourceDetails, mergeChoice) {
       const errorEl = document.getElementById('merge-compare-error');
       errorEl.classList.add('hidden');
+      const targetBtn = document.getElementById('merge-keep-target-btn');
+      const sourceBtn = document.getElementById('merge-keep-source-btn');
+      if (targetBtn.disabled || sourceBtn.disabled) return; // уже в процессе — второй клик игнорируем
+      targetBtn.disabled = true;
+      sourceBtn.disabled = true;
       const skuData = {
         original: targetDetails.original,
         shortName: sourceDetails.shortName,
@@ -214,6 +226,8 @@ window.Screens.catalog = {
       } catch (error) {
         errorEl.textContent = error.message;
         errorEl.classList.remove('hidden');
+        targetBtn.disabled = false;
+        sourceBtn.disabled = false;
       }
     }
 

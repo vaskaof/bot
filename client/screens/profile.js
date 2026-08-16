@@ -327,7 +327,14 @@ window.Screens.profile = {
       contactCounter.textContent = `${e.target.value.length}/300`;
     });
 
-    document.getElementById('contact-send-btn').addEventListener('click', async () => {
+    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 5): не блокировалась на время
+    // запроса — сервер уже дедупит по requestId (submitQuestion, "Request_ID"),
+    // так что дубля данных не было, но повторный тап без видимой реакции
+    // отправлял лишний сетевой запрос впустую. Добавлено для консистентности
+    // с остальными формами записи проекта, не как фикс потери данных.
+    const contactSendBtn = document.getElementById('contact-send-btn');
+    contactSendBtn.addEventListener('click', async () => {
+      if (contactSendBtn.disabled) return;
       const text = contactTextInput.value.trim();
       contactErrorText.classList.add('hidden');
       document.getElementById('contact-rate-limit-banner').classList.add('hidden');
@@ -339,6 +346,7 @@ window.Screens.profile = {
       }
 
       const requestId = generateRequestId();
+      contactSendBtn.disabled = true;
 
       try {
         await callServer('submitOrderQuestion', '', text, requestId);
@@ -353,6 +361,8 @@ window.Screens.profile = {
           contactErrorText.textContent = error.message;
           contactErrorText.classList.remove('hidden');
         }
+      } finally {
+        contactSendBtn.disabled = false;
       }
     });
   }
