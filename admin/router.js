@@ -28,7 +28,7 @@
  * MORE_GROUP ниже — единственное место, которое обе стороны (view app.html
  * и подсветка активного пункта здесь) обязаны знать одинаково.
  */
-const MORE_GROUP = ['settings', 'contests', 'analytics'];
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -44,7 +44,7 @@ const ROUTES = [
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
-  { path: 'clients', screen: 'clients', navKey: null, showNav: true },
+  { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 
