@@ -19,6 +19,15 @@
  * (`getUserUsageAnalytics(telegramId, days)`, `state.userView`). Отдельного
  * route на это НЕ заведено — переключение чисто внутри `render()`, "Назад"
  * из drill-down возвращает к общей сводке (не к предыдущему экрану).
+ *
+ * "Почти бесплатные" срезы (17.08.2026, тот же день) — те же данные, что уже
+ * собирались, просто раньше не показывались: дельта к предыдущему такому же
+ * окну на KPI-плитках (`summary.prevTotals`), тепловая карта активности по
+ * часам/дням недели (`summary.byHourDow`, одна последовательная шкала
+ * indigo — светлота = величина, см. dataviz-skill), таблица медленных
+ * методов по `duration_ms` (`summary.slowMethods`, HAVING count>=3 — один
+ * выброс не должен возглавлять список). Только на общей сводке, НЕ на
+ * per-user drill-down.
  */
 window.Screens = window.Screens || {};
 window.Screens.analytics = {
@@ -108,14 +117,15 @@ window.Screens.analytics = {
     }
 
     function render(summary, topUsers) {
-      const { totals, byMethod, byDay, recentErrors } = summary;
+      const { totals, prevTotals, byMethod, byDay, recentErrors, slowMethods, byHourDow } = summary;
       const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
+      const prevSuccessRate = prevTotals.total > 0 ? Math.round((prevTotals.success / prevTotals.total) * 100) : 0;
 
       body.innerHTML = `
         <div class="grid grid-cols-2 gap-2 mb-4">
-          ${kpiTile('activity', 'Вызовов всего', totals.total)}
-          ${kpiTile('check-circle', 'Успешно', `${successRate}%`)}
-          ${kpiTile('alert-triangle', 'Ошибок', totals.failed)}
+          ${kpiTile('activity', 'Вызовов всего', totals.total, deltaBadge(totals.total, prevTotals.total, 'neutral'))}
+          ${kpiTile('check-circle', 'Успешно', `${successRate}%`, deltaBadge(successRate, prevSuccessRate, 'up'))}
+          ${kpiTile('alert-triangle', 'Ошибок', totals.failed, deltaBadge(totals.failed, prevTotals.failed, 'down'))}
           ${kpiTile('user', 'Активных админов', totals.uniqueAdmins)}
           ${kpiTile('users', 'Активных клиентов', totals.uniqueClients)}
         </div>
@@ -126,8 +136,18 @@ window.Screens.analytics = {
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Активность по часам и дням недели</div>
+          ${byHourDow.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : heatmap(byHourDow)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Топ методов</div>
           ${byMethod.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : methodTable(byMethod)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Медленные методы</div>
+          ${slowMethods.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : slowMethodsTable(slowMethods)}
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -178,16 +198,34 @@ window.Screens.analytics = {
       });
     }
 
-    function kpiTile(icon, label, value) {
+    function kpiTile(icon, label, value, deltaHtml) {
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
           <div class="flex items-center gap-1.5 text-gray-400 mb-1">
             <i data-lucide="${icon}" class="w-3.5 h-3.5"></i>
             <span class="text-[11px]">${escapeHtmlClient(label)}</span>
           </div>
-          <div class="text-xl font-semibold text-gray-900">${escapeHtmlClient(String(value))}</div>
+          <div class="text-xl font-semibold text-gray-900">${escapeHtmlClient(String(value))}${deltaHtml || ''}</div>
         </div>
       `;
+    }
+
+    /**
+     * Дельта к предыдущему такому же окну (см. summary.prevTotals) — signed,
+     * цвет = направление × "хорошо ли расти" (goodDirection). 'neutral' —
+     * рост объёма вызовов сам по себе не хороший и не плохой, показываем
+     * серым, без оценки. previous=0 — делить не на что, дельту не показываем
+     * (не "разово было 0, стало N" в проценты — вводит в заблуждение).
+     */
+    function deltaBadge(current, previous, goodDirection) {
+      if (!previous) return '';
+      const pct = Math.round(((current - previous) / previous) * 100);
+      const up = pct > 0;
+      let colorClass = 'text-gray-400';
+      if (goodDirection === 'up') colorClass = up ? 'text-green-600' : (pct < 0 ? 'text-red-500' : 'text-gray-400');
+      else if (goodDirection === 'down') colorClass = up ? 'text-red-500' : (pct < 0 ? 'text-green-600' : 'text-gray-400');
+      const arrow = pct === 0 ? '' : (up ? '▲' : '▼');
+      return ` <span class="text-[10px] font-normal ${colorClass}">${arrow}${Math.abs(pct)}%</span>`;
     }
 
     function dayChart(byDay) {
@@ -203,6 +241,67 @@ window.Screens.analytics = {
         <div class="flex justify-between text-[10px] text-gray-400 mt-1">
           <span>${escapeHtmlClient(byDay[0].day)}</span>
           <span>${escapeHtmlClient(byDay[byDay.length - 1].day)}</span>
+        </div>
+      `;
+    }
+
+    /**
+     * Тепловая карта активности — одна последовательная шкала (indigo,
+     * светлота = величина), не палитра identity-цветов, поэтому
+     * categorical-валидатор dataviz-skill сюда не применяется (см. его же
+     * color-formula.md: "sequential ramp — не категориальная проверка").
+     * Пн-первым для удобства чтения — Postgres отдаёт DOW 0=Вс..6=Сб как есть,
+     * переупорядочиваем только на отрисовке.
+     */
+    function heatmap(byHourDow) {
+      const dowLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+      const dowOrder = [1, 2, 3, 4, 5, 6, 0];
+      const lookup = {};
+      let max = 1;
+      byHourDow.forEach(d => {
+        lookup[`${d.dow}-${d.hour}`] = d.count;
+        if (d.count > max) max = d.count;
+      });
+
+      const rows = dowOrder.map((dow, i) => {
+        const cells = [];
+        for (let hour = 0; hour < 24; hour++) {
+          const count = lookup[`${dow}-${hour}`] || 0;
+          const opacity = count === 0 ? 0.04 : Math.max(0.15, count / max).toFixed(2);
+          cells.push(`<div class="aspect-square rounded-sm" style="background-color: rgba(79,70,229,${opacity})" title="${dowLabels[i]}, ${hour}:00–${hour + 1}:00: ${count}"></div>`);
+        }
+        return `
+          <div class="flex items-center gap-1">
+            <div class="w-5 text-[9px] text-gray-400 shrink-0">${dowLabels[i]}</div>
+            <div class="flex-1 grid gap-0.5" style="grid-template-columns: repeat(24, 1fr);">${cells.join('')}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="space-y-1">${rows}</div>
+        <div class="flex justify-between text-[9px] text-gray-400 mt-1 pl-6">
+          <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+        </div>
+      `;
+    }
+
+    function slowMethodsTable(slowMethods) {
+      const routeLabels = { admin: 'Админ', client: 'Клиент', proxy: 'GAS', invalid: 'Некорр.' };
+      return `
+        <div class="space-y-1.5">
+          ${slowMethods.map(m => `
+            <div class="flex items-center justify-between text-[13px]">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
+                <span class="text-gray-800 truncate">${escapeHtmlClient(m.method)}</span>
+              </div>
+              <div class="shrink-0 text-right">
+                <div class="text-gray-500">~${m.avgMs} мс</div>
+                <div class="text-[10px] text-gray-400">p95 ${m.p95Ms} мс</div>
+              </div>
+            </div>
+          `).join('')}
         </div>
       `;
     }
