@@ -3,7 +3,19 @@
 /**
  * Экран "Мои вопросы" — перенесён из client/questions.html (Phase 2 SPA,
  * 02.08.2026). Логика не менялась.
+ *
+ * "Оставить отзыв на ответ" (16.08.2026, задания для бета-теста) — не
+ * отдельная фича, а UI поверх УЖЕ существующего механизма ручных заданий
+ * (см. tasks/tasksService.js): вопрос сам по себе не хранит отзыв, кнопка
+ * находит повторяемое ручное задание с названием REVIEW_TASK_TITLE и шлёт
+ * submitTaskProof с текстом отзыва, префиксованным ссылкой на вопрос —
+ * ЕДИНСТВЕННЫЙ способ на сегодня связать заявку с конкретным вопросом (нет
+ * отдельного поля questionId в "Выполнения_Заданий"). Задание должно быть
+ * создано в админке ТОЧНО с этим названием, тип "Ручное", "Повторяемое" —
+ * иначе кнопка не появится (задание не найдено — тихий skip, не ошибка).
  */
+const REVIEW_TASK_TITLE = 'Оцени ответ на вопрос';
+
 window.Screens = window.Screens || {};
 window.Screens.questions = {
   render(root) {
@@ -30,6 +42,8 @@ window.Screens.questions = {
     // client_display_overhaul) — здесь нет своей модалки, CTA просто ведёт туда.
     document.getElementById('empty-ask-question-btn').addEventListener('click', () => navigateTo('profile'));
 
+    let reviewTask = null; // повторяемое ручное задание "Оцени ответ на вопрос", если заведено
+
     loadQuestions();
 
     refreshBtn.addEventListener('click', () => {
@@ -44,7 +58,12 @@ window.Screens.questions = {
     async function loadQuestions() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const questions = await callServer('getClientQuestionsList');
+        const [questions, tasks] = await Promise.all([
+          callServer('getClientQuestionsList'),
+          // Не критично для экрана — сбой не должен ломать список вопросов.
+          callServer('getTasksList').catch(() => [])
+        ]);
+        reviewTask = tasks.find(t => t.title === REVIEW_TASK_TITLE && t.type === 'Ручное' && t.repeatable) || null;
         render(questions);
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -77,6 +96,30 @@ window.Screens.questions = {
           ? `<div class="mt-2 p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-[13px] text-indigo-800"><b>Ответ менеджера:</b> ${escapeHtmlClient(q.answer)}</div>`
           : `<div class="mt-2 text-[12px] text-amber-500 font-medium">Ожидает ответа</div>`}
       `;
+
+      if (q.status === 'Отвечено' && reviewTask) {
+        const reviewBtn = document.createElement('button');
+        reviewBtn.type = 'button';
+        reviewBtn.className = 'mt-2 w-full py-2 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-medium';
+        reviewBtn.textContent = `Оставить отзыв на ответ (+${reviewTask.reward} сов)`;
+        reviewBtn.addEventListener('click', async () => {
+          const reviewText = (prompt('Что скажете об ответе менеджера? Было ли уведомление понятным, ответ полезным, что улучшить:', '') || '').trim();
+          if (reviewText === '') return;
+          if (reviewBtn.disabled) return;
+          reviewBtn.disabled = true;
+          try {
+            const questionRef = q.text ? q.text.slice(0, 60) : q.productDisplay;
+            await callServer('submitTaskProof', reviewTask.taskId, `[Вопрос: "${questionRef}"] ${reviewText}`);
+            showSaveToast(true, 'Спасибо за отзыв! Отправлен на проверку.');
+          } catch (error) {
+            showSaveToast(false, `Не удалось отправить: ${error.message}`);
+          } finally {
+            reviewBtn.disabled = false;
+          }
+        });
+        card.appendChild(reviewBtn);
+      }
+
       return card;
     }
   }

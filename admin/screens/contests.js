@@ -95,6 +95,10 @@ window.Screens.contests = {
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Например: 10">
             </div>
+            <div id="task-repeatable-block" class="flex items-center gap-2">
+              <input type="checkbox" id="task-repeatable-input" class="w-4 h-4 rounded border-gray-300 text-indigo-600">
+              <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Клиент может присылать сколько угодно заявок по этому заданию — в том числе несколько сразу, не дожидаясь проверки предыдущей.</p><p>Подходит для баг-репортов и подобного, где один и тот же клиент естественно приходит с разными заявками не один раз. Для одноразовых заданий (вишлист, подписка и т.п.) оставьте выключенным.</p>')}</label>
+            </div>
           </div>
 
           <div id="task-error-text" class="px-4 text-xs text-red-500 hidden"></div>
@@ -316,7 +320,10 @@ window.Screens.contests = {
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(t.title)}</div>
-          <span class="text-[10px] px-2 py-0.5 rounded-full ${t.type === 'Авто' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-700'} shrink-0">${escapeHtmlClient(t.type)}</span>
+          <div class="flex items-center gap-1 shrink-0">
+            ${t.repeatable ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Повторяемое</span>' : ''}
+            <span class="text-[10px] px-2 py-0.5 rounded-full ${t.type === 'Авто' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-700'}">${escapeHtmlClient(t.type)}</span>
+          </div>
         </div>
         ${t.description ? `<div class="text-[13px] text-gray-500 mt-1">${escapeHtmlClient(t.description)}</div>` : ''}
         <div class="text-[12px] text-gray-500 mt-2">
@@ -378,21 +385,38 @@ window.Screens.contests = {
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.taskTitle)}</div>
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 shrink-0">+${s.reward} сов</span>
         </div>
         <div class="text-[12px] text-gray-400 mt-1">Клиент: ${escapeHtmlClient(s.telegramId)} · ${escapeHtmlClient(s.submittedAt)}</div>
         <div class="text-[13px] text-gray-700 mt-2 p-2 bg-gray-50 rounded-lg break-words">${escapeHtmlClient(s.proof)}</div>
+        <div class="flex items-center gap-2 mt-2">
+          <label class="text-[11px] text-gray-500 shrink-0">Награда (сов, макс. ${s.reward}) ${helpIcon('Награда при одобрении', '<p>Заявлено клиентом при подаче: ' + s.reward + ' сов. Можно снизить (например, баг уже известен) — выше заявленного значения поставить нельзя.</p>')}</label>
+          <input type="number" class="approve-reward-input w-20 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" min="0" max="${s.reward}" step="1" value="${s.reward}">
+        </div>
         <div class="flex items-center gap-2 mt-3">
           <button type="button" class="approve-btn flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">Одобрить</button>
           <button type="button" class="reject-btn flex-1 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium">Отклонить</button>
         </div>
       `;
 
+      const rewardInput = card.querySelector('.approve-reward-input');
+
       card.querySelector('.approve-btn').addEventListener('click', async (e) => {
-        if (!confirm(`Одобрить и начислить ${s.reward} сов?`)) return;
+        const finalReward = Number(rewardInput.value);
+        if (rewardInput.value === '' || isNaN(finalReward) || finalReward < 0) {
+          showSaveToast(false, 'Награда должна быть неотрицательным числом.');
+          return;
+        }
+        if (finalReward > s.reward) {
+          showSaveToast(false, `Награда не может быть выше заявленной (${s.reward}).`);
+          return;
+        }
+        const confirmText = finalReward < s.reward
+          ? `Одобрить и начислить ${finalReward} сов (снижено с заявленных ${s.reward})?`
+          : `Одобрить и начислить ${finalReward} сов?`;
+        if (!confirm(confirmText)) return;
         e.currentTarget.disabled = true;
         try {
-          await callServer('approveTaskSubmission', s.submissionId);
+          await callServer('approveTaskSubmission', s.submissionId, finalReward);
           showSaveToast(true, 'Заявка одобрена, совы начислены');
           loadModeration();
         } catch (error) {
@@ -563,10 +587,16 @@ window.Screens.contests = {
     const signalBlock = document.getElementById('task-signal-block');
     const signalInput = document.getElementById('task-signal-input');
     const rewardInput = document.getElementById('task-reward-input');
+    const repeatableBlock = document.getElementById('task-repeatable-block');
+    const repeatableInput = document.getElementById('task-repeatable-input');
     const errorText = document.getElementById('task-error-text');
 
     function updateSignalBlockVisibility() {
       signalBlock.classList.toggle('hidden', typeInput.value !== 'Авто');
+      // "Повторяемое" имеет смысл только для Ручного — Авто-задание и так
+      // проверяется системой заново при каждом заходе, повторной подачи нет.
+      repeatableBlock.classList.toggle('hidden', typeInput.value !== 'Ручное');
+      if (typeInput.value !== 'Ручное') repeatableInput.checked = false;
     }
     typeInput.addEventListener('change', updateSignalBlockVisibility);
 
@@ -577,6 +607,7 @@ window.Screens.contests = {
       typeInput.value = 'Авто';
       signalInput.value = 'Есть_Позиция_В_Вишлисте';
       rewardInput.value = '';
+      repeatableInput.checked = false;
       errorText.classList.add('hidden');
       updateSignalBlockVisibility();
     }
@@ -597,6 +628,7 @@ window.Screens.contests = {
       typeInput.value = t.type;
       if (t.signal) signalInput.value = t.signal;
       rewardInput.value = t.reward;
+      repeatableInput.checked = !!t.repeatable;
       updateSignalBlockVisibility();
       taskModal.classList.remove('hidden');
       taskModal.classList.add('flex');
@@ -617,6 +649,7 @@ window.Screens.contests = {
       const type = typeInput.value;
       const signal = type === 'Авто' ? signalInput.value : '';
       const reward = rewardInput.value;
+      const repeatable = type === 'Ручное' && repeatableInput.checked;
 
       if (title === '') {
         errorText.textContent = 'Введите название задания.';
@@ -632,9 +665,9 @@ window.Screens.contests = {
       taskModalSaveBtn.disabled = true;
       try {
         if (editingTaskId) {
-          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward));
+          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable);
         } else {
-          await callServer('createTask', title, description, type, signal, Number(reward));
+          await callServer('createTask', title, description, type, signal, Number(reward), repeatable);
         }
         closeTaskModal();
         showSaveToast(true, editingTaskId ? 'Задание обновлено' : 'Задание создано');

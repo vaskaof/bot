@@ -264,11 +264,17 @@ window.Screens.contests = {
         <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} сов</div>
       `;
 
-      if (t.type === 'Ручное' && (t.status === 'not_done' || t.status === 'rejected')) {
+      // Повторяемые задания (баг-репорт и т.п.) — кнопка отправки доступна
+      // всегда, независимо от статуса предыдущей заявки: клиент может
+      // прислать сразу несколько разных заявок по одному заданию.
+      const canSubmit = t.type === 'Ручное' && (t.repeatable || t.status === 'not_done' || t.status === 'rejected');
+      if (canSubmit) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'mt-3 w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium';
-        btn.textContent = t.status === 'rejected' ? 'Отправить снова' : 'Отправить на проверку';
+        btn.textContent = t.repeatable && (t.status === 'done' || t.status === 'pending')
+          ? 'Отправить ещё одну заявку'
+          : (t.status === 'rejected' ? 'Отправить снова' : 'Отправить на проверку');
         btn.addEventListener('click', () => openProofModal(t));
         card.appendChild(btn);
       }
