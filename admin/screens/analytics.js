@@ -12,6 +12,13 @@
  * проекте — гистограмма по дням нарисована обычными div'ами
  * (высота — процент от максимума), тот же принцип "минимум зависимостей",
  * что и у остального фронтенда.
+ *
+ * Per-user срез (17.08.2026, продолжение того же долга) — блок "Активные
+ * пользователи" читает `getUsageTopUsers(days, limit)`; клик по строке
+ * переключает экран в режим drill-down на одного пользователя
+ * (`getUserUsageAnalytics(telegramId, days)`, `state.userView`). Отдельного
+ * route на это НЕ заведено — переключение чисто внутри `render()`, "Назад"
+ * из drill-down возвращает к общей сводке (не к предыдущему экрану).
  */
 window.Screens = window.Screens || {};
 window.Screens.analytics = {
@@ -27,12 +34,23 @@ window.Screens.analytics = {
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
     `;
-    document.getElementById('back-btn').addEventListener('click', () => navigateTo('more'));
+    // drill-down состояние: null — общая сводка, иначе {telegramId, label}
+    // выбранного пользователя (см. topUsersList → openUser).
+    let activeUser = null;
+
+    document.getElementById('back-btn').addEventListener('click', () => {
+      if (activeUser) {
+        activeUser = null;
+        load();
+        return;
+      }
+      navigateTo('more');
+    });
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="flex items-center justify-between mb-3">
-          <div class="text-[11px] text-gray-400">Кто и как пользуется приложением</div>
+          <div id="analytics-subtitle" class="text-[11px] text-gray-400">Кто и как пользуется приложением</div>
           <select id="days-select" class="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:border-indigo-400">
             <option value="7">7 дней</option>
             <option value="14" selected>14 дней</option>
@@ -50,6 +68,7 @@ window.Screens.analytics = {
     const daysSelect = document.getElementById('days-select');
     const refreshBtn = document.getElementById('refresh-analytics');
     const body = document.getElementById('analytics-body');
+    const subtitle = document.getElementById('analytics-subtitle');
 
     load();
 
@@ -64,15 +83,31 @@ window.Screens.analytics = {
 
     async function load() {
       body.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      const days = Number(daysSelect.value);
       try {
-        const summary = await callServer('getUsageAnalytics', Number(daysSelect.value));
-        render(summary);
+        if (activeUser) {
+          subtitle.textContent = activeUser.label;
+          const summary = await callServer('getUserUsageAnalytics', activeUser.telegramId, days);
+          renderUser(summary);
+        } else {
+          subtitle.textContent = 'Кто и как пользуется приложением';
+          const [summary, topUsers] = await Promise.all([
+            callServer('getUsageAnalytics', days),
+            callServer('getUsageTopUsers', days, 10)
+          ]);
+          render(summary, topUsers);
+        }
       } catch (error) {
         body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
     }
 
-    function render(summary) {
+    function openUser(telegramId, label) {
+      activeUser = { telegramId, label };
+      load();
+    }
+
+    function render(summary, topUsers) {
       const { totals, byMethod, byDay, recentErrors } = summary;
       const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
 
@@ -95,12 +130,52 @@ window.Screens.analytics = {
           ${byMethod.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : methodTable(byMethod)}
         </div>
 
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Активные пользователи</div>
+          ${topUsers.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : topUsersList(topUsers)}
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Последние ошибки</div>
           ${recentErrors.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Ошибок нет 🎉</div>' : errorsList(recentErrors)}
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
+      body.querySelectorAll('[data-user-telegram-id]').forEach((el) => {
+        el.addEventListener('click', () => openUser(el.dataset.userTelegramId, el.dataset.userLabel));
+      });
+    }
+
+    function renderUser(summary) {
+      const { totals, byMethod, byDay } = summary;
+      const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
+
+      body.innerHTML = `
+        <button type="button" id="back-to-users" class="text-xs text-indigo-600 mb-3 flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Все пользователи
+        </button>
+
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          ${kpiTile('activity', 'Вызовов', totals.total)}
+          ${kpiTile('check-circle', 'Успешно', `${successRate}%`)}
+          ${kpiTile('alert-triangle', 'Ошибок', totals.failed)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Вызовов по дням</div>
+          ${byDay.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : dayChart(byDay)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Топ методов</div>
+          ${byMethod.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : methodTable(byMethod)}
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      document.getElementById('back-to-users').addEventListener('click', () => {
+        activeUser = null;
+        load();
+      });
     }
 
     function kpiTile(icon, label, value) {
@@ -145,6 +220,33 @@ window.Screens.analytics = {
               <div class="shrink-0 text-gray-500">${m.count}${m.failed > 0 ? ` <span class="text-red-500">(${m.failed} ошиб.)</span>` : ''}</div>
             </div>
           `).join('')}
+        </div>
+      `;
+    }
+
+    function topUsersList(topUsers) {
+      return `
+        <div class="space-y-1.5">
+          ${topUsers.map(u => {
+            const label = u.name || u.username || u.telegramId;
+            const sub = u.name && u.username ? u.username : '';
+            const lastActive = u.lastActive ? new Date(u.lastActive).toLocaleString('ru-RU') : '';
+            return `
+              <div class="flex items-center justify-between text-[13px] cursor-pointer hover:bg-gray-50 rounded-lg px-1 -mx-1 py-1" data-user-telegram-id="${escapeHtmlClient(u.telegramId)}" data-user-label="${escapeHtmlClient(label)}">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${u.isAdmin ? 'Админ' : 'Клиент'}</span>
+                  <div class="min-w-0">
+                    <div class="text-gray-800 truncate">${escapeHtmlClient(label)}</div>
+                    ${sub ? `<div class="text-[10px] text-gray-400 truncate">${escapeHtmlClient(sub)}</div>` : ''}
+                  </div>
+                </div>
+                <div class="shrink-0 text-right">
+                  <div class="text-gray-500">${u.count}</div>
+                  ${lastActive ? `<div class="text-[10px] text-gray-400">${escapeHtmlClient(lastActive)}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
       `;
     }
