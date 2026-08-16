@@ -1,0 +1,165 @@
+'use strict';
+
+/**
+ * Экран "Аналитика" (17.08.2026, project_bot_knopka_admin_bottom_nav_redesign)
+ * — читает `getUsageAnalytics(days)` (см. `webapp-api.md` за форматом ответа).
+ * Закрывает долг project_bot_knopka_usage_analytics — сбор данных был готов
+ * с 16.08.2026, UI сознательно не делался до этого раунда.
+ *
+ * НЕ входит в основную нижнюю навигацию (6 постоянных пунктов) — открывается
+ * с экрана "Ещё" (`more.js`) на узких экранах, на широких становится обычной
+ * inline-кнопкой нав-бара (см. app.html). Нет диаграммной библиотеки в
+ * проекте — гистограмма по дням нарисована обычными div'ами
+ * (высота — процент от максимума), тот же принцип "минимум зависимостей",
+ * что и у остального фронтенда.
+ */
+window.Screens = window.Screens || {};
+window.Screens.analytics = {
+  render(root) {
+    document.getElementById('header-left').innerHTML = `
+      <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="arrow-left" class="w-6 h-6"></i>
+      </button>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Аналитика</h1>
+    `;
+    document.getElementById('header-actions').innerHTML = `
+      <button id="refresh-analytics" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      </button>
+    `;
+    document.getElementById('back-btn').addEventListener('click', () => navigateTo('more'));
+
+    root.innerHTML = `
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[11px] text-gray-400">Кто и как пользуется приложением</div>
+          <select id="days-select" class="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:border-indigo-400">
+            <option value="7">7 дней</option>
+            <option value="14" selected>14 дней</option>
+            <option value="30">30 дней</option>
+            <option value="90">90 дней</option>
+          </select>
+        </div>
+
+        <div id="analytics-body">
+          <div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>
+        </div>
+      </main>
+    `;
+
+    const daysSelect = document.getElementById('days-select');
+    const refreshBtn = document.getElementById('refresh-analytics');
+    const body = document.getElementById('analytics-body');
+
+    load();
+
+    daysSelect.addEventListener('change', load);
+    refreshBtn.addEventListener('click', async () => {
+      const icon = refreshBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+      await load();
+      const liveIcon = refreshBtn.querySelector('svg');
+      if (liveIcon) liveIcon.classList.remove('animate-spin');
+    });
+
+    async function load() {
+      body.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        const summary = await callServer('getUsageAnalytics', Number(daysSelect.value));
+        render(summary);
+      } catch (error) {
+        body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
+      }
+    }
+
+    function render(summary) {
+      const { totals, byMethod, byDay, recentErrors } = summary;
+      const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
+
+      body.innerHTML = `
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          ${kpiTile('activity', 'Вызовов всего', totals.total)}
+          ${kpiTile('check-circle', 'Успешно', `${successRate}%`)}
+          ${kpiTile('alert-triangle', 'Ошибок', totals.failed)}
+          ${kpiTile('user', 'Активных админов', totals.uniqueAdmins)}
+          ${kpiTile('users', 'Активных клиентов', totals.uniqueClients)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Вызовов по дням</div>
+          ${byDay.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : dayChart(byDay)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Топ методов</div>
+          ${byMethod.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : methodTable(byMethod)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Последние ошибки</div>
+          ${recentErrors.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Ошибок нет 🎉</div>' : errorsList(recentErrors)}
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function kpiTile(icon, label, value) {
+      return `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+          <div class="flex items-center gap-1.5 text-gray-400 mb-1">
+            <i data-lucide="${icon}" class="w-3.5 h-3.5"></i>
+            <span class="text-[11px]">${escapeHtmlClient(label)}</span>
+          </div>
+          <div class="text-xl font-semibold text-gray-900">${escapeHtmlClient(String(value))}</div>
+        </div>
+      `;
+    }
+
+    function dayChart(byDay) {
+      const max = Math.max(...byDay.map(d => d.count), 1);
+      return `
+        <div class="flex items-end gap-1 h-24">
+          ${byDay.map(d => `
+            <div class="flex-1 flex flex-col items-center justify-end h-full" title="${escapeHtmlClient(d.day)}: ${d.count}">
+              <div class="w-full bg-indigo-500 rounded-t" style="height: ${Math.max(4, Math.round((d.count / max) * 100))}%"></div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+          <span>${escapeHtmlClient(byDay[0].day)}</span>
+          <span>${escapeHtmlClient(byDay[byDay.length - 1].day)}</span>
+        </div>
+      `;
+    }
+
+    function methodTable(byMethod) {
+      const routeLabels = { admin: 'Админ', client: 'Клиент', proxy: 'GAS', invalid: 'Некорр.' };
+      return `
+        <div class="space-y-1.5">
+          ${byMethod.map(m => `
+            <div class="flex items-center justify-between text-[13px]">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
+                <span class="text-gray-800 truncate">${escapeHtmlClient(m.method)}</span>
+              </div>
+              <div class="shrink-0 text-gray-500">${m.count}${m.failed > 0 ? ` <span class="text-red-500">(${m.failed} ошиб.)</span>` : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function errorsList(recentErrors) {
+      return `
+        <div class="space-y-2">
+          ${recentErrors.map(e => `
+            <div class="text-[12px] border-l-2 border-red-300 pl-2">
+              <div class="text-gray-500">${escapeHtmlClient(e.method)} · ${escapeHtmlClient(e.isAdmin ? 'админ' : 'клиент')}${e.telegramId ? ` (${escapeHtmlClient(e.telegramId)})` : ''}</div>
+              <div class="text-red-600">${escapeHtmlClient(e.errorMessage || 'без текста ошибки')}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+  }
+};

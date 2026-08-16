@@ -367,6 +367,10 @@ window.Screens.contests = {
     function renderModeration(pending) {
       const badge = document.getElementById('pending-count-badge');
       badge.textContent = pending.length > 0 ? `(${pending.length})` : '';
+      // Синхронизация с бейджем на кнопке "Ещё" нижней навигации (17.08.2026,
+      // project_bot_knopka_admin_bottom_nav_redesign) — эта загрузка свежее,
+      // чем background-фетч в router.js, обновляем сразу.
+      if (window.updateMoreBadge) window.updateMoreBadge(pending.length);
 
       moderationList.innerHTML = '';
       if (pending.length === 0) {

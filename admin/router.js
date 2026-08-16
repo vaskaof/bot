@@ -14,21 +14,38 @@
  *   каждый повторный визит. Экран получает signal четвёртым аргументом
  *   render() и вешает такие слушатели с { signal }.
  */
+/**
+ * 17.08.2026 (project_bot_knopka_admin_bottom_nav_redesign) — нижняя
+ * навигация сокращена с 8 до 6 постоянных пунктов:
+ * - 'news'+'questions' слиты в один экран 'home' (screens/home.js, вкладки)
+ *   — по прямому запросу VASY обе остаются на виду, просто под одной
+ *   кнопкой, а не переехали в скрытое "Ещё".
+ * - 'settings'/'contests' + новый 'analytics' сворачиваются под 'more' на
+ *   узких экранах (screens/more.js) и разворачиваются в обычные inline-
+ *   кнопки нав-бара на широких (см. app.html, брейкпоint `md:`) — сам
+ *   маршрут у них не меняется, меняется только то, кладёт ли их app.html в
+ *   видимую часть бара или под кнопку "Ещё".
+ * MORE_GROUP ниже — единственное место, которое обе стороны (view app.html
+ * и подсветка активного пункта здесь) обязаны знать одинаково.
+ */
+const MORE_GROUP = ['settings', 'contests', 'analytics'];
+
 const ROUTES = [
-  { path: 'news', screen: 'news', navKey: 'news', showNav: true },
-  { path: 'questions', screen: 'questions', navKey: 'questions', showNav: true },
+  { path: 'home', screen: 'home', navKey: 'home', showNav: true },
   { path: 'reminders', screen: 'reminders', navKey: 'reminders', showNav: true },
   { path: 'orders', screen: 'orders', navKey: 'orders', showNav: true },
   { path: 'catalog', screen: 'catalog', navKey: 'catalog', showNav: true },
-  { path: 'contests', screen: 'contests', navKey: 'contests', showNav: true },
   { path: 'payments', screen: 'payments', navKey: 'payments', showNav: true },
+  { path: 'more', screen: 'more', navKey: 'more', showNav: true },
+  { path: 'contests', screen: 'contests', navKey: 'contests', showNav: true },
   { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
+  { path: 'analytics', screen: 'analytics', navKey: 'analytics', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
 ];
-const DEFAULT_ROUTE = 'news';
+const DEFAULT_ROUTE = 'home';
 
 /**
  * Собирает query-строку из плоского объекта — вручную (без URLSearchParams,
@@ -114,6 +131,50 @@ function showSaveToast(success, message) {
   setTimeout(() => toast.classList.add('hidden'), 4000);
 }
 
+/**
+ * Бейджи нижней навигации (17.08.2026) — вне зависимости от того, какой
+ * экран сейчас смонтирован: "Главная" (непроверенные вопросы) и "Ещё"
+ * (заявки конкурсов на модерации) должны быть видны СРАЗУ, не только после
+ * захода внутрь. window.updateHomeBadge(count) — home.js вызывает его же
+ * функцией с уже загруженными данными (не дублирует свой собственный
+ * getQuestionsList ещё одним запросом); здесь — только бэкграунд-обновление
+ * для случая, когда экран "Главная" ещё не открывали в этом заходе в
+ * приложение.
+ */
+function _setNavBadge(navKey, count) {
+  const link = document.querySelector(`#bottom-nav [data-nav-key="${navKey}"]`);
+  if (!link) return;
+  let badge = link.querySelector('.nav-badge');
+  if (!count) {
+    if (badge) badge.remove();
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'nav-badge absolute top-1 right-[18%] min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center font-medium';
+    link.classList.add('relative');
+    link.appendChild(badge);
+  }
+  badge.textContent = count > 9 ? '9+' : String(count);
+}
+
+window.updateHomeBadge = (count) => _setNavBadge('home', count);
+window.updateMoreBadge = (count) => _setNavBadge('more', count);
+
+let _navBadgesLoaded = false;
+async function refreshNavBadges() {
+  if (_navBadgesLoaded) return; // Достаточно один раз за открытие приложения — дальше обновляют сами экраны (home.js/more.js) по факту своей загрузки.
+  _navBadgesLoaded = true;
+  try {
+    const questions = await callServer('getQuestionsList');
+    _setNavBadge('home', questions.filter((q) => q.status === 'Новый').length);
+  } catch (error) { /* бейдж необязателен — не мешать навигации ошибкой фонового запроса */ }
+  try {
+    const pending = await callServer('getPendingTaskSubmissions');
+    _setNavBadge('more', pending.length);
+  } catch (error) { /* см. выше */ }
+}
+
 let _currentScreenController = null;
 
 /**
@@ -144,11 +205,18 @@ function renderRoute(dictionaries) {
   if (nav) {
     nav.classList.toggle('hidden', !showNav);
     nav.querySelectorAll('[data-nav-key]').forEach((link) => {
-      const active = link.dataset.navKey === navKey;
+      // Настройки/Конкурсы/Аналитика подсвечивают и себя (inline-кнопка на
+      // широком экране), и кнопку "Ещё" (единственная видимая на узком) —
+      // см. MORE_GROUP выше, app.html держит обе формы в разметке одновременно
+      // и переключает видимость чисто CSS-медиа-запросом.
+      const key = link.dataset.navKey;
+      const active = key === navKey || (key === 'more' && MORE_GROUP.includes(navKey));
       link.classList.toggle('text-indigo-600', active);
       link.classList.toggle('text-gray-400', !active);
     });
   }
+
+  refreshNavBadges();
 
   if (window.lucide) window.lucide.createIcons();
   window.scrollTo(0, 0);

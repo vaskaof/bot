@@ -10,20 +10,21 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=4"></script>
   <script src="../common.js?v=11"></script>
-  <script src="router.js?v=4"></script>
+  <script src="router.js?v=5"></script>
   <script src="screens/_form-helpers.js?v=2"></script>
   <script src="screens/_sku-modal.js?v=12"></script>
   <script src="screens/_manual-client-modal.js?v=1"></script>
   <script src="screens/_delete-order-modal.js?v=1"></script>
   <script src="screens/wishlist-demand.js?v=8"></script>
-  <script src="screens/questions.js?v=3"></script>
+  <script src="screens/home.js?v=1"></script>
+  <script src="screens/more.js?v=1"></script>
+  <script src="screens/analytics.js?v=1"></script>
   <script src="screens/reminders.js?v=1"></script>
   <script src="screens/orders.js?v=5"></script>
   <script src="screens/deleted-orders.js?v=1"></script>
   <script src="screens/catalog.js?v=9"></script>
-  <script src="screens/news.js?v=2"></script>
   <script src="screens/collectives.js?v=3"></script>
-  <script src="screens/contests.js?v=2"></script>
+  <script src="screens/contests.js?v=3"></script>
   <script src="screens/order-new.js?v=9"></script>
   <script src="screens/order-edit.js?v=14"></script>
   <script src="screens/payments.js?v=10"></script>
@@ -91,15 +92,28 @@
          router.renderRoute() при смене hash. -->
     <div id="screen-root"></div>
 
+    <!-- Нижняя навигация (переработана 17.08.2026,
+         project_bot_knopka_admin_bottom_nav_redesign) — 6 постоянных пунктов
+         вместо 8: Новости+Вопросы слиты в "Главная" (screens/home.js,
+         вкладки), Настройки/Конкурсы/Аналитика сворачиваются под "Ещё" на
+         узком экране. Порядок — по прямому запросу VASY: "Главная" и
+         "Напоминания" нарочно крайние слева (то, что должно бросаться в
+         глаза администратору в первую очередь), рабочий конвейер
+         Заказы→Каталог→Оплаты — следом, "Ещё" — последним.
+         Настройки/Конкурсы/Аналитика ФИЗИЧЕСКИ есть в разметке всегда (не
+         дублируются JS-ом под другим брейкпоинтом) — просто `hidden md:flex`
+         показывает их только на широком экране (десктопный клиент Telegram
+         может дать окну реальную ширину, там прятать их за "Ещё" уже не
+         нужно — есть место), а кнопка "Ещё" на этой же ширине скрывается
+         обратным правилом `md:hidden`. md соответствует Tailwind-дефолту
+         768px — точного требования по брейкпоинту не было, это стартовое
+         значение, не привязанное к измеренному узкому экрану реальных
+         админов. -->
     <nav id="bottom-nav"
       class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-      <button type="button" data-nav-key="news" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+      <button type="button" data-nav-key="home" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="home" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Главная</span>
-      </button>
-      <button type="button" data-nav-key="questions" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
-        <i data-lucide="help-circle" class="w-[22px] h-[22px]"></i>
-        <span class="text-[10px] font-medium leading-none">Вопросы</span>
       </button>
       <button type="button" data-nav-key="reminders" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="bell" class="w-[22px] h-[22px]"></i>
@@ -113,17 +127,29 @@
         <i data-lucide="layers" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Каталог</span>
       </button>
-      <button type="button" data-nav-key="contests" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
-        <i data-lucide="gift" class="w-[22px] h-[22px]"></i>
-        <span class="text-[10px] font-medium leading-none">Конкурсы</span>
-      </button>
       <button type="button" data-nav-key="payments" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="wallet" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Оплаты</span>
       </button>
-      <button type="button" data-nav-key="settings" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+
+      <!-- Широкий экран: разворачиваются inline вместо "Ещё" -->
+      <button type="button" data-nav-key="contests" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="gift" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Конкурсы</span>
+      </button>
+      <button type="button" data-nav-key="settings" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="settings" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Настройки</span>
+      </button>
+      <button type="button" data-nav-key="analytics" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="bar-chart-2" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Аналитика</span>
+      </button>
+
+      <!-- Узкий экран: сворачивает три кнопки выше под одну -->
+      <button type="button" data-nav-key="more" class="md:hidden flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="more-horizontal" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Ещё</span>
       </button>
     </nav>
   </div>
