@@ -240,15 +240,48 @@ window.Screens.orderDetails = {
       // путаницы, что уже чинили на админском экране «Оплаты». Показываем
       // здесь честную картину из d-rollup-card (renderOrderRollup ниже,
       // считана из d.stagesBalance) вместо дублирующего/противоречащего списка.
+      // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): раньше здесь была одна
+      // фраза-заглушка "Разбивка по оплате — ниже", которая указывала на
+      // d-rollup-card ниже — но тот блок показывает только ИТОГ и
+      // приоритетную стадию, не разбивку по каждому этапу. Теперь настоящий
+      // список этапов (d.stagesBalance — уже приходит с сервера, новый
+      // сетевой вызов не нужен), с прогресс-баром на каждый, тем же
+      // визуальным языком, что sov-прогресс на client/screens/profile.js.
       if (d.isNewModel) {
-        list.innerHTML = '<div class="text-sm text-gray-400">Разбивка по оплате — ниже.</div>';
+        const known = (d.stagesBalance || []).filter((s) => s.target > 0);
+        if (known.length === 0) {
+          list.innerHTML = '<div class="text-sm text-gray-400">Стоимость этапов ещё не рассчитана менеджером.</div>';
+        } else {
+          const firstUncovered = known.find((s) => !s.covered);
+          known.forEach((s) => {
+            const pct = Math.max(0, Math.min(100, Math.round((s.paid / s.target) * 100)));
+            const isPriority = firstUncovered && s.stage === firstUncovered.stage;
+            const row = document.createElement('div');
+            row.className = `mb-2.5 last:mb-0${isPriority ? ' -mx-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200' : ''}`;
+            row.innerHTML = `
+              <div class="flex items-center justify-between text-sm mb-1">
+                <span class="text-gray-600 flex items-center gap-1">${isPriority ? '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-500"></i>' : ''}${escapeHtmlClient(stageLabel(s.stage))}${s.isForecast ? ' <span class="text-[10px] text-gray-400">(предварительно)</span>' : ''}</span>
+                <span class="${s.covered ? 'text-green-600' : 'text-gray-700'} font-medium">${s.paid.toFixed(2)} / ${s.target.toFixed(2)} ₽</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div class="h-full rounded-full transition-all ${s.covered ? 'bg-green-500' : 'bg-indigo-500'}" style="width:${pct}%"></div>
+              </div>
+            `;
+            list.appendChild(row);
+          });
+          if (window.lucide) window.lucide.createIcons();
+        }
       } else if (d.payments.lines.length === 0) {
         list.innerHTML = '<div class="text-sm text-green-600 font-medium">Все платежи получены, спасибо!</div>';
       } else {
         d.payments.lines.forEach(line => {
           const row = document.createElement('div');
-          row.className = 'flex items-center justify-between text-sm';
           let valueHtml;
+          // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): "Уточняется" раньше было
+          // голым словом без контекста — клиент не понимал, ждать ли ему
+          // чего-то или это ошибка. Подпись под строкой только для этого
+          // статуса (status:'unclear' — ordersService.calculatePaymentStatus,
+          // сумма этапа менеджером ещё не введена).
           if (line.status === 'paid') {
             valueHtml = `<span class="text-green-600 font-medium">${line.sum.toFixed(2)} ₽ оплачено</span>`;
           } else if (line.status === 'owed') {
@@ -256,7 +289,12 @@ window.Screens.orderDetails = {
           } else {
             valueHtml = `<span class="text-amber-500 font-medium">Уточняется</span>`;
           }
-          row.innerHTML = `<span class="text-gray-600">${line.label}</span>${valueHtml}`;
+          row.innerHTML = `
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-600">${line.label}</span>${valueHtml}
+            </div>
+            ${line.status === 'unclear' ? '<div class="text-[11px] text-gray-400 mt-0.5">Менеджер ещё не рассчитал точную стоимость этого этапа</div>' : ''}
+          `;
           list.appendChild(row);
         });
 
@@ -272,6 +310,19 @@ window.Screens.orderDetails = {
 
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('app-content').classList.remove('hidden');
+    }
+
+    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): "Приоритетно сейчас" была
+    // просто амбер-текстом — единственный самый важный call-to-action на
+    // экране визуально не выделялся среди прочих строк. Общий хелпер для
+    // обоих rollup-блоков (за заказ / за весь пул), чтобы не расходиться.
+    function priorityLineHtml(amount, stage) {
+      return `
+        <div class="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-700">
+          <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
+          <span>Приоритетно сейчас: <b>${amount.toFixed(2)} ₽</b> (${escapeHtmlClient(stageLabel(stage))})</span>
+        </div>
+      `;
     }
 
     // --- "Сумма/приоритетная сумма" за заказ (F3-довесок, 11.08.2026) ---
@@ -303,9 +354,10 @@ window.Screens.orderDetails = {
             <span class="text-lg font-bold text-gray-900">${totalRemaining.toFixed(2)} ₽</span>
             <span class="text-[12px] text-gray-400">осталось к оплате</span>
           </div>
-          ${priority ? `<div class="text-[12px] text-amber-600 mt-0.5">Приоритетно сейчас: ${priority.remaining.toFixed(2)} ₽ (${escapeHtmlClient(stageLabel(priority.stage))})</div>` : ''}
+          ${priority ? priorityLineHtml(priority.remaining, priority.stage) : ''}
         `;
       }
+      if (window.lucide) window.lucide.createIcons();
       updateRollupCardVisibility();
     }
 
@@ -323,9 +375,10 @@ window.Screens.orderDetails = {
           <span class="text-lg font-bold text-gray-900">${rollup.totalRemaining.toFixed(2)} ₽</span>
           <span class="text-[12px] text-gray-400">осталось к оплате всего</span>
         </div>
-        ${rollup.priorityAmount > 0.01 ? `<div class="text-[12px] text-amber-600 mt-0.5">Приоритетно сейчас: ${rollup.priorityAmount.toFixed(2)} ₽ (${escapeHtmlClient(stageLabel(rollup.priorityStage))})</div>` : ''}
+        ${rollup.priorityAmount > 0.01 ? priorityLineHtml(rollup.priorityAmount, rollup.priorityStage) : ''}
       `;
       box.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
       updateRollupCardVisibility();
     }
 
