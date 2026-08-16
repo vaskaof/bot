@@ -28,6 +28,23 @@
  * методов по `duration_ms` (`summary.slowMethods`, HAVING count>=3 — один
  * выброс не должен возглавлять список). Только на общей сводке, НЕ на
  * per-user drill-down.
+ *
+ * Вторая фаза долга (17.08.2026, тот же день, продолжение) — три новых
+ * среза, тоже только на общей сводке:
+ * - `getUsageRetention(days)` — retention/новые-вернувшиеся, ТОЛЬКО клиенты
+ *   (админы исключены на бэкенде — иначе метрика всегда ~100%, см.
+ *   analyticsRepository.getRetentionSummary). `dataSince` — с какого момента
+ *   вообще копится `analytics_events`; если этот момент моложе 2×`days`,
+ *   предыдущее окно неполное и retention/new-count статистически ненадёжны
+ *   — экран показывает предупреждение вместо чисел, а не молчит.
+ * - `getUsageErrorTrend(days)` — тренд ошибок по методам во времени
+ *   (top-5 методов по числу ошибок + дневная раскладка), "прочее" считается
+ *   на фронте как `totalByDay - Σ(top-5 в этот день)`, отдельного запроса
+ *   под это нет.
+ * - `exportUsageEvents(days)` — CSV сырых событий окна (не агрегаты — они и
+ *   так на экране), кнопка в шапке рядом с "Обновить". Сервер режет на
+ *   MAX_EXPORT_ROWS=20000 строк молча (см. analyticsService) — экран это
+ *   никак не сигналит, риск принят как разумный для внутреннего инструмента.
  */
 window.Screens = window.Screens || {};
 window.Screens.analytics = {
@@ -39,6 +56,9 @@ window.Screens.analytics = {
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Аналитика</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
+      <button id="export-analytics" title="Экспорт в CSV" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="download" class="w-5 h-5"></i>
+      </button>
       <button id="refresh-analytics" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -76,6 +96,7 @@ window.Screens.analytics = {
 
     const daysSelect = document.getElementById('days-select');
     const refreshBtn = document.getElementById('refresh-analytics');
+    const exportBtn = document.getElementById('export-analytics');
     const body = document.getElementById('analytics-body');
     const subtitle = document.getElementById('analytics-subtitle');
 
@@ -90,6 +111,35 @@ window.Screens.analytics = {
       if (liveIcon) liveIcon.classList.remove('animate-spin');
     });
 
+    // Экспорт CSV — guard-check + disabled на время запроса (тот же fail-safe
+    // паттерн, что и у форм записи, хотя тут только чтение — большой days
+    // может занять заметное время на сервере).
+    exportBtn.addEventListener('click', async () => {
+      if (exportBtn.disabled) return;
+      exportBtn.disabled = true;
+      const icon = exportBtn.querySelector('svg');
+      if (icon) icon.classList.add('animate-spin');
+      try {
+        const days = Number(daysSelect.value);
+        const csv = await callServer('exportUsageEvents', days);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `analytics_events_${days}d.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        alert(`Ошибка экспорта: ${error.message}`);
+      } finally {
+        exportBtn.disabled = false;
+        const liveIcon = exportBtn.querySelector('svg');
+        if (liveIcon) liveIcon.classList.remove('animate-spin');
+      }
+    });
+
     async function load() {
       body.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       const days = Number(daysSelect.value);
@@ -100,11 +150,13 @@ window.Screens.analytics = {
           renderUser(summary);
         } else {
           subtitle.textContent = 'Кто и как пользуется приложением';
-          const [summary, topUsers] = await Promise.all([
+          const [summary, topUsers, retention, errorTrend] = await Promise.all([
             callServer('getUsageAnalytics', days),
-            callServer('getUsageTopUsers', days, 10)
+            callServer('getUsageTopUsers', days, 10),
+            callServer('getUsageRetention', days),
+            callServer('getUsageErrorTrend', days)
           ]);
-          render(summary, topUsers);
+          render(summary, topUsers, retention, errorTrend, days);
         }
       } catch (error) {
         body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -116,7 +168,7 @@ window.Screens.analytics = {
       load();
     }
 
-    function render(summary, topUsers) {
+    function render(summary, topUsers, retention, errorTrend, days) {
       const { totals, prevTotals, byMethod, byDay, recentErrors, slowMethods, byHourDow } = summary;
       const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
       const prevSuccessRate = prevTotals.total > 0 ? Math.round((prevTotals.success / prevTotals.total) * 100) : 0;
@@ -148,6 +200,16 @@ window.Screens.analytics = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Медленные методы</div>
           ${slowMethods.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : slowMethodsTable(slowMethods)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Возврат клиентов (только клиенты, без админов)</div>
+          ${retentionBlock(retention, days)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Тренд ошибок по методам</div>
+          ${errorTrend.totalByDay.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Ошибок нет 🎉</div>' : errorTrendChart(errorTrend)}
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -282,6 +344,100 @@ window.Screens.analytics = {
         <div class="space-y-1">${rows}</div>
         <div class="flex justify-between text-[9px] text-gray-400 mt-1 pl-6">
           <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+        </div>
+      `;
+    }
+
+    /**
+     * Возврат клиентов — только клиенты (см. backend getUsageRetention).
+     * `dataSince` моложе 2×days — предыдущее окно неполное, retention/
+     * new-count статистически ненадёжны (левая граница истории), показываем
+     * предупреждение вместо чисел, а не тихо врём точностью.
+     */
+    function retentionBlock(retention, days) {
+      const { activeCurrent, activePrevious, retained, newCount, returningCount, dataSince } = retention;
+      const historyDays = dataSince ? Math.floor((Date.now() - new Date(dataSince).getTime()) / 86400000) : 0;
+      const insufficientHistory = historyDays < days * 2;
+      const retentionPct = activePrevious > 0 ? Math.round((retained / activePrevious) * 100) : null;
+
+      const warning = insufficientHistory
+        ? `<div class="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-3">
+             Данные собираются с ${escapeHtmlClient(new Date(dataSince || Date.now()).toLocaleDateString('ru-RU'))}
+             — истории меньше двух окон по ${days} дн., retention и "новые/вернувшиеся" пока неточны.
+           </div>`
+        : '';
+
+      return `
+        ${warning}
+        <div class="grid grid-cols-2 gap-2">
+          ${kpiTile('repeat', 'Retention', retentionPct === null ? '—' : `${retentionPct}%`)}
+          ${kpiTile('users', 'Активных клиентов', activeCurrent)}
+          ${kpiTile('sparkles', 'Новых', newCount)}
+          ${kpiTile('rotate-ccw', 'Вернувшихся', returningCount)}
+        </div>
+      `;
+    }
+
+    /**
+     * Тренд ошибок — стековая столбчатая диаграмма по дням, топ-5 методов
+     * своим цветом + "прочее" серым (totalByDay минус сумма top-5 за день,
+     * не отдельный запрос). Палитра — 5 фиксированных цветов по индексу,
+     * не переиспользует indigo heatmap (та — sequential-шкала одного цвета,
+     * тут категориальное различие методов).
+     */
+    function errorTrendChart(errorTrend) {
+      const { topMethods, totalByDay, byDayByMethod } = errorTrend;
+      const colors = ['#ef4444', '#f59e0b', '#8b5cf6', '#0ea5e9', '#ec4899'];
+      const routeLabels = { admin: 'Админ', client: 'Клиент', proxy: 'GAS', invalid: 'Некорр.' };
+
+      const byDayLookup = {};
+      byDayByMethod.forEach((r) => {
+        byDayLookup[r.day] = byDayLookup[r.day] || {};
+        byDayLookup[r.day][`${r.method}|${r.route}`] = r.count;
+      });
+
+      const max = Math.max(...totalByDay.map((d) => d.count), 1);
+      const bars = totalByDay.map((d) => {
+        const dayData = byDayLookup[d.day] || {};
+        let knownSum = 0;
+        const segments = topMethods.map((m, i) => {
+          const count = dayData[`${m.method}|${m.route}`] || 0;
+          knownSum += count;
+          const pct = d.count > 0 ? (count / d.count) * 100 : 0;
+          return pct > 0 ? `<div style="height:${pct}%; background-color:${colors[i]}"></div>` : '';
+        }).join('');
+        const otherCount = Math.max(0, d.count - knownSum);
+        const otherPct = d.count > 0 ? (otherCount / d.count) * 100 : 0;
+        const otherSegment = otherPct > 0 ? `<div style="height:${otherPct}%; background-color:#d1d5db"></div>` : '';
+        return `
+          <div class="flex-1 flex flex-col items-center justify-end h-full" title="${escapeHtmlClient(d.day)}: ${d.count} ошибок">
+            <div class="w-full flex flex-col-reverse justify-start rounded-t overflow-hidden" style="height: ${Math.max(4, Math.round((d.count / max) * 100))}%">
+              ${segments}${otherSegment}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const legend = topMethods.map((m, i) => `
+        <div class="flex items-center gap-1 text-[10px] text-gray-500">
+          <span class="w-2 h-2 rounded-full shrink-0" style="background-color:${colors[i]}"></span>
+          <span class="text-[9px] px-1 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
+          <span class="truncate">${escapeHtmlClient(m.method)} (${m.failed})</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="flex items-end gap-1 h-24 mb-2">${bars}</div>
+        <div class="flex justify-between text-[10px] text-gray-400 mb-3">
+          <span>${escapeHtmlClient(totalByDay[0].day)}</span>
+          <span>${escapeHtmlClient(totalByDay[totalByDay.length - 1].day)}</span>
+        </div>
+        <div class="space-y-1">
+          ${legend}
+          <div class="flex items-center gap-1 text-[10px] text-gray-400">
+            <span class="w-2 h-2 rounded-full shrink-0 bg-gray-300"></span>
+            <span>Прочее</span>
+          </div>
         </div>
       `;
     }
