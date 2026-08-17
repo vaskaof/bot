@@ -132,6 +132,10 @@ window.Screens.profile = {
             Сообщить о проблеме или предложить
           </button>
         </div>
+
+        <button id="open-policy-btn" type="button" class="w-full text-center text-xs text-gray-400 py-2">
+          🔒 Политика конфиденциальности
+        </button>
       </main>
 
       <div id="contact-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
@@ -320,6 +324,7 @@ window.Screens.profile = {
     document.getElementById('report-problem-btn').addEventListener('click', () => {
       openContactModal('Сообщить о проблеме или предложить', 'Опишите проблему или ваше предложение...');
     });
+    document.getElementById('open-policy-btn').addEventListener('click', () => navigateTo('policy'));
     document.getElementById('contact-modal-close').addEventListener('click', closeContactModal);
     document.getElementById('contact-cancel-btn').addEventListener('click', closeContactModal);
 

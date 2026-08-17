@@ -35,6 +35,13 @@ function matchRoute(hash) {
     return { screen: 'orderDetails', navKey: null, params: { orderId: decodeURIComponent(detailsMatch[1]) } };
   }
 
+  // Политика конфиденциальности (17.08.2026) — не пункт нижней навигации,
+  // доступ по ссылке (из «Профиль» и из /start бота), тот же паттерн, что
+  // order-details выше.
+  if (clean === 'policy') {
+    return { screen: 'policy', navKey: null, params: {} };
+  }
+
   const route = ROUTES.find((r) => r.path === clean);
   if (route) return { screen: route.screen, navKey: route.navKey, params: {} };
 

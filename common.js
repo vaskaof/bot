@@ -334,6 +334,24 @@ function initClientAccess(onSuccess) {
             }
             if (!cached) _writeCachedClientContext(context);
             loadingScreen.classList.add('hidden');
+
+            // Гейт согласия с политикой конфиденциальности (17.08.2026,
+            // project_bot_knopka_privacy_policy) — блокирует доступ к
+            // остальному аппу, пока клиент явно не подтвердит. consentGiven
+            // приходит с сервера (сравнение версий — см. clientsService.
+            // PRIVACY_POLICY_VERSION), кэш контекста (см. выше) тоже
+            // обновляется, чтобы гейт не показывался повторно в рамках уже
+            // подтверждённой сессии.
+            if (!context.consentGiven) {
+                _showConsentGate(() => {
+                    context.consentGiven = true;
+                    _writeCachedClientContext(context);
+                    appContent.classList.remove('hidden');
+                    onSuccess(context);
+                });
+                return;
+            }
+
             appContent.classList.remove('hidden');
             onSuccess(context);
         } catch (error) {
@@ -344,6 +362,92 @@ function initClientAccess(onSuccess) {
             console.error('Ошибка проверки клиентского доступа:', error);
         }
     })();
+}
+
+/**
+ * Полноэкранный гейт согласия с политикой конфиденциальности — создаётся
+ * лениво и один раз, тот же приём, что `_ensureHelpModal` ниже (аппендится
+ * в document.body, не дублируется в разметке app.html). Чекбокс обязателен,
+ * кнопка "Продолжить" неактивна, пока он не отмечен, и на время запроса
+ * (fail-safe чек-лист, п.1, frontend-contract.md) — двойной клик не может
+ * отправить `recordPrivacyConsent` дважды (метод и так идемпотентен, но
+ * незачем гонять лишний запрос).
+ * @param {Function} onConfirmed Вызывается после успешного recordPrivacyConsent
+ */
+let _consentGateEl = null;
+
+function _showConsentGate(onConfirmed) {
+    if (!_consentGateEl) {
+        const el = document.createElement('div');
+        el.id = 'consent-gate-screen';
+        el.className = 'fixed inset-0 bg-[#f3f4f9] flex items-center justify-center z-[95] px-4 py-6';
+        el.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="p-4 border-b border-gray-100">
+          <h2 class="text-base font-semibold text-gray-900">🔒 Политика конфиденциальности</h2>
+        </div>
+        <div class="p-4 overflow-y-auto text-[13px] text-gray-600 leading-relaxed">
+          <div id="consent-summary-text"></div>
+          <button type="button" id="consent-expand-btn" class="text-indigo-600 text-xs font-medium mb-3">Читать полностью</button>
+          <div id="consent-full-text" class="hidden border-t border-gray-100 pt-3"></div>
+        </div>
+        <div class="p-4 border-t border-gray-100">
+          <label class="flex items-start gap-2 mb-3 cursor-pointer">
+            <input type="checkbox" id="consent-checkbox" class="mt-0.5">
+            <span class="text-[13px] text-gray-700">Я ознакомлен(а) и согласен(на) с политикой конфиденциальности</span>
+          </label>
+          <div id="consent-error-text" class="text-xs text-red-500 hidden mb-2"></div>
+          <button type="button" id="consent-confirm-btn" disabled
+            class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+            Продолжить
+          </button>
+        </div>
+      </div>
+    `;
+        document.body.appendChild(el);
+
+        el.querySelector('#consent-summary-text').innerHTML = window.PolicyText.POLICY_SUMMARY_HTML;
+
+        el.querySelector('#consent-expand-btn').addEventListener('click', () => {
+            const block = el.querySelector('#consent-full-text');
+            const expanding = block.classList.contains('hidden');
+            if (expanding) block.innerHTML = window.PolicyText.POLICY_HTML;
+            block.classList.toggle('hidden');
+            el.querySelector('#consent-expand-btn').textContent = expanding ? 'Свернуть' : 'Читать полностью';
+        });
+
+        const checkbox = el.querySelector('#consent-checkbox');
+        const confirmBtn = el.querySelector('#consent-confirm-btn');
+        checkbox.addEventListener('change', () => { confirmBtn.disabled = !checkbox.checked; });
+
+        _consentGateEl = el;
+    }
+
+    _consentGateEl.classList.remove('hidden');
+    _consentGateEl.classList.add('flex');
+
+    const confirmBtn = _consentGateEl.querySelector('#consent-confirm-btn');
+    const errorText = _consentGateEl.querySelector('#consent-error-text');
+
+    // Обработчик переустанавливается на каждый показ — замыкание должно
+    // ссылаться на актуальный onConfirmed этого конкретного вызова (initClientAccess
+    // вызывается ровно раз за открытие аппа, но защита от накопления
+    // обработчиков не помешает).
+    confirmBtn.onclick = async () => {
+        if (confirmBtn.disabled) return;
+        errorText.classList.add('hidden');
+        confirmBtn.disabled = true;
+        try {
+            await callServer('recordPrivacyConsent');
+            _consentGateEl.classList.add('hidden');
+            _consentGateEl.classList.remove('flex');
+            onConfirmed();
+        } catch (error) {
+            errorText.textContent = 'Не удалось сохранить согласие: ' + error.message;
+            errorText.classList.remove('hidden');
+            confirmBtn.disabled = false;
+        }
+    };
 }
 
 /**
