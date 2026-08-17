@@ -242,6 +242,24 @@ window.Screens.contests = {
       emptyMessage.classList.add('hidden');
       tasks.forEach(t => tasksList.appendChild(buildTaskCard(t)));
       if (window.lucide) window.lucide.createIcons();
+      openDeepLinkedTaskIfAny(tasks);
+    }
+
+    // 17.08.2026 (репорт VASY) — "Сообщить о проблеме" в Профиле раньше
+    // открывало отдельную форму без награды, дублируя задание "Баг-репорт".
+    // Теперь profile.js просто помечает нужный заголовок задания и переходит
+    // сюда; клиентский route (`router.js`) параметров не передаёт — используем
+    // тот же lightweight sessionStorage-паттерн, что и `knopka_welcome_seen`
+    // (news.js), только session-scoped, а не постоянный. Задание не найдено
+    // (не заведено в админке/название разошлось) — тихий skip, тот же принцип,
+    // что REVIEW_TASK_TITLE в questions.js.
+    function openDeepLinkedTaskIfAny(tasks) {
+      let title;
+      try { title = sessionStorage.getItem('knopka_open_task_title'); } catch (e) { return; }
+      if (!title) return;
+      try { sessionStorage.removeItem('knopka_open_task_title'); } catch (e) { /* не критично */ }
+      const task = tasks.find(t => t.title === title && t.type === 'Ручное');
+      if (task) openProofModal(task);
     }
 
     function buildTaskCard(t) {

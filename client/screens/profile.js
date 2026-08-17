@@ -121,6 +121,14 @@ window.Screens.profile = {
             </div>
             <div id="notify-lottery-toggle" class="toggle-switch on" data-key="lottery"><div class="knob"></div></div>
           </div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Новости</div>
+              <div class="text-[11px] text-gray-400">Сообщения при выходе новостей — тот же переключатель, что на экране «Новости»</div>
+            </div>
+            <div id="notify-news-toggle" class="toggle-switch on" data-key="news"><div class="knob"></div></div>
+          </div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -264,9 +272,10 @@ window.Screens.profile = {
     const notifyToggles = {
       ordersPayments: document.getElementById('notify-orders-payments-toggle'),
       questionAnswers: document.getElementById('notify-question-answers-toggle'),
-      lottery: document.getElementById('notify-lottery-toggle')
+      lottery: document.getElementById('notify-lottery-toggle'),
+      news: document.getElementById('notify-news-toggle')
     };
-    let notifyPrefs = { ordersPayments: true, questionAnswers: true, lottery: true };
+    let notifyPrefs = { ordersPayments: true, questionAnswers: true, lottery: true, news: true };
 
     async function loadNotificationSettings() {
       try {
@@ -321,8 +330,16 @@ window.Screens.profile = {
     document.getElementById('ask-general-question-btn').addEventListener('click', () => {
       openContactModal('Задать общий вопрос', 'О чём хотите спросить?');
     });
+    // 17.08.2026 (репорт VASY) — раньше вела на отдельную форму без награды,
+    // дублируя задание "Баг-репорт" (те же беты-задания, project_bot_knopka_
+    // beta_test_prep) — клиент сообщал о проблеме и мог не получить сов за
+    // то же самое, за что получил бы через задания. Теперь ведёт на экран
+    // "Задания" и сразу открывает карточку "Баг-репорт" (см. contests.js's
+    // openDeepLinkedTaskIfAny). Если такое задание ещё не заведено в
+    // админке — тихий переход на список заданий без авто-открытия.
     document.getElementById('report-problem-btn').addEventListener('click', () => {
-      openContactModal('Сообщить о проблеме или предложить', 'Опишите проблему или ваше предложение...');
+      try { sessionStorage.setItem('knopka_open_task_title', 'Баг-репорт'); } catch (e) { /* не критично */ }
+      navigateTo('contests');
     });
     document.getElementById('open-policy-btn').addEventListener('click', () => navigateTo('policy'));
     document.getElementById('contact-modal-close').addEventListener('click', closeContactModal);

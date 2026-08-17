@@ -27,12 +27,9 @@ window.Screens.news = {
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 flex items-center justify-between gap-3">
-          <div>
-            <div class="text-sm font-medium text-gray-800">Уведомления о новостях</div>
-            <div class="text-[11px] text-gray-400 mt-0.5">Сообщения в Telegram при выходе новостей (9:00–20:00)</div>
-          </div>
-          <div id="subscription-toggle" class="toggle-switch on"><div class="knob"></div></div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 mb-4 flex items-center justify-between gap-2">
+          <div class="text-[12px] text-gray-500">Уведомлять о новостях</div>
+          <div id="subscription-toggle" class="toggle-switch toggle-switch-sm on"><div class="knob"></div></div>
         </div>
 
         <div id="news-list"></div>
@@ -69,11 +66,16 @@ window.Screens.news = {
       welcomeBanner.classList.add('hidden');
     });
 
-    // Локальный признак подписки — сервер не отдаёт текущее состояние отдельным
-    // методом (getUserContext его не включает), поэтому тумблер стартует в
-    // состоянии "включено" (соответствует серверному default: пусто = подписан)
-    // и дальше отражает только действия текущей сессии.
+    // 17.08.2026 — переведено на getMyNotificationSettings/setMyNotificationSettings
+    // (тот же ключ `news`, что и дублирующий тумблер в Профиль → Уведомления,
+    // единственное хранилище — news_subscribed, см. clientsRepository).
+    // Раньше это состояние вообще не читалось с сервера (тумблер всегда
+    // стартовал "включено"), теперь показывает актуальное значение.
     let subscribed = true;
+    callServer('getMyNotificationSettings').then((prefs) => {
+      subscribed = !!prefs.news;
+      toggle.classList.toggle('on', subscribed);
+    }).catch(() => {}); // не критично для экрана — тумблер останется в дефолте "включено"
 
     loadNews();
 
@@ -89,7 +91,7 @@ window.Screens.news = {
       const next = !subscribed;
       toggle.classList.toggle('on', next);
       try {
-        await callServer('setNewsSubscription', next);
+        await callServer('setMyNotificationSettings', { news: next });
         subscribed = next;
       } catch (error) {
         toggle.classList.toggle('on', subscribed); // откат при ошибке

@@ -65,6 +65,12 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .toggle-switch.on .knob { transform: translateX(16px); }
+    /* Уменьшенный вариант (17.08.2026, экран "Новости" — тумблер продублирован
+       в Профиль → Уведомления, здесь он теперь второстепенный, не первый
+       экран касания). */
+    .toggle-switch-sm { width: 30px; height: 18px; }
+    .toggle-switch-sm .knob { width: 14px; height: 14px; }
+    .toggle-switch-sm.on .knob { transform: translateX(12px); }
   </style>
 </head>
 
