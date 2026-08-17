@@ -219,9 +219,16 @@ window.Screens.payments = {
 
     // "Недавние" — список последних открытых в этом экране клиентов, до
     // начала ввода (по запросу VASY). Нет backend-эквивалента ("список всех
-    // клиентов" не существует — searchClient с пустым query всегда отдаёт []
-    // на стороне GAS, ClientService.searchClients), поэтому чисто клиентский
+    // клиентов" не существует — searchClients с пустым query всегда отдаёт [],
+    // см. clientsService.searchClients), поэтому чисто клиентский
     // localStorage, per-браузер/устройство, не общий для всех админов.
+    //
+    // 17.08.2026 — ИСПРАВЛЕНО: вызов ниже раньше был 'searchClient' (без
+    // "s"), несуществующий метод контракта — прозрачно проксировался на
+    // старый GAS-бэкенд (IndexRepository, индекс "Индекс_Клиентов"), поэтому
+    // находил только клиентов, хоть раз заходивших в приложение/бота. Теперь
+    // 'searchClients' (нативный Node-метод) — домешивает клиентов, известных
+    // только по строкам "Заказы" (см. ordersService.searchOrderClients).
     const RECENT_CLIENTS_KEY = 'payments_recent_clients';
     const RECENT_CLIENTS_MAX = 8;
 
@@ -264,7 +271,7 @@ window.Screens.payments = {
       if (query.length < 2) { clientDropdown.classList.remove('active'); return; }
       let results;
       try {
-        results = await callServer('searchClient', query);
+        results = await callServer('searchClients', query);
       } catch (error) {
         return;
       }
