@@ -623,7 +623,14 @@ window.Screens.payments = {
               <div class="text-[11px] ${mb.remaining <= 0.01 ? 'text-emerald-600' : 'text-gray-400'}">${mb.remaining <= 0.01 ? '✓ оплачено' : 'осталось ' + money(mb.remaining) + ' ₽'}</div>
             </div>
           </div>
-          ${payments.length > 0 ? `<div class="divide-y divide-gray-50 border-t border-gray-50">${payments.map((p) => renderPaymentRow(p, 'order', o.orderId)).join('')}</div>` : '<div class="text-[11px] text-gray-400">Платежей пока нет.</div>'}
+          ${payments.length > 0 ? `<div class="divide-y divide-gray-50 border-t border-gray-50">${payments.map((p) => renderPaymentRow(p, 'order', o.orderId)).join('')}</div>`
+            // Оплачено флагом "Была ли основная оплата?" при ревизии старых
+            // заказов (17.08.2026), без единого реального платежа в леджере —
+            // отличаем от настоящего "нечего показывать", иначе "✓ оплачено"
+            // сверху рядом с "Платежей пока нет." снизу выглядело бы как баг.
+            : (mb.remaining <= 0.01 && mb.target > 0
+              ? '<div class="text-[11px] text-gray-400">Отмечено оплаченным флагом заказа, без разбивки по платежам.</div>'
+              : '<div class="text-[11px] text-gray-400">Платежей пока нет.</div>')}
           ${currentCreditBalance > 0 && mb.remaining > 0.01 ? `
             <button data-action="apply-credit-to-order" data-order-id="${o.orderId}" data-remaining="${mb.remaining}" class="mt-2 w-full text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg py-1.5">Оплатить из кредита (${money(Math.min(currentCreditBalance, mb.remaining))} ₽ доступно)</button>
           ` : ''}
