@@ -16,6 +16,21 @@
  * заказа. Поэтому "Записать платёж" всегда явно спрашивает КУДА: общий пул
  * (new-model, `recordClientPaymentDirect`) или конкретный old-model заказ
  * (`recordOrderPayment`, старый заказный путь, без изменений).
+ *
+ * **"Неподтверждённые" клиенты (17.08.2026, project_bot_knopka_unconfirmed_
+ * client_payments)** — заказ, вписанный вручную (`_manual-client-modal.js`,
+ * "Новый клиент, без подтверждения"), у клиента ещё нет Telegram ID.
+ * `searchClients` для таких клиентов отдаёт `telegramId` в формате
+ * `pending:<username>` (синтетический ключ, НЕ настоящий Telegram ID) —
+ * этот экран использует его совершенно прозрачно, как обычный telegramId,
+ * во всех вызовах ниже (`getOrdersForClientAdmin`/`getPaymentsForClient`/
+ * `recordClientPaymentDirect`/...) — весь платёжный движок на бэкенде уже
+ * умеет его принимать (см. `sheetsUtil.resolveMoneyClientId`, canonical).
+ * Единственное отличие на этом экране — визуальная плашка "не подтверждён"
+ * (`item.pending`/`currentClient.pending`). Когда клиент реально напишет
+ * боту, деньги автоматически переносятся на настоящий telegramId
+ * (`ordersService.reconcilePendingClientMoney`) — с этого момента тот же
+ * клиент находится в поиске уже под реальным ID, история платежей идёт с ним.
  */
 window.Screens = window.Screens || {};
 window.Screens.payments = {
@@ -242,7 +257,7 @@ window.Screens.payments = {
     function addRecentClient(item) {
       try {
         const list = getRecentClients().filter((c) => c.telegramId !== item.telegramId);
-        list.unshift({ telegramId: item.telegramId, username: item.username, name: item.name, displayName: item.displayName });
+        list.unshift({ telegramId: item.telegramId, username: item.username, name: item.name, displayName: item.displayName, pending: !!item.pending });
         localStorage.setItem(RECENT_CLIENTS_KEY, JSON.stringify(list.slice(0, RECENT_CLIENTS_MAX)));
       } catch (e) { /* см. getRecentClients */ }
     }
@@ -254,7 +269,10 @@ window.Screens.payments = {
       recent.forEach((item) => {
         const li = document.createElement('li');
         li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0';
-        li.innerHTML = `<div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>`;
+        li.innerHTML = `<div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+          ${escapeHtmlClient(item.displayName)}
+          ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+        </div>`;
         li.addEventListener('click', () => {
           clientDropdown.classList.remove('active');
           clientSearch.value = item.displayName;
@@ -276,7 +294,10 @@ window.Screens.payments = {
         return;
       }
       FormHelpers.renderDropdown(clientDropdown, results, (item) => `
-        <div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>
+        <div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+          ${escapeHtmlClient(item.displayName)}
+          ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+        </div>
       `, (item) => {
         clientDropdown.classList.remove('active');
         clientSearch.value = item.displayName;
@@ -368,8 +389,13 @@ window.Screens.payments = {
       clientView.innerHTML = `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
           <div class="min-w-0">
-            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(currentClient.displayName || currentClient.name || currentClient.username)}</div>
-            <div class="text-[12px] text-gray-400">${escapeHtmlClient(currentClient.username || '')} · ID ${escapeHtmlClient(currentClient.telegramId)}</div>
+            <div class="font-semibold text-gray-900 text-[15px] truncate flex items-center gap-1.5">
+              ${escapeHtmlClient(currentClient.displayName || currentClient.name || currentClient.username)}
+              ${currentClient.pending ? '<span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+            </div>
+            <div class="text-[12px] text-gray-400">${currentClient.pending
+              ? 'Заказ вписан вручную, клиент ещё не открывал бота — Telegram ID появится, как только он напишет боту.'
+              : `${escapeHtmlClient(currentClient.username || '')} · ID ${escapeHtmlClient(currentClient.telegramId)}`}</div>
           </div>
           <button id="change-client-btn" class="shrink-0 text-xs font-medium text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100">Сменить</button>
         </div>
