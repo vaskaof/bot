@@ -29,9 +29,10 @@ const CATEGORY_LABELS = {
   tax_reserve: 'Налоговый резерв',
   forecast: 'Прогноз расходов на заказ',
   payout_share: 'Доли выплат',
-  delivery_position_threshold: 'Пороги для "Доход Руб"'
+  delivery_position_threshold: 'Пороги для "Доход Руб"',
+  economy: 'Экономика (совы/билеты)'
 };
-const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -83,6 +84,17 @@ const DELIVERY_POSITION_THRESHOLD_DEFS = [
   { key: 'Позиция_Порог_Доставка_РФ', label: 'Доставка по РФ' }
 ];
 
+// 18.08.2026 (подготовка к бета-тесту) — 3 фиксированных ключа, ключи
+// СОВПАДАЮТ с backend economyService.js (ECONOMY_PARAM_*) и миграцией
+// …_seed-economy-settings.js — тот же принцип, что FORECAST_FIELD_DEFS/
+// DELIVERY_POSITION_THRESHOLD_DEFS выше. Раньше правились ТОЛЬКО вручную в
+// листе "Настройки_Экономики" (лист больше не читается никаким кодом).
+const ECONOMY_SETTINGS_DEFS = [
+  { key: 'Курс_Рубли_На_Билет', label: 'Курс: рублей на 1 билет', min: 1 },
+  { key: 'Реферал_Совы_Приглашённому', label: 'Реферал: сов приглашённому', min: 0 },
+  { key: 'Реферал_Совы_Пригласившему', label: 'Реферал: сов пригласившему', min: 0 }
+];
+
 function slugKey(label) {
   return label.trim().replace(/\s+/g, '_');
 }
@@ -124,24 +136,28 @@ window.Screens.settings = {
     function renderBody(settings) {
       const body = document.getElementById('settings-body');
       const byCategory = {};
+      const specialCategories = ['payout_share', 'forecast', 'delivery_position_threshold', 'economy'];
       settings.forEach(s => {
-        if (s.category === 'payout_share' || s.category === 'forecast' || s.category === 'delivery_position_threshold') return; // свои особые блоки, не общий цикл
+        if (specialCategories.includes(s.category)) return; // свои особые блоки, не общий цикл
         (byCategory[s.category] = byCategory[s.category] || []).push(s);
       });
       const forecastRows = settings.filter(s => s.category === 'forecast');
       const positionThresholdRows = settings.filter(s => s.category === 'delivery_position_threshold');
+      const economyRows = settings.filter(s => s.category === 'economy');
 
       body.innerHTML = CATEGORY_ORDER.map(cat => {
         if (cat === 'payout_share') return sharesSectionHtml();
         if (cat === 'forecast') return forecastSectionHtml(forecastRows);
         if (cat === 'delivery_position_threshold') return positionThresholdSectionHtml(positionThresholdRows);
+        if (cat === 'economy') return economySectionHtml(economyRows);
         return plainSectionHtml(cat, byCategory[cat] || []);
       }).join('');
 
-      CATEGORY_ORDER.filter(c => c !== 'payout_share' && c !== 'forecast' && c !== 'delivery_position_threshold').forEach(cat => wirePlainSection(cat));
+      CATEGORY_ORDER.filter(c => !specialCategories.includes(c)).forEach(cat => wirePlainSection(cat));
       wireSharesSection();
       wireForecastSection();
       wirePositionThresholdSection();
+      wireEconomySection();
       wireAddPosition();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -309,6 +325,64 @@ window.Screens.settings = {
           saveBtn.disabled = true;
           try {
             await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category: 'delivery_position_threshold' });
+            showSaveToast(true, 'Сохранено.');
+          } catch (error) {
+            showSaveToast(false, error.message);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      });
+    }
+
+    function economyRowHtml(def, setting) {
+      const value = setting ? setting.value : '';
+      return `
+        <div class="flex items-center gap-2 p-3" data-economy-key="${def.key}" data-economy-label="${escapeHtmlClient(def.label)}" data-economy-min="${def.min}">
+          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+          <input type="number" step="1" min="${def.min}" class="economy-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${value}" />
+          <button type="button" class="economy-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function economySectionHtml(rows) {
+      return `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.economy}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="economy">
+            ${ECONOMY_SETTINGS_DEFS.map(def => economyRowHtml(def, rows.find(r => r.key === def.key))).join('')}
+          </div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Раньше правилось вручную в таблице (лист "Настройки_Экономики"), теперь — здесь. Реферальные суммы можно поставить 0, чтобы временно отключить бонус; курс должен быть больше 0.</div>
+        </section>
+      `;
+    }
+
+    // Тот же disable-guard, что wirePositionThresholdSection — правки, влияющие
+    // на начисление сов на КАЖДОЙ оплате заказа, должны быть защищены от
+    // двойного тапа не меньше, чем "Доход Руб".
+    function wireEconomySection() {
+      const container = document.querySelector('[data-category="economy"]');
+      if (!container) return;
+
+      container.querySelectorAll('[data-economy-key]').forEach(row => {
+        const key = row.dataset.economyKey;
+        const label = row.dataset.economyLabel;
+        const min = parseFloat(row.dataset.economyMin);
+        const saveBtn = row.querySelector('.economy-save-btn');
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return;
+          const raw = row.querySelector('.economy-value-input').value;
+          const value = parseInt(raw, 10);
+          if (isNaN(value) || value < min || value.toString() !== raw.trim()) {
+            showSaveToast(false, `Значение должно быть целым числом от ${min}.`);
+            return;
+          }
+          saveBtn.disabled = true;
+          try {
+            await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category: 'economy' });
             showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);
