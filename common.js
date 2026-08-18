@@ -28,9 +28,32 @@ const GAS_API_URL = APP_CONFIG.GAS_API_URL;
  * success:false) — это осознанный ответ, а не сбой связи, повторять его
  * нельзя (может задублировать запись).
  */
-function callServer(methodName, ...args) {
+/**
+ * 18.08.2026 (репорт VASY о новых бета-клиентах, "Доступ не подтверждён: не
+ * удалось проверить пользователя") — раньше пустой/отсутствующий initData
+ * молча уходил на сервер как "" и там же получал ОБЩУЮ ошибку валидации
+ * подписи ("Не удалось проверить пользователя."), неотличимую от настоящего
+ * сбоя HMAC-проверки. Разделяем на входе, до сети: `window.Telegram.WebApp`
+ * вообще отсутствует — приложение открыто не внутри Telegram (обычный
+ * браузер/пересланная ссылка); объект есть, но `initData` пуст — SDK не
+ * успел/не смог инициализироваться (то же самое на практике: WebApp не был
+ * запущен штатной кнопкой в чате бота). Оба случая — client-side, сеть тут
+ * ни при чём, поэтому бросаем сразу, не тратя retry-окно `withRetries` ниже.
+ * @returns {{tg: Object|null, initData: string}}
+ */
+function _getTelegramWebAppContext() {
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    const initData = tg ? tg.initData : "";
+    return { tg, initData: tg ? tg.initData : "" };
+}
+
+const TELEGRAM_CONTEXT_MISSING_MESSAGE =
+    "Приложение открыто не через Telegram. Откройте его через кнопку «Кнопка» в чате с ботом, не по прямой ссылке и не в обычном браузере.";
+
+function callServer(methodName, ...args) {
+    const { tg, initData } = _getTelegramWebAppContext();
+    if (!tg || !initData) {
+        return Promise.reject(new Error(TELEGRAM_CONTEXT_MISSING_MESSAGE));
+    }
 
     const doFetch = () => fetch(GAS_API_URL, {
         method: 'POST',
