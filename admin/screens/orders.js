@@ -7,8 +7,18 @@
  * убрана, используется общая.
  */
 window.Screens = window.Screens || {};
+
+// Состояние списка (18.08.2026, репорт VASY — "после редактирования
+// заказа приходится заново писать позицию в строке поиска и проматывать
+// всё") — вне render(), тот же приём, что NEW_ORDER_DRAFT_KEY в
+// order-new.js: переживает пересоздание DOM этого экрана при возврате из
+// редактирования В РАМКАХ той же SPA-сессии (не localStorage — полная
+// перезагрузка страницы это состояние сбросит, тут это не требовалось,
+// только "туда-обратно" внутри одного захода в приложение).
+const ordersListState = { query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0 };
+
 window.Screens.orders = {
-  render(root) {
+  render(root, dictionaries, params, signal) {
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
@@ -72,8 +82,10 @@ window.Screens.orders = {
 
     const PAGE_SIZE = 50;
     let allOrders = [];
-    let displayCount = PAGE_SIZE;
-    let sortDirection = 'desc'; // По умолчанию: новые сверху
+    // Восстановлены из ordersListState (не всегда PAGE_SIZE/'desc') — см.
+    // комментарий у ordersListState выше.
+    let displayCount = ordersListState.displayCount;
+    let sortDirection = ordersListState.sortDirection;
 
     const listContainer = document.getElementById('orders-list');
     const emptyMessage = document.getElementById('empty-message');
@@ -84,14 +96,29 @@ window.Screens.orders = {
     const refreshBtn = document.getElementById('refresh-orders');
     const countLabel = document.getElementById('orders-count');
 
+    searchInput.value = ordersListState.query;
+    sortField.value = ordersListState.sortFieldValue;
+    if (sortDirection === 'asc') {
+      sortDirBtn.innerHTML = '<i data-lucide="arrow-up-narrow-wide" class="w-4 h-4"></i>';
+    }
+
     loadOrders();
 
     async function loadOrders() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка заказов...</div>';
       try {
         allOrders = await callServer('getOrdersList');
-        displayCount = PAGE_SIZE;
         render();
+        // Восстановление прокрутки — ПОСЛЕ первого реального render(), не
+        // сразу после вызова loadOrders() (запрос асинхронный, к моменту
+        // ответа сервера ранние rAF уже давно отработали бы вхолостую —
+        // страница ещё не той высоты). Только когда есть что восстанавливать
+        // (реальный повторный заход, не первый заход на экран за сессию).
+        if (ordersListState.scrollY > 0) {
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            window.scrollTo(0, ordersListState.scrollY);
+          }));
+        }
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
@@ -126,6 +153,19 @@ window.Screens.orders = {
     });
 
     loadMoreBtn.addEventListener('click', () => { displayCount += PAGE_SIZE; render(); });
+
+    // Снимок состояния в момент ухода с экрана (роутер шлёт abort на
+    // signal перед монтированием следующего экрана, см. router.js) —
+    // проще и надёжнее, чем разбрасывать запись в ordersListState по
+    // каждому обработчику отдельно: одна точка на все пути ухода
+    // (клик по карточке, "Назад", переход на другой пункт меню).
+    signal.addEventListener('abort', () => {
+      ordersListState.query = searchInput.value;
+      ordersListState.sortFieldValue = sortField.value;
+      ordersListState.sortDirection = sortDirection;
+      ordersListState.displayCount = displayCount;
+      ordersListState.scrollY = window.scrollY;
+    });
 
     function render() {
       const query = searchInput.value.trim().toLowerCase();
@@ -192,9 +232,29 @@ window.Screens.orders = {
             </div>
             <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
+            ${o.remark ? `
+            <div class="mt-2 pt-2 border-t border-gray-50">
+              <div class="order-remark-text text-[12px] text-gray-500 line-clamp-2 whitespace-pre-wrap">${escapeHtmlClient(o.remark)}</div>
+              <button type="button" class="order-remark-toggle text-[11px] text-indigo-600 font-medium mt-0.5">Показать полностью</button>
+            </div>
+            ` : ''}
           </div>
         </div>
       `;
+      // Примечание в карточке (18.08.2026, репорт VASY — "LOT не даёт понять
+      // из списка, что это за заказ") — по умолчанию обрезано (line-clamp-2),
+      // разворачивается по клику на "Показать полностью". stopPropagation —
+      // сама карточка кликабельна целиком (открывает редактирование), клик
+      // по кнопке-раскрытию не должен туда попадать.
+      const remarkToggle = card.querySelector('.order-remark-toggle');
+      if (remarkToggle) {
+        remarkToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const textEl = card.querySelector('.order-remark-text');
+          const expanded = textEl.classList.toggle('line-clamp-2') === false;
+          remarkToggle.textContent = expanded ? 'Свернуть' : 'Показать полностью';
+        });
+      }
       return card;
     }
   }

@@ -286,7 +286,10 @@ window.Screens.wishlistDemand = {
       const query = e.target.value.trim();
       if (query.length < 2) { manualWishlistClientDropdown.classList.remove('active'); return; }
 
-      const results = await callServer('searchClient', query);
+      // ИСПРАВЛЕНО (18.08.2026) — см. тот же комментарий в order-new.js:
+      // 'searchClient' (без "s") не существует в контракте, прозрачно
+      // проксировался на старый GAS-индекс (только зашедшие в бота клиенты).
+      const results = await callServer('searchClients', query);
       manualWishlistClientDropdown.innerHTML = '';
       if (results.length === 0) {
         manualWishlistClientDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
@@ -294,7 +297,10 @@ window.Screens.wishlistDemand = {
         results.forEach(item => {
           const li = document.createElement('li');
           li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0';
-          li.innerHTML = `<div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>`;
+          li.innerHTML = `<div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+            ${escapeHtmlClient(item.displayName)}
+            ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+          </div>`;
           li.addEventListener('click', () => {
             manualWishlistClientId = item.telegramId;
             manualWishlistClientUsername = item.username;

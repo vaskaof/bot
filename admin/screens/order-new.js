@@ -551,7 +551,14 @@ window.Screens.orderNew = {
     })();
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
-    function searchClientStub(query) { return callServer('searchClient', query); }
+    // ИСПРАВЛЕНО (18.08.2026, репорт VASY — "не может найти клиента, который
+    // ещё не заходил в приложение") — 'searchClient' (без "s") не существует
+    // в контракте, прозрачно проксировался на старый GAS (IndexRepository,
+    // индекс только зашедших в бота клиентов) — тот же баг, что был на
+    // payments.js до 17.08.2026 (см. clientsService.searchClients), просто не
+    // пофикшен здесь и в order-edit.js/wishlist-demand.js заодно. Метод верный
+    // — 'searchClients', домешивает клиентов, известных только по "Заказы".
+    function searchClientStub(query) { return callServer('searchClients', query); }
     function getExchangeRatesStub() {
       return callServer('refreshRate').then(rates => rates.finalRates || null);
     }
@@ -663,9 +670,10 @@ window.Screens.orderNew = {
     // комментарий у setBulkMode.
     async function saveBulkOrders() {
       const shared = buildSharedOrderData();
-      const ordersDataList = bulkRows
+      const ordersDataList = [];
+      bulkRows
         .filter((row) => row.telegramId || row.manualClientData)
-        .map((row) => {
+        .forEach((row) => {
           const amountRub = bulkAmountRub(row.amountEl.value);
           const percent = parseFloat(feePercentInput.value) || 0;
           const feeRub = amountRub * (percent / 100);
@@ -673,18 +681,35 @@ window.Screens.orderNew = {
           const client = row.manualClientData
             ? { telegramId: '', username: row.manualClientData.username, name: row.manualClientData.name }
             : { telegramId: row.telegramId, username: row.username, name: row.name };
-          return {
+          // Переопределение даты/канала/аккаунта на строку (18.08.2026,
+          // репорт VASY — "аккаунт и канал выкупа часто отличаются у
+          // одинаковых заказов"). row.overridden=false — строку никто не
+          // раскрывал, идёт с общими значениями формы как есть.
+          const rowOverrides = row.overridden
+            ? {
+                dateOrder: row.dateOverrideEl.value || shared.dateOrder,
+                purchaseChannel: row.channelOverrideEl.value || shared.purchaseChannel,
+                purchaseAccount: row.accountOverrideEl.value || shared.purchaseAccount
+              }
+            : {};
+          const rowData = {
             ...shared,
+            ...rowOverrides,
             client,
             amount: row.amountEl.value,
             bookingSum: feeRub > 0 ? feeRub.toFixed(2) : '',
-            mainSum: mainSum > 0 ? mainSum.toFixed(2) : '',
-            // Идемпотентность (16.08.2026) — requestId закреплён за СТРОКОЙ при
-            // её добавлении (row.requestId, см. addBulkRow), не генерируется
-            // заново здесь — переживает повторную отправку всей пачки после
-            // сбоя (та же строка = тот же requestId = сервер не задвоит).
-            requestId: row.requestId
+            mainSum: mainSum > 0 ? mainSum.toFixed(2) : ''
           };
+          // Количество кукол на клиента (18.08.2026, репорт VASY — см.
+          // bulk-qty-input в addBulkRow) — строка разворачивается в qty
+          // отдельных заказов, каждый со своим requestId (row.requestId —
+          // суффикс копии, переживает повторную отправку пачки после сбоя
+          // так же, как одиночный requestId переживал раньше — тот же ключ
+          // при retry даёт тот же набор суффиксов).
+          const qty = Math.max(1, Math.min(50, parseInt(row.qtyEl.value, 10) || 1));
+          for (let i = 0; i < qty; i++) {
+            ordersDataList.push({ ...rowData, requestId: qty > 1 ? `${row.requestId}:${i}` : row.requestId });
+          }
         });
       if (ordersDataList.length === 0) {
         throw new Error('Не заполнено ни одной строки с клиентом');
@@ -944,7 +969,10 @@ window.Screens.orderNew = {
 
       const results = await searchClientStub(query);
       FormHelpers.renderDropdown(clientDropdown, results, (item) => `
-        <div class="font-medium text-gray-800 text-sm">${item.displayName}</div>
+        <div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+          ${escapeHtmlClient(item.displayName)}
+          ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+        </div>
       `, (item) => {
         clientSearch.value = item.displayName;
         selectedClientId = item.telegramId;
@@ -1058,10 +1086,42 @@ window.Screens.orderNew = {
             <ul class="bulk-client-dropdown dropdown-menu custom-scrollbar"></ul>
           </div>
           <input type="number" class="bulk-amount-input w-20 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Сумма" step="0.01">
+          <!-- Количество кукол на этого клиента (18.08.2026, репорт VASY —
+               "18 раз добавляла одного клиента, создалась только 1 позиция",
+               см. requestId-дедуп у newOrderRequestId/row.requestId: повторные
+               ручные сохранения одной формы дедупятся нарочно, для 18 РАЗНЫХ
+               заказов на одного клиента это выглядело багом). Целое число,
+               шаг 1, кап 50 (VASY подтвердил лимит) — при сохранении строка
+               разворачивается в столько отдельных createOrder, у каждого свой
+               requestId (см. saveBulkOrders). -->
+          <input type="number" class="bulk-qty-input w-14 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none text-center" placeholder="Кол-во" value="1" min="1" max="50" step="1" title="Количество заказов на этого клиента">
           <span class="bulk-main-sum text-[11px] text-gray-500 w-16 text-right shrink-0">—</span>
+          <button type="button" class="bulk-row-expand p-1 text-gray-300 hover:text-indigo-600 shrink-0" title="Дата/канал/аккаунт для этой строки"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
           <button type="button" class="bulk-remove-row p-1 text-gray-300 hover:text-red-500 shrink-0"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
         <div class="bulk-dup-warning hidden text-[11px] text-amber-600 mt-1">Этот клиент уже есть в списке выше.</div>
+        <!-- Панель переопределения (18.08.2026, репорт VASY — "у одинаковых
+             заказов часто отличаются аккаунт и канал выкупа") — по умолчанию
+             скрыта и НЕ инициализирована; значения снимаются с общих полей
+             формы ТОЛЬКО в момент первого раскрытия (см. bulk-row-expand
+             ниже) — если строка не раскрывалась, при сохранении строка идёт
+             с общими значениями формы как есть, без снимка. Оплата —
+             ТОЛЬКО общая сумма пополнения (уже отдельно реализовано), эта
+             панель её не трогает. -->
+        <div class="bulk-row-overrides hidden mt-2 pt-2 border-t border-gray-200 grid grid-cols-3 gap-1.5">
+          <div>
+            <label class="text-[10px] text-gray-400">Дата</label>
+            <input type="date" class="bulk-date-override w-full bg-white rounded-lg px-1.5 py-1 text-xs outline-none border border-gray-200">
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-400">Канал</label>
+            <select class="bulk-channel-override w-full bg-white rounded-lg px-1.5 py-1 text-xs outline-none border border-gray-200"></select>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-400">Аккаунт</label>
+            <select class="bulk-account-override w-full bg-white rounded-lg px-1.5 py-1 text-xs outline-none border border-gray-200"></select>
+          </div>
+        </div>
       `;
       bulkRowsList.appendChild(rowEl);
       if (window.lucide) window.lucide.createIcons();
@@ -1071,7 +1131,13 @@ window.Screens.orderNew = {
         searchEl: rowEl.querySelector('.bulk-client-search'),
         dropdownEl: rowEl.querySelector('.bulk-client-dropdown'),
         amountEl: rowEl.querySelector('.bulk-amount-input'),
+        qtyEl: rowEl.querySelector('.bulk-qty-input'),
         sumEl: rowEl.querySelector('.bulk-main-sum'),
+        overridesEl: rowEl.querySelector('.bulk-row-overrides'),
+        dateOverrideEl: rowEl.querySelector('.bulk-date-override'),
+        channelOverrideEl: rowEl.querySelector('.bulk-channel-override'),
+        accountOverrideEl: rowEl.querySelector('.bulk-account-override'),
+        overridden: false, // true с момента первого раскрытия панели — см. bulk-row-expand
         telegramId: '', username: '', name: '', manualClientData: null,
         // Идемпотентность (16.08.2026) — закреплён за строкой один раз при
         // добавлении, не за кликом "Сохранить" (та же логика, что
@@ -1079,6 +1145,34 @@ window.Screens.orderNew = {
         requestId: generateRequestId()
       };
       bulkRows.push(row);
+
+      row.qtyEl.addEventListener('input', () => {
+        const clamped = Math.max(1, Math.min(50, parseInt(row.qtyEl.value, 10) || 1));
+        if (row.qtyEl.value !== '' && String(clamped) !== row.qtyEl.value) row.qtyEl.value = clamped;
+      });
+      row.qtyEl.addEventListener('blur', () => {
+        row.qtyEl.value = Math.max(1, Math.min(50, parseInt(row.qtyEl.value, 10) || 1));
+      });
+
+      rowEl.querySelector('.bulk-row-expand').addEventListener('click', () => {
+        if (!row.overridden) {
+          // Не через FormHelpers.populateSelect — тот принимает CSS-селектор
+          // и берёт document.querySelector(selector), что для повторяющегося
+          // класса across строк всегда попало бы в select ПЕРВОЙ строки.
+          // Заполняем напрямую, тем же форматом опций.
+          const fillOptions = (select, values) => {
+            select.innerHTML = '<option value="" selected disabled>— не выбрано —</option>'
+              + (values || []).map((v) => `<option value="${v}">${v}</option>`).join('');
+          };
+          fillOptions(row.channelOverrideEl, dictionaries.purchaseChannel);
+          fillOptions(row.accountOverrideEl, dictionaries.purchaseAccount);
+          row.channelOverrideEl.value = document.querySelector('select[data-dict="purchaseChannel"]').value;
+          row.accountOverrideEl.value = document.querySelector('select[data-dict="purchaseAccount"]').value;
+          row.dateOverrideEl.value = dateInput.value;
+          row.overridden = true;
+        }
+        row.overridesEl.classList.toggle('hidden');
+      });
 
       if (prefill) {
         if (prefill.amount !== undefined) row.amountEl.value = prefill.amount;
@@ -1096,7 +1190,10 @@ window.Screens.orderNew = {
         if (query.length < 2) { row.dropdownEl.classList.remove('active'); return; }
         const results = await searchClientStub(query);
         FormHelpers.renderDropdown(row.dropdownEl, results, (item) => `
-          <div class="font-medium text-gray-800 text-sm">${item.displayName}</div>
+          <div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+            ${escapeHtmlClient(item.displayName)}
+            ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+          </div>
         `, (item) => {
           row.searchEl.value = item.displayName;
           row.telegramId = item.telegramId;

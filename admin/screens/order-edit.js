@@ -567,7 +567,10 @@ window.Screens.orderEdit = {
     attemptEditDraftRecovery(false);
 
     function searchReleaseStub(query) { return callServer('searchSku', query); }
-    function searchClientStub(query) { return callServer('searchClient', query); }
+    // ИСПРАВЛЕНО (18.08.2026) — см. тот же комментарий в order-new.js:
+    // 'searchClient' (без "s") не существует в контракте, прозрачно
+    // проксировался на старый GAS-индекс (только зашедшие в бота клиенты).
+    function searchClientStub(query) { return callServer('searchClients', query); }
 
     async function saveOrder() {
       const client = manualClientData
@@ -877,7 +880,10 @@ window.Screens.orderEdit = {
 
       const results = await searchClientStub(query);
       FormHelpers.renderDropdown(clientDropdown, results, (item) => `
-        <div class="font-medium text-gray-800 text-sm">${item.displayName}</div>
+        <div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+          ${escapeHtmlClient(item.displayName)}
+          ${item.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+        </div>
       `, (item) => {
         clientSearch.value = item.displayName;
         selectedClientId = item.telegramId;
