@@ -27,19 +27,14 @@
 window.Screens = window.Screens || {};
 window.Screens.profile = {
   render(root) {
-    const balanceHelpBody = `
-      <p><b>🦉 Совы</b> — начисляются за приглашение друга, за выполненные задания
-      и при оплате заказа (в среднем 5000 ₽ оплаты ≈ 100 сов, точный курс задаёт
-      команда).</p>
-      <p>Каждые <b>100 Сов</b> автоматически превращаются в <b>1 Билет</b> — шкала
-      выше показывает прогресс до следующего билета.</p>
-      <p><b>🎟️ Билеты</b> нужны для лотерей с ячейками (бейдж «Премиум» на карточке
-      в разделе «Конкурсы»): 1 билет = 1 попытка забронировать ячейку на доске.</p>
-    `;
-
+    // Текст подсказки "?" — общая функция buildSovyHelpBody (common.js, 19.08.2026,
+    // п.2 бета-фидбека). Живые числа приходят асинхронно вместе с getReferralInfo
+    // (loadReferralInfo ниже) — кнопка рендерится сразу с плейсхолдером, атрибуты
+    // data-help-* обновляются на месте, когда данные придут (клик читает их в
+    // момент клика, не в момент рендера — см. common.js's делегированный обработчик).
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Профиль</h1>';
     document.getElementById('header-actions').innerHTML = `
-      ${helpIcon('Совы, Билеты и кредит', balanceHelpBody, { header: true })}
+      ${helpIcon(SOVY_HELP_TITLE, '<p>Загрузка…</p>', { header: true })}
       <button id="refresh-btn" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -220,6 +215,10 @@ window.Screens.profile = {
         document.getElementById('sovy-progress-label').textContent = `${info.balance.sovyProgress}/100`;
         document.getElementById('sovy-progress-bar').style.width = `${info.balance.sovyProgress}%`;
         document.getElementById('tickets-count').textContent = info.balance.tickets;
+
+        // Живые числа подъехали — обновляем уже отрисованную кнопку "?" на месте.
+        const helpBtn = document.getElementById('header-actions').querySelector('.help-icon-btn');
+        if (helpBtn) helpBtn.setAttribute('data-help-body', escapeHtmlClient(buildSovyHelpBody(info)));
 
         const referralText = document.getElementById('referral-text');
         const referralInput = document.getElementById('referral-link-input');

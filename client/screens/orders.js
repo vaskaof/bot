@@ -11,6 +11,7 @@ window.Screens.orders = {
   render(root, context) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои заказы</h1>';
     document.getElementById('header-actions').innerHTML = `
+      ${helpIcon(SOVY_HELP_TITLE, '<p>Загрузка…</p>', { header: true })}
       <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -85,6 +86,16 @@ window.Screens.orders = {
     // заказа) — отдельный, не блокирующий запрос: список заказов должен
     // открыться нормально, даже если этот запрос упадёт.
     callServer('getMyPaymentsRollup').then(renderPriorityRollup).catch(() => {});
+
+    // Подсказка "?" про сов/билеты (19.08.2026, п.2 бета-фидбека) — тот же
+    // общий текст, что на Профиле/Конкурсах (common.js:buildSovyHelpBody),
+    // этот экран уже показывает "+N сов при полной оплате" на карточке
+    // заказа без объяснения, что это вообще такое. Отдельный некритичный
+    // запрос — список заказов открывается нормально, даже если он упадёт.
+    callServer('getReferralInfo').then((info) => {
+      const helpBtn = document.getElementById('header-actions').querySelector('.help-icon-btn');
+      if (helpBtn) helpBtn.setAttribute('data-help-body', escapeHtmlClient(buildSovyHelpBody(info)));
+    }).catch(() => {});
 
     function renderPriorityRollup(rollup) {
       const card = document.getElementById('priority-rollup-card');
