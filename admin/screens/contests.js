@@ -42,6 +42,10 @@ window.Screens.contests = {
         <div id="moderation-tab" class="hidden">
           <div id="moderation-list"></div>
           <div id="moderation-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
+
+          <div class="mt-6 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Одобренные (последние)</div>
+          <div id="approved-list"></div>
+          <div id="approved-empty-message" class="hidden text-center text-sm text-gray-400 py-6">Одобренных заявок по ручным заданиям пока нет.</div>
         </div>
 
         <div id="lotteries-tab" class="hidden">
@@ -256,6 +260,8 @@ window.Screens.contests = {
     const tasksEmpty = document.getElementById('tasks-empty-message');
     const moderationList = document.getElementById('moderation-list');
     const moderationEmpty = document.getElementById('moderation-empty-message');
+    const approvedList = document.getElementById('approved-list');
+    const approvedEmpty = document.getElementById('approved-empty-message');
     const lotteriesList = document.getElementById('lotteries-list');
     const lotteriesEmpty = document.getElementById('lotteries-empty-message');
     const refreshBtn = document.getElementById('refresh-btn');
@@ -263,6 +269,7 @@ window.Screens.contests = {
 
     loadTasks();
     loadModeration();
+    loadApproved();
     loadLotteries();
 
     tabButtons.forEach(btn => {
@@ -287,7 +294,7 @@ window.Screens.contests = {
     refreshBtn.addEventListener('click', async () => {
       const icon = refreshBtn.querySelector('svg');
       if (icon) icon.classList.add('animate-spin');
-      await Promise.all([loadTasks(), loadModeration(), loadLotteries()]);
+      await Promise.all([loadTasks(), loadModeration(), loadApproved(), loadLotteries()]);
       const liveIcon = refreshBtn.querySelector('svg');
       if (liveIcon) liveIcon.classList.remove('animate-spin');
     });
@@ -429,6 +436,7 @@ window.Screens.contests = {
           await callServer('approveTaskSubmission', s.submissionId, finalReward);
           showSaveToast(true, 'Заявка одобрена, совы начислены');
           loadModeration();
+          loadApproved();
         } catch (error) {
           e.currentTarget.disabled = false;
           showSaveToast(false, `Не удалось одобрить: ${error.message}`);
@@ -445,6 +453,62 @@ window.Screens.contests = {
         } catch (error) {
           e.currentTarget.disabled = false;
           showSaveToast(false, `Не удалось отклонить: ${error.message}`);
+        }
+      });
+
+      return card;
+    }
+
+    // Клавбэк (19.08.2026, п.2 бета-фидбека) — "Отозвать награду" на уже
+    // одобренной заявке ручного задания. У ручных заданий нет проверяемого
+    // условия для авто-отзыва (в отличие от вишлиста/подписки на новости) —
+    // решает админ сам, кнопкой (согласовано с VASY, п.2 плана).
+    async function loadApproved() {
+      approvedList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        const approved = await callServer('getRecentApprovedTaskSubmissions');
+        renderApproved(approved);
+      } catch (error) {
+        approvedList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
+      }
+    }
+
+    function renderApproved(approved) {
+      approvedList.innerHTML = '';
+      if (approved.length === 0) {
+        approvedEmpty.classList.remove('hidden');
+        return;
+      }
+      approvedEmpty.classList.add('hidden');
+      approved.forEach(s => approvedList.appendChild(buildApprovedCard(s)));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function buildApprovedCard(s) {
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.taskTitle)}</div>
+          <div class="text-[12px] text-amber-600 shrink-0">🎟️ ${s.reward} сов</div>
+        </div>
+        <div class="text-[12px] text-gray-400 mt-1">Клиент: ${escapeHtmlClient(s.telegramId)} · Одобрено: ${escapeHtmlClient(s.decidedAt)}</div>
+        <div class="mt-3">
+          <button type="button" class="revoke-reward-btn w-full py-2 rounded-xl border border-red-200 text-red-600 text-xs font-medium">Отозвать награду</button>
+        </div>
+      `;
+
+      card.querySelector('.revoke-reward-btn').addEventListener('click', async (e) => {
+        if (!(await showConfirmModal(`Отозвать ${s.reward} сов у клиента за «${s.taskTitle}»? Списание нельзя отменить кнопкой — только повторным одобрением заявки.`, { confirmLabel: 'Отозвать', danger: true }))) return;
+        e.currentTarget.disabled = true;
+        try {
+          await callServer('revokeTaskReward', s.submissionId);
+          showSaveToast(true, 'Награда отозвана');
+          loadApproved();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          showSaveToast(false, `Не удалось отозвать: ${error.message}`);
         }
       });
 

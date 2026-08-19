@@ -249,7 +249,7 @@ window.Screens.questions = {
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(q.productDisplay)}</div>
           <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(q.createdAtDisplay)}</div>
         </div>
-        <div class="text-[14px] text-gray-700 mt-2">${escapeHtmlClient(q.text)}</div>
+        <div class="text-[14px] text-gray-700 mt-2 whitespace-pre-wrap">${escapeHtmlClient(q.text)}</div>
         ${q.status === 'Отвечено'
           ? `<div class="mt-2 p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-[13px] text-indigo-800"><b>Ответ менеджера:</b> ${escapeHtmlClient(q.answer)}</div>`
           : `<div class="mt-2 text-[12px] text-amber-500 font-medium">Ожидает ответа</div>`}

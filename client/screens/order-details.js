@@ -11,6 +11,11 @@ window.Screens.orderDetails = {
   render(root, context, params) {
     const currentOrderId = params.orderId || null;
     let currentDetails = null; // getClientOrderDetails, нужен модалке "Сообщить об оплате" (isNewModel/stagesBalance)
+    // Курс сов/билетов для пояснения рядом со строкой "N сов начислено" —
+    // 19.08.2026, до сих пор было только в списке заказов (orders.js, round 5/7),
+    // здесь этот экран пропустили. Тот же приём: getReferralInfo() параллельно
+    // с деталями заказа, без него молча пропускаем пояснение (см. render).
+    let sovyRateInfo = null;
 
     const STAGE_LABELS = {
       'Основная': 'Основная оплата',
@@ -170,8 +175,12 @@ window.Screens.orderDetails = {
 
     async function initApp() {
       try {
-        const d = await callServer('getClientOrderDetails', currentOrderId);
+        const [d, referralInfo] = await Promise.all([
+          callServer('getClientOrderDetails', currentOrderId),
+          callServer('getReferralInfo').catch(() => null)
+        ]);
         currentDetails = d;
+        sovyRateInfo = referralInfo;
         render(d);
         // Пул-уровень (F3-довесок) — отдельный, не блокирующий запрос: если он
         // упадёт, экран заказа всё равно должен открыться нормально (это
@@ -198,9 +207,13 @@ window.Screens.orderDetails = {
       // на бэкенде (ordersService.computeSovInfoAmount), здесь только рендер.
       const sovBox = document.getElementById('d-sov-info');
       if (d.sovInfo && d.sovInfo.amount > 0) {
-        sovBox.textContent = d.sovInfo.accrued
+        let sovHtml = d.sovInfo.accrued
           ? `🎟️ ${d.sovInfo.amount} сов начислено за этот заказ`
           : `🎟️ +${d.sovInfo.amount} сов при полной оплате основной суммы`;
+        if (sovyRateInfo) {
+          sovHtml += inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo));
+        }
+        sovBox.innerHTML = sovHtml;
         sovBox.classList.remove('hidden');
       } else {
         sovBox.classList.add('hidden');

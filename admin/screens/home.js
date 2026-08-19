@@ -398,7 +398,7 @@ window.Screens.home = {
         </div>
         <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(q.createdAtDisplay)}</div>
       </div>
-      <div class="text-[14px] text-gray-800 mt-2">${escapeHtmlClient(q.text)}</div>
+      <div class="text-[14px] text-gray-800 mt-2 whitespace-pre-wrap">${escapeHtmlClient(q.text)}</div>
     </div>
     <div class="mt-3">
       <textarea class="answer-input w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none" rows="2" placeholder="Введите ответ клиенту...">${escapeHtmlClient(q.answer)}</textarea>
