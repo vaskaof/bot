@@ -25,30 +25,38 @@ window.Screens.orders = {
       </button>
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Заказы</h1>
     `;
-    document.getElementById('header-actions').innerHTML = `
-      <button id="new-order-btn" title="Новый заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="plus" class="w-6 h-6"></i>
-      </button>
-      <button id="collectives-btn" title="Коллективки" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="package-2" class="w-6 h-6"></i>
-      </button>
-      <button id="deleted-orders-btn" title="Удалённые" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="trash-2" class="w-5 h-5"></i>
-      </button>
-      <button id="refresh-orders" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-      </button>
-    `;
+    // Шапка-действия (18.08.2026 было: 4 голые иконки, title= — не работает на
+    // тап в Telegram Mini App, см. project_bot_knopka_audit_backlog_remaining.
+    // 20.08.2026: перенесены из header-actions (общий shared-компонент
+    // app.html, фиксированная h-14 на ВСЕХ admin-экранах — трогать его высоту
+    // ради подписей одного экрана было бы риском для остальных) в свой ряд
+    // внутри root, тот же стиль icon+подпись, что уже используют bottom-nav/
+    // more.js (text-[10px] font-medium leading-none). header-actions теперь
+    // пуст на этом экране.
+    document.getElementById('header-actions').innerHTML = '';
     document.getElementById('back-btn').addEventListener('click', () => history.back());
-    document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
-    document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
-    // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
-    // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
-    // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
-    document.getElementById('deleted-orders-btn').addEventListener('click', () => navigateTo('orders/deleted'));
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 flex items-center justify-between gap-1">
+          <button type="button" id="new-order-btn" title="Новый заказ" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="plus" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Новый</span>
+          </button>
+          <button type="button" id="collectives-btn" title="Коллективки" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="package-2" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Коллективки</span>
+          </button>
+          <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="trash-2" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Удалённые</span>
+          </button>
+          <button type="button" id="refresh-orders" title="Обновить список" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Обновить</span>
+          </button>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="order-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по заказам..." autocomplete="off">
@@ -63,8 +71,9 @@ window.Screens.orders = {
             <option value="purchaseChannel">Канал выкупа</option>
             <option value="clientDisplay">Клиент</option>
           </select>
-          <button id="sort-direction" title="Сменить направление сортировки" class="p-1.5 text-indigo-600">
+          <button id="sort-direction" title="Сменить направление сортировки" class="p-1.5 text-indigo-600 flex items-center gap-1 shrink-0">
             <i data-lucide="arrow-down-wide-narrow" class="w-4 h-4"></i>
+            <span class="text-[11px] font-medium">По убыванию</span>
           </button>
         </div>
 
@@ -96,11 +105,28 @@ window.Screens.orders = {
     const refreshBtn = document.getElementById('refresh-orders');
     const countLabel = document.getElementById('orders-count');
 
+    document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
+    document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
+    // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
+    // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
+    // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
+    document.getElementById('deleted-orders-btn').addEventListener('click', () => navigateTo('orders/deleted'));
+
+    // Подпись рядом с иконкой (20.08.2026, п.3 бэклога) — общая для
+    // начального состояния и для клика ниже, чтобы текст/иконка не
+    // разъезжались между собой.
+    function renderSortDirButton() {
+      const isDesc = sortDirection === 'desc';
+      sortDirBtn.innerHTML = `
+        <i data-lucide="${isDesc ? 'arrow-down-wide-narrow' : 'arrow-up-narrow-wide'}" class="w-4 h-4"></i>
+        <span class="text-[11px] font-medium">${isDesc ? 'По убыванию' : 'По возрастанию'}</span>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
     searchInput.value = ordersListState.query;
     sortField.value = ordersListState.sortFieldValue;
-    if (sortDirection === 'asc') {
-      sortDirBtn.innerHTML = '<i data-lucide="arrow-up-narrow-wide" class="w-4 h-4"></i>';
-    }
+    renderSortDirButton();
 
     loadOrders();
 
@@ -147,8 +173,7 @@ window.Screens.orders = {
     sortField.addEventListener('change', () => { displayCount = PAGE_SIZE; render(); });
     sortDirBtn.addEventListener('click', () => {
       sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
-      sortDirBtn.innerHTML = `<i data-lucide="${sortDirection === 'desc' ? 'arrow-down-wide-narrow' : 'arrow-up-narrow-wide'}" class="w-4 h-4"></i>`;
-      if (window.lucide) window.lucide.createIcons();
+      renderSortDirButton();
       render();
     });
 
