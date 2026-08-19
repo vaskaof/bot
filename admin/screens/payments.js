@@ -989,6 +989,10 @@ window.Screens.payments = {
     function renderClaims(pending) {
       const badge = document.getElementById('claims-count-badge');
       badge.textContent = pending.length > 0 ? `(${pending.length})` : '';
+      // Зеркалим тот же счётчик на бейдж нижней навигации (20.08.2026,
+      // репорт VASY) — тот же приём, что home.js/contests.js уже делают
+      // для своих бейджей, без дублирующего запроса.
+      if (window.updatePaymentsBadge) window.updatePaymentsBadge(pending.length);
 
       claimsList.innerHTML = '';
       if (pending.length === 0) {

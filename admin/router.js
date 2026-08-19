@@ -161,6 +161,12 @@ function _setNavBadge(navKey, count) {
 
 window.updateHomeBadge = (count) => _setNavBadge('home', count);
 window.updateMoreBadge = (count) => _setNavBadge('more', count);
+// Бейдж "Оплаты" за самоотчёты об оплате (20.08.2026, репорт VASY — клиент
+// прислал self-report об оплате, на нижней навигации не было никакого
+// сигнала, только внутриэкранный счётчик на вкладке "Заявки клиентов",
+// видимый лишь при уже открытом экране). payments.js вызывает эту же
+// функцию с уже загруженными данными (тот же приём, что home.js/contests.js).
+window.updatePaymentsBadge = (count) => _setNavBadge('payments', count);
 
 let _navBadgesLoaded = false;
 async function refreshNavBadges() {
@@ -173,6 +179,10 @@ async function refreshNavBadges() {
   try {
     const pending = await callServer('getPendingTaskSubmissions');
     _setNavBadge('more', pending.length);
+  } catch (error) { /* см. выше */ }
+  try {
+    const claims = await callServer('getPendingPaymentClaims');
+    _setNavBadge('payments', claims.length);
   } catch (error) { /* см. выше */ }
 }
 

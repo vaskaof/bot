@@ -101,7 +101,13 @@ window.Screens.contests = {
             </div>
             <div id="task-repeatable-block" class="flex items-center gap-2">
               <input type="checkbox" id="task-repeatable-input" class="w-4 h-4 rounded border-gray-300 text-indigo-600">
-              <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Клиент может присылать сколько угодно заявок по этому заданию — в том числе несколько сразу, не дожидаясь проверки предыдущей.</p><p>Подходит для баг-репортов и подобного, где один и тот же клиент естественно приходит с разными заявками не один раз. Для одноразовых заданий (вишлист, подписка и т.п.) оставьте выключенным.</p>')}</label>
+              <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Для РУЧНЫХ заданий: клиент может присылать сколько угодно заявок — в том числе несколько сразу, не дожидаясь проверки предыдущей. Подходит для баг-репортов и подобного. Каждая заявка всё равно проходит модерацию — это и есть throttle.</p><p>Для АВТО-заданий: без модерации, поэтому здесь другая защита — сова начисляется заново только если награда уже была отозвана (например, клиент удалил и снова добавил позицию в вишлист) И сигнал снова истинен, максимум столько раз, сколько указано в поле «Макс. количество начислений» ниже (обязательно для этой комбинации).</p><p>Для одноразовых заданий оставьте выключенным.</p>')}</label>
+            </div>
+            <div id="task-max-accruals-block">
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Макс. количество начислений *${helpIcon('Максимум начислений', '<p>Сколько раз это задание может ВСЕГО начислить сову одному клиенту за всё время (считая самое первое начисление, не только повторы).</p><p>Обязательно для повторяемых авто-заданий — без потолка клиент мог бы фармить сову бесконечным удалением/добавлением позиции в вишлисте (или отпиской/подпиской на новости). После достижения лимита задание блокируется для клиента навсегда, так же, как и неповторяемое после отзыва.</p>')}</label>
+              <input type="number" id="task-max-accruals-input" min="1" step="1"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Например: 5">
             </div>
             <div id="task-answer-hint-block">
               <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Подсказка формата ответа${helpIcon('Подсказка формата ответа', '<p>Показывается клиенту как пример прямо в поле ввода на модалке "Отправить на проверку" — конкретно под ЭТО задание, не общий текст на всё приложение.</p><p>Например: «ссылка на пост с отзывом» для задания-отзыва, «скриншот или описание ошибки» для баг-репорта. Если оставить пустым — клиент увидит нейтральную подсказку без примера, подходящего не всем заданиям.</p>')}</label>
@@ -334,7 +340,7 @@ window.Screens.contests = {
         <div class="flex items-start justify-between gap-2">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(t.title)}</div>
           <div class="flex items-center gap-1 shrink-0">
-            ${t.repeatable ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Повторяемое</span>' : ''}
+            ${t.repeatable ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Повторяемое${t.maxAccruals ? ` (макс. ${t.maxAccruals})` : ''}</span>` : ''}
             <span class="text-[10px] px-2 py-0.5 rounded-full ${t.type === 'Авто' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-700'}">${escapeHtmlClient(t.type)}</span>
           </div>
         </div>
@@ -663,21 +669,31 @@ window.Screens.contests = {
     const rewardInput = document.getElementById('task-reward-input');
     const repeatableBlock = document.getElementById('task-repeatable-block');
     const repeatableInput = document.getElementById('task-repeatable-input');
+    const maxAccrualsBlock = document.getElementById('task-max-accruals-block');
+    const maxAccrualsInput = document.getElementById('task-max-accruals-input');
     const answerHintBlock = document.getElementById('task-answer-hint-block');
     const answerHintInput = document.getElementById('task-answer-hint-input');
     const errorText = document.getElementById('task-error-text');
 
     function updateSignalBlockVisibility() {
       signalBlock.classList.toggle('hidden', typeInput.value !== 'Авто');
-      // "Повторяемое" и "Подсказка формата ответа" имеют смысл только для
-      // Ручного — Авто-задание проверяется системой заново при каждом
-      // заходе, клиент никогда не видит модалку отправки доказательства.
-      repeatableBlock.classList.toggle('hidden', typeInput.value !== 'Ручное');
-      if (typeInput.value !== 'Ручное') repeatableInput.checked = false;
+      // "Подсказка формата ответа" имеет смысл только для Ручного — Авто-
+      // задание проверяется системой заново при каждом заходе, клиент
+      // никогда не видит модалку отправки доказательства.
       answerHintBlock.classList.toggle('hidden', typeInput.value !== 'Ручное');
       if (typeInput.value !== 'Ручное') answerHintInput.value = '';
+      // "Повторяемое" (20.08.2026, VASY) теперь доступно ОБОИМ типам —
+      // семантика разная (см. helpIcon выше), но чекбокс один и тот же.
+      // "Макс. количество начислений" — только для связки Авто+Повторяемое.
+      updateMaxAccrualsVisibility();
+    }
+    function updateMaxAccrualsVisibility() {
+      const show = typeInput.value === 'Авто' && repeatableInput.checked;
+      maxAccrualsBlock.classList.toggle('hidden', !show);
+      if (!show) maxAccrualsInput.value = '';
     }
     typeInput.addEventListener('change', updateSignalBlockVisibility);
+    repeatableInput.addEventListener('change', updateMaxAccrualsVisibility);
 
     function resetModalState() {
       editingTaskId = null;
@@ -687,6 +703,7 @@ window.Screens.contests = {
       signalInput.value = 'Есть_Позиция_В_Вишлисте';
       rewardInput.value = '';
       repeatableInput.checked = false;
+      maxAccrualsInput.value = '';
       answerHintInput.value = '';
       errorText.classList.add('hidden');
       updateSignalBlockVisibility();
@@ -709,6 +726,7 @@ window.Screens.contests = {
       if (t.signal) signalInput.value = t.signal;
       rewardInput.value = t.reward;
       repeatableInput.checked = !!t.repeatable;
+      maxAccrualsInput.value = t.maxAccruals || '';
       answerHintInput.value = t.answerHint || '';
       updateSignalBlockVisibility();
       taskModal.classList.remove('hidden');
@@ -730,7 +748,8 @@ window.Screens.contests = {
       const type = typeInput.value;
       const signal = type === 'Авто' ? signalInput.value : '';
       const reward = rewardInput.value;
-      const repeatable = type === 'Ручное' && repeatableInput.checked;
+      const repeatable = repeatableInput.checked;
+      const maxAccruals = (type === 'Авто' && repeatable) ? maxAccrualsInput.value : null;
       const answerHint = type === 'Ручное' ? answerHintInput.value.trim() : '';
 
       if (title === '') {
@@ -743,13 +762,18 @@ window.Screens.contests = {
         errorText.classList.remove('hidden');
         return;
       }
+      if (type === 'Авто' && repeatable && (maxAccruals === '' || Number(maxAccruals) < 1 || !Number.isInteger(Number(maxAccruals)))) {
+        errorText.textContent = 'Укажите максимальное количество начислений (целое число ≥ 1).';
+        errorText.classList.remove('hidden');
+        return;
+      }
 
       taskModalSaveBtn.disabled = true;
       try {
         if (editingTaskId) {
-          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable, answerHint);
+          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null);
         } else {
-          await callServer('createTask', title, description, type, signal, Number(reward), repeatable, answerHint);
+          await callServer('createTask', title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null);
         }
         closeTaskModal();
         showSaveToast(true, editingTaskId ? 'Задание обновлено' : 'Задание создано');
