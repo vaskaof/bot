@@ -1237,10 +1237,11 @@ window.Screens.orderEdit = {
         const unpaidStages = findUnpaidNewModelStages();
         if (unpaidStages.length > 0) {
           const debtText = unpaidStages.map((s) => `${s.stage}: ${s.remaining.toFixed(2)} ₽`).join(', ');
-          const proceed = confirm(
+          const proceed = await showConfirmModal(
             `Заказ переходит в статус «${nextStatusDelivery}», но по нему остаётся непокрытый долг (${debtText}).\n\n` +
             `После этого заказ выходит из платёжного движка — ни обычное распределение, ни закрепление меткой больше не смогут принять по нему оплату, даже если у клиента есть деньги в пуле.\n\n` +
-            `Всё равно сохранить с этим статусом?`
+            `Всё равно сохранить с этим статусом?`,
+            { confirmLabel: 'Сохранить', danger: true }
           );
           if (!proceed) return;
         }
@@ -1315,7 +1316,8 @@ window.Screens.orderEdit = {
     // --- Удаление заказа (16.08.2026, см. личную память Architect'а
     // project_bot_knopka_order_deletion) — двойной гейт против случайного
     // удаления: сначала явный выбор по каждому активному платежу заказа
-    // (модалка, только если такие платежи есть), затем финальный confirm().
+    // (модалка, только если такие платежи есть), затем финальное подтверждение
+    // (showConfirmModal — 19.08.2026, P0.8 аудита, заменил нативный confirm()).
     const deleteOrderModal = DeleteOrderModal.init({
       onConfirmed: async (resolutions) => {
         await finishDeleteOrder(resolutions);
@@ -1328,7 +1330,7 @@ window.Screens.orderEdit = {
     async function finishDeleteOrder(resolutions) {
       // Экран "Удалённые" (16.08.2026) — восстановление доступно оттуда,
       // текст ниже больше не говорит "только вручную через базу".
-      if (!confirm(`Заказ ${currentOrderId} будет удалён. Его можно будет восстановить на экране «Удалённые». Продолжить?`)) return;
+      if (!(await showConfirmModal(`Заказ ${currentOrderId} будет удалён. Его можно будет восстановить на экране «Удалённые». Продолжить?`, { confirmLabel: 'Удалить', danger: true }))) return;
       deleteOrderBtn.disabled = true;
       if (deleteOrderIcon) deleteOrderIcon.classList.add('save-pulse'); // та же пульсация, что у save-order-btn
       try {

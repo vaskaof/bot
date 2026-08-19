@@ -651,20 +651,20 @@ window.Screens.payments = {
       } else if (action === 'open-earmark') {
         openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining));
       } else if (action === 'cancel-earmark') {
-        if (!confirm('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.')) return;
+        if (!(await showConfirmModal('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.', { confirmLabel: 'Отменить метку', danger: true }))) return;
         try {
           await callServer('cancelManualAllocation', parseInt(btn.dataset.id, 10), currentClient.telegramId);
           await loadClientData();
         } catch (error) {
-          alert('Не удалось отменить метку: ' + error.message);
+          showSaveToast(false, 'Не удалось отменить метку: ' + error.message);
         }
       } else if (action === 'edit-payment') {
         const scope = btn.dataset.scope;
         const currentAmount = btn.dataset.amount;
-        const raw = prompt('Новая сумма платежа, ₽:', currentAmount);
+        const raw = await showPromptModal('Новая сумма платежа, ₽:', { defaultValue: currentAmount, inputType: 'number' });
         if (raw === null) return;
         const amount = parseFloat(raw);
-        if (isNaN(amount) || amount <= 0) { alert('Сумма должна быть положительным числом.'); return; }
+        if (isNaN(amount) || amount <= 0) { showSaveToast(false, 'Сумма должна быть положительным числом.'); return; }
         try {
           if (scope === 'pool') {
             await callServer('editClientPayment', currentClient.telegramId, parseInt(btn.dataset.paymentId, 10), amount);
@@ -673,10 +673,10 @@ window.Screens.payments = {
           }
           await loadClientData();
         } catch (error) {
-          alert('Не удалось изменить платёж: ' + error.message);
+          showSaveToast(false, 'Не удалось изменить платёж: ' + error.message);
         }
       } else if (action === 'cancel-payment') {
-        if (!confirm('Отменить платёж? Деньги уйдут из пула клиента и распределение пересчитается заново.')) return;
+        if (!(await showConfirmModal('Отменить платёж? Деньги уйдут из пула клиента и распределение пересчитается заново.', { confirmLabel: 'Отменить платёж', danger: true }))) return;
         const scope = btn.dataset.scope;
         try {
           if (scope === 'pool') {
@@ -686,19 +686,19 @@ window.Screens.payments = {
           }
           await loadClientData();
         } catch (error) {
-          alert('Не удалось отменить платёж: ' + error.message);
+          showSaveToast(false, 'Не удалось отменить платёж: ' + error.message);
         }
       }
     });
 
     async function onReleaseCredit() {
       if (currentCreditBalance <= 0) return;
-      if (!confirm(`Освободить ${money(currentCreditBalance)} ₽ кредита в общий пул клиента?`)) return;
+      if (!(await showConfirmModal(`Освободить ${money(currentCreditBalance)} ₽ кредита в общий пул клиента?`, { confirmLabel: 'Освободить' }))) return;
       try {
         await callServer('releaseClientCreditForClient', currentClient.telegramId);
         await loadClientData();
       } catch (error) {
-        alert('Не удалось освободить кредит: ' + error.message);
+        showSaveToast(false, 'Не удалось освободить кредит: ' + error.message);
       }
     }
 
@@ -727,7 +727,7 @@ window.Screens.payments = {
       const amount = parseFloat(rfAmount.value);
       if (isNaN(amount) || amount <= 0) { rfError.textContent = 'Укажите сумму больше нуля.'; rfError.classList.remove('hidden'); return; }
       if (amount > currentCreditBalance) { rfError.textContent = 'Сумма больше кредитного баланса.'; rfError.classList.remove('hidden'); return; }
-      if (!confirm(`Списать ${money(amount)} ₽? Подтвердите, что перевод клиенту уже сделан (или делается) вне этого экрана — это действие только фиксирует факт.`)) return;
+      if (!(await showConfirmModal(`Списать ${money(amount)} ₽? Подтвердите, что перевод клиенту уже сделан (или делается) вне этого экрана — это действие только фиксирует факт.`, { confirmLabel: 'Списать', danger: true }))) return;
 
       const saveBtn = document.getElementById('rf-save');
       saveBtn.disabled = true;
@@ -970,8 +970,8 @@ window.Screens.payments = {
 
     // === Вкладка "Заявки клиентов" (F3, 11.08.2026) — модерация self-report ===
     // Тот же паттерн, что "Модерация" в admin/screens/contests.js (бейдж
-    // счётчика, карточка, Одобрить/Отклонить, отклонение — prompt() на
-    // комментарий) — переиспользуем намеренно, не изобретаем новый UI.
+    // счётчика, карточка, Одобрить/Отклонить, отклонение — showPromptModal
+    // на комментарий) — переиспользуем намеренно, не изобретаем новый UI.
     const claimsList = document.getElementById('claims-list');
     const claimsEmpty = document.getElementById('claims-empty-message');
     loadClaims();
@@ -1037,7 +1037,7 @@ window.Screens.payments = {
       });
 
       card.querySelector('.approve-claim-btn').addEventListener('click', async (e) => {
-        if (!confirm(`Одобрить заявку и записать платёж ${money(c.amountRub)} ₽ ${scopeLabel}?`)) return;
+        if (!(await showConfirmModal(`Одобрить заявку и записать платёж ${money(c.amountRub)} ₽ ${scopeLabel}?`, { confirmLabel: 'Одобрить' }))) return;
         e.currentTarget.disabled = true;
         try {
           const result = await callServer('approvePaymentClaim', c.id);
@@ -1059,7 +1059,7 @@ window.Screens.payments = {
       });
 
       card.querySelector('.reject-claim-btn').addEventListener('click', async (e) => {
-        const comment = prompt('Причина отклонения (необязательно):', '') || '';
+        const comment = (await showPromptModal('Причина отклонения (необязательно):', { defaultValue: '' })) || '';
         e.currentTarget.disabled = true;
         try {
           await callServer('rejectPaymentClaim', c.id, comment);

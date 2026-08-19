@@ -423,7 +423,7 @@ window.Screens.contests = {
         const confirmText = finalReward < s.reward
           ? `Одобрить и начислить ${finalReward} сов (снижено с заявленных ${s.reward})?`
           : `Одобрить и начислить ${finalReward} сов?`;
-        if (!confirm(confirmText)) return;
+        if (!(await showConfirmModal(confirmText, { confirmLabel: 'Одобрить' }))) return;
         e.currentTarget.disabled = true;
         try {
           await callServer('approveTaskSubmission', s.submissionId, finalReward);
@@ -436,7 +436,7 @@ window.Screens.contests = {
       });
 
       card.querySelector('.reject-btn').addEventListener('click', async (e) => {
-        const comment = prompt('Причина отклонения (необязательно):', '') || '';
+        const comment = (await showPromptModal('Причина отклонения (необязательно):', { defaultValue: '' })) || '';
         e.currentTarget.disabled = true;
         try {
           await callServer('rejectTaskSubmission', s.submissionId, comment);
@@ -564,7 +564,7 @@ window.Screens.contests = {
           const warning = isType1
             ? 'Отменить лотерею? Действие необратимо, всем забронировавшим вернутся билеты.'
             : 'Отменить лотерею? Действие необратимо.';
-          if (!confirm(warning)) return;
+          if (!(await showConfirmModal(warning, { confirmLabel: 'Отменить', danger: true }))) return;
           cancelBtn.disabled = true;
           try {
             await callServer('cancelLottery', l.lotteryId);
@@ -958,7 +958,7 @@ window.Screens.contests = {
 
     drawFinishBtn.addEventListener('click', async () => {
       drawErrorText.classList.add('hidden');
-      if (!confirm('Завершить розыгрыш? Действие необратимо — новые призы в этой лотерее разыграть будет нельзя.')) return;
+      if (!(await showConfirmModal('Завершить розыгрыш? Действие необратимо — новые призы в этой лотерее разыграть будет нельзя.', { confirmLabel: 'Завершить', danger: true }))) return;
 
       drawFinishBtn.disabled = true;
       try {

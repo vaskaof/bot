@@ -142,7 +142,7 @@ window.Screens.analytics = {
         link.remove();
         URL.revokeObjectURL(url);
       } catch (error) {
-        alert(`Ошибка экспорта: ${error.message}`);
+        showSaveToast(false, `Ошибка экспорта: ${error.message}`);
       } finally {
         exportBtn.disabled = false;
         const liveIcon = exportBtn.querySelector('svg');

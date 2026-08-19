@@ -134,7 +134,7 @@ window.Screens.orders = {
         displayCount = PAGE_SIZE;
         render();
       } catch (error) {
-        alert('Не удалось обновить список: ' + error.message);
+        showSaveToast(false, 'Не удалось обновить список: ' + error.message);
       } finally {
         const liveIcon = refreshBtn.querySelector('svg');
         if (liveIcon) liveIcon.classList.remove('animate-spin');

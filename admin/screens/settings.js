@@ -214,7 +214,7 @@ window.Screens.settings = {
           }
         });
         row.querySelector('.delete-row-btn').addEventListener('click', async () => {
-          if (!confirm(`Удалить параметр «${setting.label}»?`)) return;
+          if (!(await showConfirmModal(`Удалить параметр «${setting.label}»?`, { confirmLabel: 'Удалить', danger: true }))) return;
           try {
             await callServer('deleteFinancialSetting', key);
             showSaveToast(true, 'Удалено.');
@@ -449,8 +449,8 @@ window.Screens.settings = {
         });
       });
       const addBtn = document.getElementById('add-share-btn');
-      if (addBtn) addBtn.addEventListener('click', () => {
-        const label = prompt('Название доли (например, "Реклама"):');
+      if (addBtn) addBtn.addEventListener('click', async () => {
+        const label = await showPromptModal('Название доли (например, "Реклама"):');
         if (!label || !label.trim()) return;
         sharesDraft.push({ key: 'Доля_' + slugKey(label) + '_Процент', label: label.trim(), value: 0 });
         rerenderShares();

@@ -619,7 +619,7 @@ window.SkuModal = {
 
     document.getElementById('sku-delete-btn').addEventListener('click', async () => {
       if (skuModalMode !== 'edit' || !skuModalOldOriginal) return;
-      if (!confirm(`Удалить позицию «${skuModalOldOriginal}» из каталога?`)) return;
+      if (!(await showConfirmModal(`Удалить позицию «${skuModalOldOriginal}» из каталога?`, { confirmLabel: 'Удалить', danger: true }))) return;
 
       const errorText = document.getElementById('sku-error-text');
       try {

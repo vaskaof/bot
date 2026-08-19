@@ -474,7 +474,7 @@ window.Screens.clients = {
         const btn = e.currentTarget;
         if (btn.disabled) return;
         if (blocked) {
-          if (!confirm('Разблокировать клиента?')) return;
+          if (!(await showConfirmModal('Разблокировать клиента?', { confirmLabel: 'Разблокировать' }))) return;
           btn.disabled = true;
           try {
             await callServer('unblockClient', { telegramId: currentClient.telegramId });
@@ -516,7 +516,7 @@ window.Screens.clients = {
     document.getElementById('block-client-cancel').addEventListener('click', closeBlockClientModal);
     blockSaveBtn.addEventListener('click', async () => {
       if (blockSaveBtn.disabled) return;
-      if (!confirm('Заблокировать клиента? Мини-апп и бот перестанут ему отвечать.')) return;
+      if (!(await showConfirmModal('Заблокировать клиента? Мини-апп и бот перестанут ему отвечать.', { confirmLabel: 'Заблокировать', danger: true }))) return;
       blockSaveBtn.disabled = true;
       try {
         const until = blockUntilInput.value ? new Date(blockUntilInput.value).toISOString() : null;

@@ -654,6 +654,147 @@ function buildSovyHelpBodyFull(info) {
     `;
 }
 
+/**
+ * Общая модалка подтверждения — замена нативного `confirm()` (19.08.2026,
+ * P0.8 из аудита интерфейса). Причина: `confirm()`/`alert()`/`prompt()`
+ * внутри Telegram WebView — известная зона риска: чужеродный системный
+ * диалог, ломающий визуальный язык приложения, непредсказуемое поведение
+ * на части клиентов Telegram (особенно iOS). Раньше был единственным
+ * механизмом подтверждения НЕОБРАТИМЫХ действий (удаление заказа и т.п.) —
+ * там, где цена ошибки выше всего, надёжность UI была ниже всего.
+ * Ленивое создание — тот же паттерн, что `_ensureHelpModal`/`_showConsentGate`.
+ * @param {string} message Текст вопроса (обычный текст — экранируется через textContent)
+ * @param {{confirmLabel?: string, cancelLabel?: string, danger?: boolean}} [opts]
+ *   `danger` — красная кнопка подтверждения (необратимые/деструктивные действия)
+ * @returns {Promise<boolean>} true — подтверждено, false — отменено (в т.ч. клик мимо)
+ */
+let _confirmModalEl = null;
+
+function showConfirmModal(message, opts) {
+    opts = opts || {};
+    const confirmLabel = opts.confirmLabel || 'Подтвердить';
+    const cancelLabel = opts.cancelLabel || 'Отмена';
+    const danger = !!opts.danger;
+
+    return new Promise((resolve) => {
+        if (!_confirmModalEl) {
+            const el = document.createElement('div');
+            el.id = 'shared-confirm-modal';
+            el.className = 'fixed inset-0 bg-black/40 hidden items-center justify-center z-[95] px-4';
+            el.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div class="p-4">
+            <div id="shared-confirm-text" class="text-sm text-gray-700 whitespace-pre-wrap"></div>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button type="button" id="shared-confirm-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"></button>
+            <button type="button" id="shared-confirm-ok-btn" class="flex-1 py-2.5 rounded-xl text-white text-sm font-medium"></button>
+          </div>
+        </div>
+      `;
+            document.body.appendChild(el);
+            _confirmModalEl = el;
+        }
+
+        const modal = _confirmModalEl;
+        const textEl = modal.querySelector('#shared-confirm-text');
+        const okBtn = modal.querySelector('#shared-confirm-ok-btn');
+        const cancelBtn = modal.querySelector('#shared-confirm-cancel-btn');
+
+        textEl.textContent = message;
+        okBtn.textContent = confirmLabel;
+        cancelBtn.textContent = cancelLabel;
+        okBtn.className = `flex-1 py-2.5 rounded-xl text-white text-sm font-medium ${danger ? 'bg-red-600' : 'bg-indigo-600'}`;
+
+        // onclick (не addEventListener) — переприсваивается на каждый вызов,
+        // модалка одна на весь экран, накопления обработчиков не бывает.
+        function cleanup(result) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            resolve(result);
+        }
+        okBtn.onclick = () => cleanup(true);
+        cancelBtn.onclick = () => cleanup(false);
+        modal.onclick = (e) => { if (e.target === modal) cleanup(false); };
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    });
+}
+
+/**
+ * Общая модалка текстового/числового ввода — замена нативного `prompt()`
+ * (19.08.2026, P0.8 аудита, тот же повод, что showConfirmModal выше).
+ * Отмена/клик мимо/крестик — резолвится `null` (тот же контракт, что у
+ * `prompt()`: пустая строка ≠ отмена, это осознанный ввод пустого текста,
+ * различие важно для мест вроде "причина отклонения (необязательно)").
+ * @param {string} message Текст-вопрос над полем ввода
+ * @param {{defaultValue?: string, inputType?: 'text'|'number', placeholder?: string, confirmLabel?: string, cancelLabel?: string}} [opts]
+ * @returns {Promise<string|null>}
+ */
+let _promptModalEl = null;
+
+function showPromptModal(message, opts) {
+    opts = opts || {};
+    const defaultValue = opts.defaultValue !== undefined ? opts.defaultValue : '';
+    const inputType = opts.inputType || 'text';
+    const confirmLabel = opts.confirmLabel || 'ОК';
+    const cancelLabel = opts.cancelLabel || 'Отмена';
+
+    return new Promise((resolve) => {
+        if (!_promptModalEl) {
+            const el = document.createElement('div');
+            el.id = 'shared-prompt-modal';
+            el.className = 'fixed inset-0 bg-black/40 hidden items-center justify-center z-[95] px-4';
+            el.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div class="p-4">
+            <label id="shared-prompt-text" class="text-sm text-gray-700 block mb-2"></label>
+            <input type="text" id="shared-prompt-input"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button type="button" id="shared-prompt-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"></button>
+            <button type="button" id="shared-prompt-ok-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium"></button>
+          </div>
+        </div>
+      `;
+            document.body.appendChild(el);
+            _promptModalEl = el;
+        }
+
+        const modal = _promptModalEl;
+        const textEl = modal.querySelector('#shared-prompt-text');
+        const input = modal.querySelector('#shared-prompt-input');
+        const okBtn = modal.querySelector('#shared-prompt-ok-btn');
+        const cancelBtn = modal.querySelector('#shared-prompt-cancel-btn');
+
+        textEl.textContent = message;
+        input.type = inputType;
+        input.value = defaultValue;
+        input.placeholder = opts.placeholder || '';
+        okBtn.textContent = confirmLabel;
+        cancelBtn.textContent = cancelLabel;
+
+        function cleanup(result) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            input.onkeydown = null;
+            resolve(result);
+        }
+        okBtn.onclick = () => cleanup(input.value);
+        cancelBtn.onclick = () => cleanup(null);
+        modal.onclick = (e) => { if (e.target === modal) cleanup(null); };
+        input.onkeydown = (e) => { if (e.key === 'Enter') cleanup(input.value); };
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        // Фокус + выделение — та же удобная деталь, что у нативного prompt()
+        // (можно сразу печатать новое значение поверх старого).
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+    });
+}
+
 // Один делегированный обработчик на document — не требует перепривязки при
 // повторных renderRoute() (тот же принцип, что уже применён к нижней
 // навигации в router.js). Гвард на typeof — common.js подключается и в

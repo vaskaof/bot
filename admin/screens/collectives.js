@@ -190,7 +190,7 @@ window.Screens.collectives = {
         closeCreateModal();
         loadCollectives();
       } catch (error) {
-        alert('Не удалось создать коллективку: ' + error.message);
+        showSaveToast(false, 'Не удалось создать коллективку: ' + error.message);
       } finally {
         createSaveBtn.disabled = false;
       }
@@ -258,7 +258,7 @@ window.Screens.collectives = {
             renderOrdersList(details.orders);
             loadCollectives();
           } catch (error) {
-            alert('Не удалось отвязать заказ: ' + error.message);
+            showSaveToast(false, 'Не удалось отвязать заказ: ' + error.message);
           }
         });
         detailOrderList.appendChild(row);
@@ -307,7 +307,7 @@ window.Screens.collectives = {
               renderOrdersList(details.orders);
               loadCollectives();
             } catch (error) {
-              alert('Не удалось добавить заказ: ' + error.message);
+              showSaveToast(false, 'Не удалось добавить заказ: ' + error.message);
             }
           });
           detailOrderDropdown.appendChild(li);
@@ -336,7 +336,7 @@ window.Screens.collectives = {
     const detailDeleteBtn = document.getElementById('detail-delete-btn');
     detailDeleteBtn.addEventListener('click', async () => {
       if (detailDeleteBtn.disabled) return;
-      if (!confirm(`Удалить коллективку «${currentDetailId}»?`)) return;
+      if (!(await showConfirmModal(`Удалить коллективку «${currentDetailId}»?`, { confirmLabel: 'Удалить', danger: true }))) return;
       detailDeleteBtn.disabled = true;
       try {
         await callServer('deleteCollective', currentDetailId);

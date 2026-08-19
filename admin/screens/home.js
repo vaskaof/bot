@@ -239,7 +239,7 @@ window.Screens.home = {
       const publishBtn = card.querySelector('.publish-btn');
       if (publishBtn) {
         publishBtn.addEventListener('click', async () => {
-          if (!confirm('Опубликовать новость? Она станет видна клиентам и уйдёт в рассылку (в окне 9:00–20:00 МСК).')) return;
+          if (!(await showConfirmModal('Опубликовать новость? Она станет видна клиентам и уйдёт в рассылку (в окне 9:00–20:00 МСК).', { confirmLabel: 'Опубликовать' }))) return;
           publishBtn.disabled = true;
           try {
             await callServer('publishNews', n.newsId);
@@ -255,7 +255,7 @@ window.Screens.home = {
       card.querySelector('.edit-btn').addEventListener('click', () => openModalForEdit(n));
 
       card.querySelector('.delete-btn').addEventListener('click', async () => {
-        if (!confirm('Удалить новость?')) return;
+        if (!(await showConfirmModal('Удалить новость?', { confirmLabel: 'Удалить', danger: true }))) return;
         try {
           await callServer('deleteNews', n.newsId);
           loadNews();
@@ -417,8 +417,12 @@ window.Screens.home = {
       const saveBtn = card.querySelector('.save-answer-btn');
       const textarea = card.querySelector('.answer-input');
       saveBtn.addEventListener('click', async () => {
+        if (saveBtn.disabled) return;
         const text = textarea.value.trim();
-        if (text === '') { alert('Введите текст ответа.'); return; }
+        // ИСПРАВЛЕНО 19.08.2026 (P0.8 аудита) — было alert(), единственный
+        // разрыв стиля в этом файле: остальные формы проекта показывают
+        // ошибку инлайн-текстом, не системным диалогом.
+        if (text === '') { showSaveToast(false, 'Введите текст ответа.'); return; }
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Сохраняю...';
@@ -428,6 +432,9 @@ window.Screens.home = {
         } catch (error) {
           saveBtn.disabled = false;
           saveBtn.textContent = 'Ошибка, повторить';
+          // ИСПРАВЛЕНО 19.08.2026 (аудит: "админ не знает причину сбоя,
+          // только что он был") — текст ошибки теперь виден, не только факт сбоя.
+          showSaveToast(false, `Не удалось сохранить ответ: ${error.message}`);
         }
       });
 

@@ -82,7 +82,7 @@ window.Screens.deletedOrders = {
       listEl.querySelectorAll('.restore-order-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const orderId = btn.dataset.restoreId;
-          if (!confirm(`Восстановить заказ ${orderId}? Он снова появится в общем списке заказов.`)) return;
+          if (!(await showConfirmModal(`Восстановить заказ ${orderId}? Он снова появится в общем списке заказов.`, { confirmLabel: 'Восстановить' }))) return;
           btn.disabled = true;
           btn.textContent = 'Восстанавливаю...';
           try {

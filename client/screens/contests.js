@@ -389,7 +389,7 @@ window.Screens.contests = {
 
     async function bookCell(cellNumber) {
       boardErrorText.classList.add('hidden');
-      if (!confirm(`Забронировать ячейку №${cellNumber} за 1 билет?`)) return;
+      if (!(await showConfirmModal(`Забронировать ячейку №${cellNumber} за 1 билет?`, { confirmLabel: 'Забронировать' }))) return;
 
       try {
         await callServer('bookLotteryCell', boardLotteryId, cellNumber);

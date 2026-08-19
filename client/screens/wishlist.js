@@ -215,7 +215,7 @@ window.Screens.wishlist = {
       });
 
       card.querySelector('.delete-item-btn').addEventListener('click', async () => {
-        if (!confirm('Удалить позицию из вишлиста?')) return;
+        if (!(await showConfirmModal('Удалить позицию из вишлиста?', { confirmLabel: 'Удалить', danger: true }))) return;
         try {
           await callServer('deleteWishlistItem', item.wishlistId);
           loadWishlist();
