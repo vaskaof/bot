@@ -172,7 +172,7 @@ window.Screens.contests = {
         ${l.prize ? `<div class="text-[13px] text-gray-500 mt-1">Приз: ${escapeHtmlClient(l.prize)}</div>` : ''}
         <div class="mt-2 space-y-0.5">${conditionsHtml}</div>
         <div class="text-[12px] text-gray-400 mt-2">${countLine}</div>
-        ${isType1 ? '<div class="text-[11px] text-gray-400 mt-0.5">Бронь ячейки — 1 билет за попытку, спишется только при удаче</div>' : ''}
+        ${isType1 ? '<div class="text-[11px] text-gray-400 mt-0.5">Бронь ячейки — 1 билет списывается сразу при бронировании, независимо от результата розыгрыша</div>' : ''}
       `;
 
       if (isType1) {

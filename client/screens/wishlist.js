@@ -188,6 +188,7 @@ window.Screens.wishlist = {
           ${item.isUnknown && item.rawTitle && item.rawTitle !== item.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(item.rawTitle)}</div>` : ''}
           ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
           ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
+          ${!item.isUnknown ? '<div class="text-[11px] text-gray-300 mt-1">Данные обновляются по каталогу — редактирование недоступно, только удаление</div>' : ''}
           <div class="flex flex-wrap gap-3 mt-1">
             ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
           </div>

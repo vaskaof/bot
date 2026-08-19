@@ -85,6 +85,38 @@ function callServer(methodName, ...args) {
 }
 
 /**
+ * Показывает экран "не удалось загрузить" — раньше это был сырой monospace-
+ * дамп `error.message` без единой возможности восстановиться (20.08.2026,
+ * находка исходного UX-аудита: реальный dead-end для клиента при ЛЮБОЙ
+ * ошибке инициализации, не только настоящем отказе в доступе). Теперь —
+ * дружелюбный текст + кнопка "Обновить страницу"; техническая деталь
+ * (`error.message`) не удалена, а свёрнута под "Показать технические
+ * детали" — остаётся доступной для диагностики (VASY/разработчик), просто
+ * не бьёт по глазам обычного клиента. Требует разметку `#access-denied-
+ * screen` с `#access-denied-retry-btn`/`#access-denied-details-toggle`/
+ * `#debug-init-data` внутри (см. client/app.html, admin/app.html).
+ * @private
+ */
+function _showAccessDeniedScreen(accessDeniedScreen, error) {
+    accessDeniedScreen.classList.remove('hidden');
+    accessDeniedScreen.classList.add('flex');
+    const debugText = document.getElementById('debug-init-data');
+    debugText.textContent = 'Ошибка: ' + error.message;
+    console.error('Ошибка проверки доступа:', error);
+
+    const retryBtn = document.getElementById('access-denied-retry-btn');
+    if (retryBtn) retryBtn.addEventListener('click', () => location.reload());
+
+    const detailsToggle = document.getElementById('access-denied-details-toggle');
+    if (detailsToggle) {
+        detailsToggle.addEventListener('click', () => {
+            const nowHidden = debugText.classList.toggle('hidden');
+            detailsToggle.textContent = nowHidden ? 'Показать технические детали' : 'Скрыть технические детали';
+        });
+    }
+}
+
+/**
  * Проверяет доступ (сервер отклонит, если initData не прошёл проверку) и одним
  * вызовом получает справочники. Страница передаёт свой колбэк инициализации,
  * получающий dictionaries. Требует на странице элементы #loading-screen,
@@ -104,10 +136,7 @@ function initAccessCheck(onSuccess) {
             onSuccess(dictionaries);
         } catch (error) {
             loadingScreen.classList.add('hidden');
-            accessDeniedScreen.classList.remove('hidden');
-            accessDeniedScreen.classList.add('flex');
-            document.getElementById('debug-init-data').textContent = 'Ошибка: ' + error.message;
-            console.error('Ошибка проверки доступа:', error);
+            _showAccessDeniedScreen(accessDeniedScreen, error);
         }
     })();
 }
@@ -379,10 +408,7 @@ function initClientAccess(onSuccess) {
             onSuccess(context);
         } catch (error) {
             loadingScreen.classList.add('hidden');
-            accessDeniedScreen.classList.remove('hidden');
-            accessDeniedScreen.classList.add('flex');
-            document.getElementById('debug-init-data').textContent = 'Ошибка: ' + error.message;
-            console.error('Ошибка проверки клиентского доступа:', error);
+            _showAccessDeniedScreen(accessDeniedScreen, error);
         }
     })();
 }

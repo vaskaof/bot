@@ -143,6 +143,7 @@ window.Screens.orderDetails = {
                   <input type="radio" name="rp-modal-scope" value="pool"> За все мои заказы
                 </label>
               </div>
+              <p class="text-[11px] text-gray-400 mt-1">«За все мои заказы» — платёж уйдёт в общий пул и сам распределится на ваши открытые заказы. «Только за этот заказ» — закрепится именно за ним.</p>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Текст или ссылка на подтверждение</label>

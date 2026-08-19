@@ -10,14 +10,14 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=4"></script>
   <script src="policyText.js?v=3"></script>
-  <script src="../common.js?v=17"></script>
+  <script src="../common.js?v=18"></script>
   <script src="router.js?v=4"></script>
   <script src="screens/orders.js?v=11"></script>
-  <script src="screens/order-details.js?v=10"></script>
+  <script src="screens/order-details.js?v=11"></script>
   <script src="screens/news.js?v=5"></script>
-  <script src="screens/wishlist.js?v=10"></script>
+  <script src="screens/wishlist.js?v=11"></script>
   <script src="screens/questions.js?v=7"></script>
-  <script src="screens/contests.js?v=9"></script>
+  <script src="screens/contests.js?v=10"></script>
   <script src="screens/profile.js?v=9"></script>
   <script src="screens/policy.js?v=1"></script>
   <style>
@@ -92,9 +92,12 @@
   </div>
 
   <div id="access-denied-screen" class="fixed inset-0 bg-[#f3f4f9] hidden items-center justify-center z-50 px-6">
-    <div class="text-center" style="font-family: monospace; font-size: 12px; word-break: break-all; text-align: left;">
-      <p><b>Доступ не подтверждён.</b></p>
-      <p id="debug-init-data"></p>
+    <div class="text-center max-w-xs">
+      <p class="text-base font-semibold text-gray-900">Не удалось загрузить приложение</p>
+      <p class="text-sm text-gray-500 mt-2">Попробуйте обновить страницу. Если не поможет — напишите нам прямо в бот.</p>
+      <button type="button" id="access-denied-retry-btn" class="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">Обновить страницу</button>
+      <button type="button" id="access-denied-details-toggle" class="mt-3 text-xs text-gray-400 underline block mx-auto">Показать технические детали</button>
+      <p id="debug-init-data" class="hidden mt-2 text-left" style="font-family: monospace; font-size: 11px; word-break: break-all;"></p>
     </div>
   </div>
 
