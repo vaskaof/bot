@@ -99,6 +99,12 @@ window.Screens.contests = {
               <input type="checkbox" id="task-repeatable-input" class="w-4 h-4 rounded border-gray-300 text-indigo-600">
               <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Клиент может присылать сколько угодно заявок по этому заданию — в том числе несколько сразу, не дожидаясь проверки предыдущей.</p><p>Подходит для баг-репортов и подобного, где один и тот же клиент естественно приходит с разными заявками не один раз. Для одноразовых заданий (вишлист, подписка и т.п.) оставьте выключенным.</p>')}</label>
             </div>
+            <div id="task-answer-hint-block">
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Подсказка формата ответа${helpIcon('Подсказка формата ответа', '<p>Показывается клиенту как пример прямо в поле ввода на модалке "Отправить на проверку" — конкретно под ЭТО задание, не общий текст на всё приложение.</p><p>Например: «ссылка на пост с отзывом» для задания-отзыва, «скриншот или описание ошибки» для баг-репорта. Если оставить пустым — клиент увидит нейтральную подсказку без примера, подходящего не всем заданиям.</p>')}</label>
+              <input type="text" id="task-answer-hint-input" maxlength="200"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                placeholder="Необязательно — например: ссылка на пост с отзывом">
+            </div>
           </div>
 
           <div id="task-error-text" class="px-4 text-xs text-red-500 hidden"></div>
@@ -593,14 +599,19 @@ window.Screens.contests = {
     const rewardInput = document.getElementById('task-reward-input');
     const repeatableBlock = document.getElementById('task-repeatable-block');
     const repeatableInput = document.getElementById('task-repeatable-input');
+    const answerHintBlock = document.getElementById('task-answer-hint-block');
+    const answerHintInput = document.getElementById('task-answer-hint-input');
     const errorText = document.getElementById('task-error-text');
 
     function updateSignalBlockVisibility() {
       signalBlock.classList.toggle('hidden', typeInput.value !== 'Авто');
-      // "Повторяемое" имеет смысл только для Ручного — Авто-задание и так
-      // проверяется системой заново при каждом заходе, повторной подачи нет.
+      // "Повторяемое" и "Подсказка формата ответа" имеют смысл только для
+      // Ручного — Авто-задание проверяется системой заново при каждом
+      // заходе, клиент никогда не видит модалку отправки доказательства.
       repeatableBlock.classList.toggle('hidden', typeInput.value !== 'Ручное');
       if (typeInput.value !== 'Ручное') repeatableInput.checked = false;
+      answerHintBlock.classList.toggle('hidden', typeInput.value !== 'Ручное');
+      if (typeInput.value !== 'Ручное') answerHintInput.value = '';
     }
     typeInput.addEventListener('change', updateSignalBlockVisibility);
 
@@ -612,6 +623,7 @@ window.Screens.contests = {
       signalInput.value = 'Есть_Позиция_В_Вишлисте';
       rewardInput.value = '';
       repeatableInput.checked = false;
+      answerHintInput.value = '';
       errorText.classList.add('hidden');
       updateSignalBlockVisibility();
     }
@@ -633,6 +645,7 @@ window.Screens.contests = {
       if (t.signal) signalInput.value = t.signal;
       rewardInput.value = t.reward;
       repeatableInput.checked = !!t.repeatable;
+      answerHintInput.value = t.answerHint || '';
       updateSignalBlockVisibility();
       taskModal.classList.remove('hidden');
       taskModal.classList.add('flex');
@@ -654,6 +667,7 @@ window.Screens.contests = {
       const signal = type === 'Авто' ? signalInput.value : '';
       const reward = rewardInput.value;
       const repeatable = type === 'Ручное' && repeatableInput.checked;
+      const answerHint = type === 'Ручное' ? answerHintInput.value.trim() : '';
 
       if (title === '') {
         errorText.textContent = 'Введите название задания.';
@@ -669,9 +683,9 @@ window.Screens.contests = {
       taskModalSaveBtn.disabled = true;
       try {
         if (editingTaskId) {
-          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable);
+          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable, answerHint);
         } else {
-          await callServer('createTask', title, description, type, signal, Number(reward), repeatable);
+          await callServer('createTask', title, description, type, signal, Number(reward), repeatable, answerHint);
         }
         closeTaskModal();
         showSaveToast(true, editingTaskId ? 'Задание обновлено' : 'Задание создано');

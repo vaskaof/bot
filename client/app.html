@@ -10,15 +10,15 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=4"></script>
   <script src="policyText.js?v=3"></script>
-  <script src="../common.js?v=15"></script>
+  <script src="../common.js?v=16"></script>
   <script src="router.js?v=4"></script>
-  <script src="screens/orders.js?v=10"></script>
-  <script src="screens/order-details.js?v=7"></script>
+  <script src="screens/orders.js?v=11"></script>
+  <script src="screens/order-details.js?v=8"></script>
   <script src="screens/news.js?v=4"></script>
   <script src="screens/wishlist.js?v=9"></script>
-  <script src="screens/questions.js?v=3"></script>
-  <script src="screens/contests.js?v=7"></script>
-  <script src="screens/profile.js?v=8"></script>
+  <script src="screens/questions.js?v=4"></script>
+  <script src="screens/contests.js?v=8"></script>
+  <script src="screens/profile.js?v=9"></script>
   <script src="screens/policy.js?v=1"></script>
   <style>
     body {
@@ -71,6 +71,18 @@
     .toggle-switch-sm { width: 30px; height: 18px; }
     .toggle-switch-sm .knob { width: 14px; height: 14px; }
     .toggle-switch-sm.on .knob { transform: translateX(12px); }
+    /* Отступ под системную зону iPhone (Home Indicator) — ИСПРАВЛЕНО
+       19.08.2026 (репорт клиента, бета, п.3: "нижняя чёлка закрывает
+       надписи у кнопок"). Класс `pb-safe`, который здесь стоял, не входит в
+       базовую сборку Tailwind CDN (нужен отдельный плагин + tailwind.config,
+       которых в проекте нет) — он молча ничего не делал, реального отступа
+       никогда не было. Высота #bottom-nav увеличивается на env(), не только
+       padding — иначе safe-area "съедала" бы полезную высоту кнопок вместо
+       того, чтобы добавляться поверх неё. */
+    #bottom-nav {
+      height: calc(70px + env(safe-area-inset-bottom));
+      padding-bottom: env(safe-area-inset-bottom);
+    }
   </style>
 </head>
 
@@ -105,7 +117,7 @@
     <div id="screen-root"></div>
 
     <nav id="bottom-nav"
-      class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe pt-1 px-1 flex justify-between items-end z-40 h-[70px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pt-1 px-1 flex justify-between items-end z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
       <button type="button" data-nav-key="news" class="flex-1 flex flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="home" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Главная</span>

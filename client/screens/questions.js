@@ -18,17 +18,31 @@
  * отдельного поля questionId в "Выполнения_Заданий"). Задание должно быть
  * создано в админке ТОЧНО с этим названием, тип "Ручное", "Повторяемое" —
  * иначе кнопка не появится (задание не найдено — тихий skip, не ошибка).
+ *
+ * ИЗМЕНЕНО 19.08.2026 (п.6 бета-фидбека, round 7) — "Вопросы" стал единым
+ * хабом обратной связи. Раньше "Задать общий вопрос"/"Сообщить о проблеме"
+ * жили в profile.js (два похожих, но по-разному называющихся входа) и
+ * "Сообщить о проблеме" уводило на экран "Конкурсы" (deep-link через
+ * sessionStorage) — репорт клиента: "меня перекидывает в конкурсы, и там
+ * никаких предложить нет / почему в конкурсы а не в вопросы". Оба входа
+ * profile.js УДАЛЕНЫ (см. profile.js) — profile.js теперь просто
+ * navigateTo('questions'). Здесь три равноправные кнопки над списком:
+ * "Вопрос" (эта же ask-question-modal, без наград), "Проблема"/"Идея" —
+ * та же механика заданий, что раньше была в contests.js.openProofModal, но
+ * встроена прямо сюда — клиент никогда не покидает "Вопросы" ради этого.
+ * Задания "Баг-репорт"/"Предложение" должны быть заведены в админке ТОЧНО
+ * с этими названиями, тип "Ручное" — иначе кнопка при клике покажет toast
+ * "функция скоро появится", не пытается угадать другое задание.
  */
 const REVIEW_TASK_TITLE = 'Оцени ответ на вопрос';
+const BUG_REPORT_TASK_TITLE = 'Баг-репорт';
+const SUGGESTION_TASK_TITLE = 'Предложение';
 
 window.Screens = window.Screens || {};
 window.Screens.questions = {
   render(root) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои вопросы</h1>';
     document.getElementById('header-actions').innerHTML = `
-      <button id="ask-question-btn" title="Задать вопрос" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="plus-circle" class="w-5 h-5"></i>
-      </button>
       <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -36,6 +50,23 @@ window.Screens.questions = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <!-- Единый хаб обратной связи (19.08.2026, п.6 бета-фидбека) — три
+             равноправных входа, ни один не покидает этот экран. -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <button type="button" id="open-ask-question-btn" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-white border border-gray-100 shadow-sm text-indigo-600">
+            <i data-lucide="help-circle" class="w-4 h-4"></i>
+            <span class="text-[11px] font-medium">Вопрос</span>
+          </button>
+          <button type="button" id="open-bug-report-btn" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-white border border-gray-100 shadow-sm text-indigo-600">
+            <i data-lucide="bug" class="w-4 h-4"></i>
+            <span class="text-[11px] font-medium">Проблема</span>
+          </button>
+          <button type="button" id="open-suggestion-btn" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-white border border-gray-100 shadow-sm text-indigo-600">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+            <span class="text-[11px] font-medium">Идея</span>
+          </button>
+        </div>
+
         <div id="questions-list"></div>
         <div id="empty-message" class="hidden">
           ${buildEmptyState('message-circle', 'Вы ещё не задавали вопросов по заказам.', { label: 'Задать вопрос', btnId: 'empty-ask-question-btn' })}
@@ -61,6 +92,34 @@ window.Screens.questions = {
           <div class="p-4 border-t border-gray-100 flex gap-2">
             <button id="ask-question-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
             <button id="ask-question-send-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка "Проблема"/"Идея" (19.08.2026, п.6) — та же механика, что
+           contests.js's openProofModal (submitTaskProof), встроена сюда,
+           чтобы клиент не покидал "Вопросы". Заголовок/плейсхолдер задаются
+           динамически при открытии, см. openFeedbackTaskModal ниже. -->
+      <div id="feedback-task-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 id="feedback-task-modal-title" class="text-base font-semibold text-gray-900">Отправить</h2>
+            <button id="feedback-task-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p id="feedback-task-modal-description" class="text-xs text-gray-500"></p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Текст или ссылка *</label>
+              <textarea id="feedback-task-text-input" rows="4"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"></textarea>
+            </div>
+          </div>
+          <div id="feedback-task-error-text" class="px-4 text-xs text-red-500 hidden"></div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="feedback-task-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="feedback-task-send-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
           </div>
         </div>
       </div>
@@ -95,7 +154,7 @@ window.Screens.questions = {
       askModal.classList.remove('flex');
     }
 
-    document.getElementById('ask-question-btn').addEventListener('click', openAskModal);
+    document.getElementById('open-ask-question-btn').addEventListener('click', openAskModal);
     document.getElementById('empty-ask-question-btn').addEventListener('click', openAskModal);
     document.getElementById('ask-question-modal-close').addEventListener('click', closeAskModal);
     document.getElementById('ask-question-cancel-btn').addEventListener('click', closeAskModal);
@@ -134,6 +193,8 @@ window.Screens.questions = {
     });
 
     let reviewTask = null; // повторяемое ручное задание "Оцени ответ на вопрос", если заведено
+    let bugReportTask = null; // ручное задание "Баг-репорт", если заведено (кнопка "Проблема")
+    let suggestionTask = null; // ручное задание "Предложение", если заведено (кнопка "Идея")
 
     loadQuestions();
 
@@ -155,6 +216,8 @@ window.Screens.questions = {
           callServer('getTasksList').catch(() => [])
         ]);
         reviewTask = tasks.find(t => t.title === REVIEW_TASK_TITLE && t.type === 'Ручное' && t.repeatable) || null;
+        bugReportTask = tasks.find(t => t.title === BUG_REPORT_TASK_TITLE && t.type === 'Ручное') || null;
+        suggestionTask = tasks.find(t => t.title === SUGGESTION_TASK_TITLE && t.type === 'Ручное') || null;
         render(questions);
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -213,5 +276,72 @@ window.Screens.questions = {
 
       return card;
     }
+
+    // --- Модалка "Проблема"/"Идея" (19.08.2026, п.6) ---
+    // Тот же паттерн, что contests.js's openProofModal (submitTaskProof),
+    // встроенный сюда, чтобы клиент не покидал "Вопросы".
+    const feedbackModal = document.getElementById('feedback-task-modal');
+    const feedbackModalTitle = document.getElementById('feedback-task-modal-title');
+    const feedbackModalDescription = document.getElementById('feedback-task-modal-description');
+    const feedbackTextInput = document.getElementById('feedback-task-text-input');
+    const feedbackErrorText = document.getElementById('feedback-task-error-text');
+    const feedbackSendBtn = document.getElementById('feedback-task-send-btn');
+    let activeFeedbackTask = null;
+
+    const DEFAULT_FEEDBACK_PLACEHOLDER = 'Опишите, что вы сделали — текстом, ссылкой или тем и другим сразу';
+
+    function openFeedbackTaskModal(title, task) {
+      // Задание не заведено в админке (точным названием/типом) — тихий
+      // отказ с объяснением, а не молчание и не переход в неожиданное
+      // место (та же жалоба из п.6: "почему в конкурсы а не в вопросы" —
+      // здесь мы просто остаёмся на месте и говорим прямо).
+      if (!task) {
+        showSaveToast(false, 'Эта функция сейчас недоступна — загляните позже');
+        return;
+      }
+      activeFeedbackTask = task;
+      feedbackModalTitle.textContent = title;
+      feedbackModalDescription.textContent = task.description || '';
+      feedbackTextInput.value = '';
+      feedbackTextInput.placeholder = task.answerHint || DEFAULT_FEEDBACK_PLACEHOLDER;
+      feedbackErrorText.classList.add('hidden');
+      feedbackModal.classList.remove('hidden');
+      feedbackModal.classList.add('flex');
+    }
+    function closeFeedbackTaskModal() {
+      feedbackModal.classList.add('hidden');
+      feedbackModal.classList.remove('flex');
+      activeFeedbackTask = null;
+    }
+
+    document.getElementById('open-bug-report-btn').addEventListener('click', () => openFeedbackTaskModal('Сообщить о проблеме', bugReportTask));
+    document.getElementById('open-suggestion-btn').addEventListener('click', () => openFeedbackTaskModal('Предложить идею', suggestionTask));
+    document.getElementById('feedback-task-modal-close').addEventListener('click', closeFeedbackTaskModal);
+    document.getElementById('feedback-task-cancel-btn').addEventListener('click', closeFeedbackTaskModal);
+
+    feedbackSendBtn.addEventListener('click', async () => {
+      if (feedbackSendBtn.disabled) return;
+      feedbackErrorText.classList.add('hidden');
+      const text = feedbackTextInput.value.trim();
+      if (text === '') {
+        feedbackErrorText.textContent = 'Добавьте текст или ссылку.';
+        feedbackErrorText.classList.remove('hidden');
+        return;
+      }
+      if (!activeFeedbackTask) return;
+
+      feedbackSendBtn.disabled = true;
+      try {
+        await callServer('submitTaskProof', activeFeedbackTask.taskId, text);
+        const rewardNote = activeFeedbackTask.reward > 0 ? ` (+${activeFeedbackTask.reward} сов после проверки)` : '';
+        closeFeedbackTaskModal();
+        showSaveToast(true, `Отправлено на проверку${rewardNote}`);
+      } catch (error) {
+        feedbackErrorText.textContent = error.message;
+        feedbackErrorText.classList.remove('hidden');
+      } finally {
+        feedbackSendBtn.disabled = false;
+      }
+    });
   }
 };

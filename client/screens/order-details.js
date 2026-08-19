@@ -415,7 +415,13 @@ window.Screens.orderDetails = {
       questionCounter.textContent = `${e.target.value.length}/300`;
     });
 
-    document.getElementById('question-send-btn').addEventListener('click', async () => {
+    const questionSendBtn = document.getElementById('question-send-btn');
+    questionSendBtn.addEventListener('click', async () => {
+      // ИСПРАВЛЕНО 19.08.2026 (аудит интерфейса) — единственная кнопка
+      // записи в этом файле без блокировки на время запроса (соседняя
+      // "Сообщить об оплате" её уже имела) — последний живой пробел в
+      // fail-safe чек-листе двойного тапа (frontend-contract.md, п.1).
+      if (questionSendBtn.disabled) return;
       const text = questionTextInput.value.trim();
       questionErrorText.classList.add('hidden');
       document.getElementById('question-rate-limit-banner').classList.add('hidden');
@@ -428,6 +434,7 @@ window.Screens.orderDetails = {
 
       const requestId = generateRequestId();
 
+      questionSendBtn.disabled = true;
       try {
         await callServer('submitOrderQuestion', currentOrderId, text, requestId);
         closeQuestionModal();
@@ -441,6 +448,8 @@ window.Screens.orderDetails = {
           questionErrorText.textContent = error.message;
           questionErrorText.classList.remove('hidden');
         }
+      } finally {
+        questionSendBtn.disabled = false;
       }
     });
 

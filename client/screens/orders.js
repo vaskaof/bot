@@ -212,11 +212,13 @@ window.Screens.orders = {
         sovHtml = sov.accrued
           ? `<div class="text-[11px] text-amber-600 mt-1">🎟️ ${sov.amount} сов начислено</div>`
           : `<div class="text-[11px] text-gray-400 mt-1">🎟️ +${sov.amount} сов при полной оплате</div>`;
-        // Пояснение прямо у записи о совах (19.08.2026, round 5) — только
-        // если курс успел загрузиться (sovyRateInfo, см. loadOrders выше);
-        // без него молча пропускаем пояснение, сама строка с суммой не зависит от него.
+        // Пояснение прямо у записи о совах (19.08.2026, round 5 — расположение;
+        // round 7 — buildSovyOrderNote удалена, полный канонический текст
+        // buildSovyHelpBodyFull теперь везде, см. common.js) — только если
+        // курс успел загрузиться (sovyRateInfo, см. loadOrders выше); без
+        // него молча пропускаем пояснение, сама строка с суммой не зависит от него.
         if (sovyRateInfo) {
-          sovHtml += inlineExpand('Как начисляются?', buildSovyOrderNote(sovyRateInfo));
+          sovHtml += inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo));
         }
       }
 

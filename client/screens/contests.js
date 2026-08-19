@@ -14,9 +14,17 @@
  * Пояснение про совы (19.08.2026, round 5) — раньше здесь была общая
  * иконка "?" в шапке, VASY отклонил это решение: пояснение должно жить
  * рядом с конкретной "записью" о совах, не в шапке. Здесь такая запись —
- * строка "+N сов" на карточке задания (см. buildTaskCard) — там теперь
- * inlineExpand() с контекстным текстом (common.js:buildSovyTaskNote), без
- * живых чисел курса (сумма награды уже видна в самой карточке).
+ * строка "+N сов" на карточке задания (см. buildTaskCard) — inlineExpand()
+ * рядом с ней.
+ *
+ * ИЗМЕНЕНО 19.08.2026 (round 7, репорт клиента) — round 5 нарочно не
+ * запрашивал getReferralInfo здесь (buildSovyTaskNote() был статичным
+ * текстом без живых цифр, "сумма награды уже видна в карточке"), но VASY
+ * подтвердил, что клиент должен иметь возможность ПОЛНОСТЬЮ изучить
+ * механику с любой страницы — не только "когда начислится", но и весь
+ * текст buildSovyHelpBodyFull (курс, рефералка, билеты). Экран снова
+ * запрашивает getReferralInfo (тем же необязательным, не блокирующим
+ * список заданий образом, что orders.js) — см. sovyRateInfo ниже.
  */
 window.Screens = window.Screens || {};
 window.Screens.contests = {
@@ -52,8 +60,7 @@ window.Screens.contests = {
             <div>
               <label class="text-xs font-medium text-gray-500">Текст или ссылка *</label>
               <textarea id="proof-text-input" rows="4"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
-                placeholder="Например: ссылка на пост с отзывом"></textarea>
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"></textarea>
             </div>
           </div>
           <div id="proof-error-text" class="px-4 text-xs text-red-500 hidden"></div>
@@ -89,6 +96,11 @@ window.Screens.contests = {
     let reloadAll = null;
     let submittingTaskId = null;
     let boardLotteryId = null;
+    // Курс сов/билетов для полного пояснения на карточке задания (round 7,
+    // см. комментарий вверху файла) — грузится параллельно со списком
+    // заданий, не блокирует его; сбой (сеть/ошибка) не должен ронять сам
+    // список — buildTaskCard просто не покажет пояснение, если это null.
+    let sovyRateInfo = null;
 
     const tasksList = document.getElementById('tasks-list');
     const emptyMessage = document.getElementById('empty-message');
@@ -215,7 +227,15 @@ window.Screens.contests = {
     async function loadTasks() {
       tasksList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const tasks = await callServer('getTasksList');
+        // Курс сов/билетов грузится ПАРАЛЛЕЛЬНО со списком заданий, в одном
+        // Promise.all (тот же приём, что orders.js) — чтобы sovyRateInfo был
+        // готов ДО первой отрисовки карточек, не догоняющим patch'ем после.
+        // Сбой курса не должен ронять список заданий (.catch(() => null)).
+        const [tasks, referralInfo] = await Promise.all([
+          callServer('getTasksList'),
+          callServer('getReferralInfo').catch(() => null)
+        ]);
+        sovyRateInfo = referralInfo;
         renderTasks(tasks);
       } catch (error) {
         tasksList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -232,24 +252,6 @@ window.Screens.contests = {
       tasks.forEach(t => tasksList.appendChild(buildTaskCard(t)));
       wireInlineExpand(tasksList);
       if (window.lucide) window.lucide.createIcons();
-      openDeepLinkedTaskIfAny(tasks);
-    }
-
-    // 17.08.2026 (репорт VASY) — "Сообщить о проблеме" в Профиле раньше
-    // открывало отдельную форму без награды, дублируя задание "Баг-репорт".
-    // Теперь profile.js просто помечает нужный заголовок задания и переходит
-    // сюда; клиентский route (`router.js`) параметров не передаёт — используем
-    // тот же lightweight sessionStorage-паттерн, что и `knopka_welcome_seen`
-    // (news.js), только session-scoped, а не постоянный. Задание не найдено
-    // (не заведено в админке/название разошлось) — тихий skip, тот же принцип,
-    // что REVIEW_TASK_TITLE в questions.js.
-    function openDeepLinkedTaskIfAny(tasks) {
-      let title;
-      try { title = sessionStorage.getItem('knopka_open_task_title'); } catch (e) { return; }
-      if (!title) return;
-      try { sessionStorage.removeItem('knopka_open_task_title'); } catch (e) { /* не критично */ }
-      const task = tasks.find(t => t.title === title && t.type === 'Ручное');
-      if (task) openProofModal(task);
     }
 
     function buildTaskCard(t) {
@@ -270,7 +272,7 @@ window.Screens.contests = {
         </div>
         ${t.description ? `<div class="text-[13px] text-gray-500 mt-1">${escapeHtmlClient(t.description)}</div>` : ''}
         <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} сов</div>
-        <div class="mt-1">${inlineExpand('Как это работает?', buildSovyTaskNote())}</div>
+        <div class="mt-1">${sovyRateInfo ? inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo)) : ''}</div>
       `;
 
       // Повторяемые задания (баг-репорт и т.п.) — кнопка отправки доступна
@@ -296,9 +298,20 @@ window.Screens.contests = {
     const proofTextInput = document.getElementById('proof-text-input');
     const proofErrorText = document.getElementById('proof-error-text');
 
+    // Нейтральный дефолт (19.08.2026, п.5 бета-фидбека) — раньше здесь
+    // всегда стоял один захардкоженный пример ("ссылка на пост с отзывом")
+    // независимо от задания, из-за чего пример по смыслу мог не совпадать
+    // с самим заданием ("Что значит ссылка на пост с отзывом" — репорт
+    // клиента про задание, никак не связанное с отзывами). Теперь —
+    // t.answerHint, если админ его заполнил под конкретное задание
+    // (см. admin/screens/contests.js), иначе нейтральная инструкция,
+    // подходящая любому типу задания.
+    const DEFAULT_PROOF_PLACEHOLDER = 'Опишите, что вы сделали — текстом, ссылкой или тем и другим сразу';
+
     function openProofModal(task) {
       submittingTaskId = task.taskId;
       proofTextInput.value = '';
+      proofTextInput.placeholder = task.answerHint || DEFAULT_PROOF_PLACEHOLDER;
       proofErrorText.classList.add('hidden');
       document.getElementById('proof-modal-title').textContent = task.title;
       document.getElementById('proof-modal-description').textContent = task.description || '';
