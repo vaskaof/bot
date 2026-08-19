@@ -360,6 +360,23 @@ window.Screens.wishlist = {
       performLinkResolve(url);
     });
 
+    // Пункт "Добавить вручную" ВНУТРИ выпадашки поиска — репорт VASY (беты
+    // день 1, п.3): при непустых результатах поиска dropdown (position:
+    // absolute, см. app.html) перекрывает собой кнопку switch-to-manual-btn,
+    // стоящую статично сразу под полем поиска — она физически не видна,
+    // пока список открыт. Добавляем тот же переход последним пунктом внутри
+    // самой выпадашки, всегда видимым без скролла мимо неё.
+    function appendManualDropdownOption() {
+      const li = document.createElement('li');
+      li.className = 'p-3 cursor-pointer hover:bg-indigo-50 flex items-center gap-1.5 text-indigo-600 text-sm font-medium border-t border-gray-100 sticky bottom-0 bg-white';
+      li.innerHTML = '<i data-lucide="plus-circle" class="w-4 h-4"></i><span>Не нашли? Добавить вручную</span>';
+      li.addEventListener('click', () => {
+        itemSearchDropdown.classList.remove('active');
+        document.getElementById('switch-to-manual-btn').click();
+      });
+      itemSearchDropdown.appendChild(li);
+    }
+
     // Автокомплит поиска по каталогу — тот же паттерн debounce/dropdown, что в edit-order.html
     const handleItemSearch = debounce(async (e) => {
       const query = e.target.value.trim();
@@ -385,6 +402,8 @@ window.Screens.wishlist = {
           itemSearchDropdown.appendChild(li);
         });
       }
+      appendManualDropdownOption();
+      if (window.lucide) window.lucide.createIcons();
       itemSearchDropdown.classList.add('active');
     }, 300);
     itemSearch.addEventListener('input', handleItemSearch);
