@@ -256,24 +256,26 @@ window.Screens.questions = {
       `;
 
       if (q.status === 'Отвечено' && reviewTask) {
+        // ИСПРАВЛЕНО 19.08.2026 — раньше здесь стоял нативный prompt(),
+        // единственный в приложении на момент первого аудита: чужеродный
+        // системный диалог внутри Telegram WebView, без счётчика символов
+        // и стиля остального приложения (см. память feedback_reguirements_
+        // gathering-style аудита). Переиспользует ту же модалку "Проблема"/
+        // "Идея" (openFeedbackTaskModal) — тот же submitTaskProof, просто с
+        // description/textPrefix под этот сценарий (см. JSDoc выше). VASY
+        // подтвердил: отзыв остаётся именно здесь, в "Вопросы" (форма
+        // обратной связи сразу после получения ответа), и совы за него
+        // платятся — это не менялось, чинится только сам UI ввода текста.
         const reviewBtn = document.createElement('button');
         reviewBtn.type = 'button';
         reviewBtn.className = 'mt-2 w-full py-2 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-medium';
         reviewBtn.textContent = `Оставить отзыв на ответ (+${reviewTask.reward} сов)`;
-        reviewBtn.addEventListener('click', async () => {
-          const reviewText = (prompt('Что скажете об ответе менеджера? Было ли уведомление понятным, ответ полезным, что улучшить:', '') || '').trim();
-          if (reviewText === '') return;
-          if (reviewBtn.disabled) return;
-          reviewBtn.disabled = true;
-          try {
-            const questionRef = q.text ? q.text.slice(0, 60) : q.productDisplay;
-            await callServer('submitTaskProof', reviewTask.taskId, `[Вопрос: "${questionRef}"] ${reviewText}`);
-            showSaveToast(true, 'Спасибо за отзыв! Отправлен на проверку.');
-          } catch (error) {
-            showSaveToast(false, `Не удалось отправить: ${error.message}`);
-          } finally {
-            reviewBtn.disabled = false;
-          }
+        reviewBtn.addEventListener('click', () => {
+          const questionRef = q.text ? q.text.slice(0, 60) : q.productDisplay;
+          openFeedbackTaskModal('Отзыв на ответ менеджера', reviewTask, {
+            description: 'Было ли уведомление понятным, ответ полезным, что улучшить?',
+            textPrefix: `[Вопрос: "${questionRef}"] `
+          });
         });
         card.appendChild(reviewBtn);
       }
@@ -291,10 +293,23 @@ window.Screens.questions = {
     const feedbackErrorText = document.getElementById('feedback-task-error-text');
     const feedbackSendBtn = document.getElementById('feedback-task-send-btn');
     let activeFeedbackTask = null;
+    let activeFeedbackTextPrefix = ''; // см. openFeedbackTaskModal opts.textPrefix ниже
 
     const DEFAULT_FEEDBACK_PLACEHOLDER = 'Опишите, что вы сделали — текстом, ссылкой или тем и другим сразу';
 
-    function openFeedbackTaskModal(title, task) {
+    /**
+     * @param {string} title Заголовок модалки
+     * @param {Object|null} task Задание (getTasksList item) или null, если не заведено
+     * @param {{description?: string, textPrefix?: string}} [opts]
+     *   `description` — переопределяет текст задания (когда сама модалка
+     *   переиспользуется для другого сценария — см. вызов ниже для отзыва
+     *   на ответ, где нужен свой вопрос, а не описание задания "Оцени
+     *   ответ на вопрос"). `textPrefix` — подставляется ПЕРЕД текстом
+     *   клиента при отправке (см. submitTaskProof ниже) — используется,
+     *   чтобы связать заявку с конкретным вопросом (нет отдельного поля
+     *   questionId в "Выполнения_Заданий", см. заголовок файла).
+     */
+    function openFeedbackTaskModal(title, task, opts) {
       // Задание не заведено в админке (точным названием/типом) — тихий
       // отказ с объяснением, а не молчание и не переход в неожиданное
       // место (та же жалоба из п.6: "почему в конкурсы а не в вопросы" —
@@ -303,9 +318,11 @@ window.Screens.questions = {
         showSaveToast(false, 'Эта функция сейчас недоступна — загляните позже');
         return;
       }
+      opts = opts || {};
       activeFeedbackTask = task;
+      activeFeedbackTextPrefix = opts.textPrefix || '';
       feedbackModalTitle.textContent = title;
-      feedbackModalDescription.textContent = task.description || '';
+      feedbackModalDescription.textContent = opts.description !== undefined ? opts.description : (task.description || '');
       feedbackTextInput.value = '';
       feedbackTextInput.placeholder = task.answerHint || DEFAULT_FEEDBACK_PLACEHOLDER;
       feedbackErrorText.classList.add('hidden');
@@ -316,6 +333,7 @@ window.Screens.questions = {
       feedbackModal.classList.add('hidden');
       feedbackModal.classList.remove('flex');
       activeFeedbackTask = null;
+      activeFeedbackTextPrefix = '';
     }
 
     document.getElementById('open-bug-report-btn').addEventListener('click', () => openFeedbackTaskModal('Сообщить о проблеме', bugReportTask));
@@ -336,7 +354,7 @@ window.Screens.questions = {
 
       feedbackSendBtn.disabled = true;
       try {
-        await callServer('submitTaskProof', activeFeedbackTask.taskId, text);
+        await callServer('submitTaskProof', activeFeedbackTask.taskId, activeFeedbackTextPrefix + text);
         const rewardNote = activeFeedbackTask.reward > 0 ? ` (+${activeFeedbackTask.reward} сов после проверки)` : '';
         closeFeedbackTaskModal();
         showSaveToast(true, `Отправлено на проверку${rewardNote}`);
