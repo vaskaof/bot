@@ -215,6 +215,11 @@ window.Screens.orderDetails = {
         }
         sovBox.innerHTML = sovHtml;
         sovBox.classList.remove('hidden');
+        // Кнопка рендерится через inlineExpand() выше, но клик на неё не
+        // работает сам по себе — нужен wireInlineExpand() (тот же вызов,
+        // что orders.js делает после вставки карточек). Забыл при первой
+        // правке (репорт VASY: "строка появилась, но не раскрывается").
+        wireInlineExpand(sovBox);
       } else {
         sovBox.classList.add('hidden');
       }
