@@ -11,7 +11,6 @@ window.Screens.orders = {
   render(root, context) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои заказы</h1>';
     document.getElementById('header-actions').innerHTML = `
-      ${helpIcon(SOVY_HELP_TITLE, '<p>Загрузка…</p>', { header: true })}
       <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -70,6 +69,13 @@ window.Screens.orders = {
     const sortSelect = document.getElementById('orders-sort');
 
     let allOrders = [];
+    // Курс сов/билетов — нужен ДО построения карточек (19.08.2026, round 5):
+    // пояснение теперь живёт прямо на карточке заказа, рядом со строкой
+    // "N сов начислено", не иконкой "?" в шапке — см. buildCard/inlineExpand
+    // ниже. Получается в loadOrders() параллельно со списком заказов, не
+    // отдельным поздним запросом, чтобы карточки сразу рендерились с готовым
+    // пояснением, без догоняющего patch после первой отрисовки.
+    let sovyRateInfo = null;
 
     const STAGE_LABELS = {
       'Основная': 'Основная оплата',
@@ -86,16 +92,6 @@ window.Screens.orders = {
     // заказа) — отдельный, не блокирующий запрос: список заказов должен
     // открыться нормально, даже если этот запрос упадёт.
     callServer('getMyPaymentsRollup').then(renderPriorityRollup).catch(() => {});
-
-    // Подсказка "?" про сов/билеты (19.08.2026, п.2 бета-фидбека) — тот же
-    // общий текст, что на Профиле/Конкурсах (common.js:buildSovyHelpBody),
-    // этот экран уже показывает "+N сов при полной оплате" на карточке
-    // заказа без объяснения, что это вообще такое. Отдельный некритичный
-    // запрос — список заказов открывается нормально, даже если он упадёт.
-    callServer('getReferralInfo').then((info) => {
-      const helpBtn = document.getElementById('header-actions').querySelector('.help-icon-btn');
-      if (helpBtn) helpBtn.setAttribute('data-help-body', escapeHtmlClient(buildSovyHelpBody(info)));
-    }).catch(() => {});
 
     function renderPriorityRollup(rollup) {
       const card = document.getElementById('priority-rollup-card');
@@ -128,7 +124,19 @@ window.Screens.orders = {
       activeList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       completedList.innerHTML = '';
       try {
-        allOrders = await callServer('getClientOrdersList');
+        // Курс сов грузится ПАРАЛЛЕЛЬНО со списком заказов, не блокирует его
+        // отдельно — но одним Promise.all с ним же, чтобы к моменту первой
+        // отрисовки карточек пояснение уже было готово (см. sovyRateInfo
+        // выше). Сбой курса НЕ должен ронять список заказов — если
+        // getReferralInfo упал, sovyRateInfo остаётся null, карточки просто
+        // не покажут пояснение (buildCard это учитывает), список заказов
+        // всё равно открывается.
+        const [orders, referralInfo] = await Promise.all([
+          callServer('getClientOrdersList'),
+          callServer('getReferralInfo').catch(() => null)
+        ]);
+        allOrders = orders;
+        sovyRateInfo = referralInfo;
         render();
       } catch (error) {
         activeList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -181,6 +189,8 @@ window.Screens.orders = {
       completedList.innerHTML = '';
       completed.forEach(o => completedList.appendChild(buildCard(o)));
 
+      wireInlineExpand(activeList);
+      wireInlineExpand(completedList);
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -202,6 +212,12 @@ window.Screens.orders = {
         sovHtml = sov.accrued
           ? `<div class="text-[11px] text-amber-600 mt-1">🎟️ ${sov.amount} сов начислено</div>`
           : `<div class="text-[11px] text-gray-400 mt-1">🎟️ +${sov.amount} сов при полной оплате</div>`;
+        // Пояснение прямо у записи о совах (19.08.2026, round 5) — только
+        // если курс успел загрузиться (sovyRateInfo, см. loadOrders выше);
+        // без него молча пропускаем пояснение, сама строка с суммой не зависит от него.
+        if (sovyRateInfo) {
+          sovHtml += inlineExpand('Как начисляются?', buildSovyOrderNote(sovyRateInfo));
+        }
       }
 
       card.innerHTML = `

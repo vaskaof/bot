@@ -27,14 +27,8 @@
 window.Screens = window.Screens || {};
 window.Screens.profile = {
   render(root) {
-    // Текст подсказки "?" — общая функция buildSovyHelpBody (common.js, 19.08.2026,
-    // п.2 бета-фидбека). Живые числа приходят асинхронно вместе с getReferralInfo
-    // (loadReferralInfo ниже) — кнопка рендерится сразу с плейсхолдером, атрибуты
-    // data-help-* обновляются на месте, когда данные придут (клик читает их в
-    // момент клика, не в момент рендера — см. common.js's делегированный обработчик).
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Профиль</h1>';
     document.getElementById('header-actions').innerHTML = `
-      ${helpIcon(SOVY_HELP_TITLE, '<p>Загрузка…</p>', { header: true })}
       <button id="refresh-btn" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -69,7 +63,7 @@ window.Screens.profile = {
           <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 mt-3">
             <span>🎟️</span><span>Билеты: <span id="tickets-count">0</span></span>
           </div>
-          <div class="text-[11px] text-gray-400 mt-2">100 Сов = 1 Билет для лотерей с ячейками — подробнее по «?» в шапке</div>
+          <div id="sovy-help-slot" class="mt-2"></div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -216,9 +210,15 @@ window.Screens.profile = {
         document.getElementById('sovy-progress-bar').style.width = `${info.balance.sovyProgress}%`;
         document.getElementById('tickets-count').textContent = info.balance.tickets;
 
-        // Живые числа подъехали — обновляем уже отрисованную кнопку "?" на месте.
-        const helpBtn = document.getElementById('header-actions').querySelector('.help-icon-btn');
-        if (helpBtn) helpBtn.setAttribute('data-help-body', escapeHtmlClient(buildSovyHelpBody(info)));
+        // Живые числа подъехали — заполняем слот пояснения прямо в карточке
+        // баланса (19.08.2026, round 5: VASY отклонил прошлый вариант с
+        // иконкой "?" в шапке — пояснение должно жить там, где сама запись
+        // про совы, здесь это и есть карточка "Совы"). bodyHtml собирается
+        // и сразу попадает в innerHTML — экранировать нечего, см. JSDoc
+        // inlineExpand в common.js.
+        const helpSlot = document.getElementById('sovy-help-slot');
+        helpSlot.innerHTML = inlineExpand('Как устроены Совы и Билеты?', buildSovyHelpBodyFull(info));
+        wireInlineExpand(helpSlot);
 
         const referralText = document.getElementById('referral-text');
         const referralInput = document.getElementById('referral-link-input');

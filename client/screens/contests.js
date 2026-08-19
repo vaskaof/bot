@@ -9,21 +9,20 @@
  *
  * Баланс сов/билетов + рефералка ПЕРЕНЕСЕНЫ на новый экран "Профиль"
  * (Подфаза 3.1+3.2 client_display_overhaul, 12.08.2026) — этот экран теперь
- * только лотереи/задания. Помощь по «?» оставлена — билеты по-прежнему
- * тратятся именно здесь (бронь ячеек лотерей Тип1).
+ * только лотереи/задания.
+ *
+ * Пояснение про совы (19.08.2026, round 5) — раньше здесь была общая
+ * иконка "?" в шапке, VASY отклонил это решение: пояснение должно жить
+ * рядом с конкретной "записью" о совах, не в шапке. Здесь такая запись —
+ * строка "+N сов" на карточке задания (см. buildTaskCard) — там теперь
+ * inlineExpand() с контекстным текстом (common.js:buildSovyTaskNote), без
+ * живых чисел курса (сумма награды уже видна в самой карточке).
  */
 window.Screens = window.Screens || {};
 window.Screens.contests = {
   render(root) {
-    // Текст подсказки "?" — общая функция buildSovyHelpBody (common.js, 19.08.2026,
-    // п.2 бета-фидбека) — заменила зашитый текст, задублированный с profile.js
-    // (расходился с реальностью, когда "Сов_За_Билет" стало редактируемым в
-    // админке 18.08.2026). Живые числа этот экран получает своим отдельным
-    // вызовом getReferralInfo (баланс/ссылку из ответа не использует — только
-    // ради 4 полей курса/наград, тот же метод, что уже дёргает profile.js).
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Конкурсы</h1>';
     document.getElementById('header-actions').innerHTML = `
-      ${helpIcon(SOVY_HELP_TITLE, '<p>Загрузка…</p>', { header: true })}
       <button id="refresh-btn" title="Обновить" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
@@ -109,17 +108,7 @@ window.Screens.contests = {
     });
 
     async function loadAll() {
-      await Promise.all([loadTasks(), loadLotteries(), loadSovyHelp()]);
-    }
-
-    async function loadSovyHelp() {
-      try {
-        const info = await callServer('getReferralInfo');
-        const helpBtn = document.getElementById('header-actions').querySelector('.help-icon-btn');
-        if (helpBtn) helpBtn.setAttribute('data-help-body', escapeHtmlClient(buildSovyHelpBody(info)));
-      } catch (error) {
-        console.error('getReferralInfo (подсказка "?"):', error.message);
-      }
+      await Promise.all([loadTasks(), loadLotteries()]);
     }
 
     async function loadLotteries() {
@@ -241,6 +230,7 @@ window.Screens.contests = {
       }
       emptyMessage.classList.add('hidden');
       tasks.forEach(t => tasksList.appendChild(buildTaskCard(t)));
+      wireInlineExpand(tasksList);
       if (window.lucide) window.lucide.createIcons();
       openDeepLinkedTaskIfAny(tasks);
     }
@@ -280,6 +270,7 @@ window.Screens.contests = {
         </div>
         ${t.description ? `<div class="text-[13px] text-gray-500 mt-1">${escapeHtmlClient(t.description)}</div>` : ''}
         <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} сов</div>
+        <div class="mt-1">${inlineExpand('Как это работает?', buildSovyTaskNote())}</div>
       `;
 
       // Повторяемые задания (баг-репорт и т.п.) — кнопка отправки доступна
