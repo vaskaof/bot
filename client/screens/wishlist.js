@@ -449,10 +449,15 @@ window.Screens.wishlist = {
       // _sku-modal.js.
       itemModalSaveBtn.disabled = true;
       try {
+        // Атомарный update вместо delete+add (20.08.2026, находка в бэклоге
+        // аудита — старый delete+add путь мог тихо и НАВСЕГДА стоить клиенту
+        // уже заработанную сову за "⭐ Добавь куклу в вишлист" при обычном
+        // редактировании текста, см. wishlistService.updateWishlistItem).
         if (editingWishlistId) {
-          await callServer('deleteWishlistItem', editingWishlistId);
+          await callServer('updateWishlistItem', editingWishlistId, payload);
+        } else {
+          await callServer('addWishlistItem', payload);
         }
-        await callServer('addWishlistItem', payload);
         closeItemModal();
         showSaveToast(true, editingWishlistId ? 'Позиция обновлена' : 'Добавлено в вишлист');
         if (reloadWishlist) reloadWishlist();
