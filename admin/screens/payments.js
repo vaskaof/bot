@@ -1063,17 +1063,20 @@ window.Screens.payments = {
       });
 
       card.querySelector('.approve-claim-btn').addEventListener('click', async (e) => {
-        // ИСПРАВЛЕНО 20.08.2026 (репорт VASY — "Одобрить"/"Отклонить" не
-        // срабатывали вообще, без единого сообщения об ошибке): await
-        // showConfirmModal(...) раньше стоял ВНЕ try/catch — если модалка
-        // по любой причине падала (например, `TypeError` внутри неё), это
-        // становилось необработанным отказом промиса — клик выглядел так,
-        // будто вообще ничего не произошло, ни тоста, ни ошибки в интерфейсе.
-        // Теперь весь обработчик целиком под try/catch, любая ошибка (в т.ч.
-        // из самой модалки) обязана дойти до showSaveToast.
+        // ИСПРАВЛЕНО 20.08.2026, round 2 (репорт VASY — модалка появляется,
+        // жмёшь OK, дальше тишина, даже с прошлым фиксом try/catch): НАСТОЯЩАЯ
+        // причина — `e.currentTarget` в нативном DOM Event обнуляется
+        // браузером сразу после завершения синхронной фазы обработки клика,
+        // т.е. СРАЗУ после первого `await`. Код обращался к `e.currentTarget`
+        // и в успешной ветке, и в catch — оба обращения кидали
+        // `TypeError: Cannot set properties of null`, ВТОРОЙ раз уже прямо
+        // внутри catch, что и делало прошлый фикс бесполезным (исключение из
+        // catch необработано, showSaveToast так и не вызывался). Берём
+        // ссылку на кнопку ДО первого await, используем только её.
+        const btn = e.currentTarget;
         try {
           if (!(await showConfirmModal(`Одобрить заявку и записать платёж ${money(c.amountRub)} ₽ ${scopeLabel}?`, { confirmLabel: 'Одобрить' }))) return;
-          e.currentTarget.disabled = true;
+          btn.disabled = true;
           const result = await callServer('approvePaymentClaim', c.id);
           // earmarkFailed (money-gate Review, 12.08.2026) — платёж уже реально
           // записан в пул (деньги не потеряны), но авто-закрепление за
@@ -1087,14 +1090,15 @@ window.Screens.payments = {
           loadClaims();
           if (currentClient && currentClient.telegramId === c.clientTelegramId) await loadClientData();
         } catch (error) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           showSaveToast(false, `Не удалось одобрить: ${error.message}`);
         }
       });
 
       card.querySelector('.reject-claim-btn').addEventListener('click', async (e) => {
-        // Тот же фикс, что у "Одобрить" выше — showPromptModal тоже теперь
-        // внутри try/catch.
+        // Тот же фикс, что у "Одобрить" выше — ссылка на кнопку берётся ДО
+        // await, не через e.currentTarget после него.
+        const btn = e.currentTarget;
         try {
           // ИСПРАВЛЕНО заодно (найдено рядом, тот же клик) — cancel из
           // showPromptModal резолвится `null` (её собственный контракт, см.
@@ -1104,12 +1108,12 @@ window.Screens.payments = {
           // передумать.
           const comment = await showPromptModal('Причина отклонения (необязательно):', { defaultValue: '' });
           if (comment === null) return;
-          e.currentTarget.disabled = true;
+          btn.disabled = true;
           await callServer('rejectPaymentClaim', c.id, comment);
           showSaveToast(true, 'Заявка отклонена');
           loadClaims();
         } catch (error) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           showSaveToast(false, `Не удалось отклонить: ${error.message}`);
         }
       });
