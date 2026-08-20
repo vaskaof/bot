@@ -93,6 +93,30 @@ window.Screens.collectives = {
             </div>
 
             <div id="detail-error-text" class="text-xs text-red-500 hidden"></div>
+
+            <div class="pt-3 border-t border-gray-100">
+              <label class="text-xs font-medium text-gray-500 flex items-center gap-1">Сверка логистики${helpIcon('Что такое сверка логистики', '<p>Разбивает факт. расход на доставку коллективки (СДЭК + такси КЗ + такси РФ) между заказами и сравнивает с тем, что было заранее оценено при создании каждого заказа.</p><p>Разница записывается в финансовый леджер. Повторное сохранение исправляет уже записанную сверку, не дублирует её.</p>')}</label>
+              <div class="grid grid-cols-3 gap-2 mt-1">
+                <div>
+                  <label class="text-[10px] text-gray-400">СДЭК, ₽</label>
+                  <input type="number" id="logistics-sdek" min="0" step="0.01" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-400">Такси КЗ, ₽</label>
+                  <input type="number" id="logistics-taxi-kz" min="0" step="0.01" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-400">Такси РФ, ₽</label>
+                  <input type="number" id="logistics-taxi-rf" min="0" step="0.01" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+                </div>
+              </div>
+              <div class="text-[11px] text-gray-500 mt-1.5">Итого факт. расход: <span id="logistics-total" class="font-medium text-gray-700">0</span> ₽</div>
+
+              <div id="logistics-shares-list" class="mt-2 space-y-2"></div>
+
+              <button id="logistics-save-btn" class="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить сверку</button>
+              <div id="logistics-error-text" class="text-xs text-red-500 hidden mt-1.5"></div>
+            </div>
           </div>
           <div class="p-4 border-t border-gray-100">
             <button id="detail-delete-btn" class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium">Удалить коллективку</button>
@@ -219,6 +243,9 @@ window.Screens.collectives = {
         detailTrack.value = details.trackNumber;
         renderStatusOptions(details.status);
         renderOrdersList(details.orders);
+        // Своя секция, свой try/catch внутри (loadLogisticsSection) — сбой
+        // загрузки сверки не должен ронять остальную, уже загруженную модалку.
+        await loadLogisticsSection(collectiveId);
       } catch (error) {
         detailErrorText.textContent = error.message;
         detailErrorText.classList.remove('hidden');
@@ -256,6 +283,7 @@ window.Screens.collectives = {
             await callServer('unassignOrderFromCollective', o.orderId);
             const details = await callServer('getCollectiveDetails', currentDetailId);
             renderOrdersList(details.orders);
+            loadLogisticsSection(currentDetailId); // состав заказов сменился — сверка тоже должна обновиться
             loadCollectives();
           } catch (error) {
             showSaveToast(false, 'Не удалось отвязать заказ: ' + error.message);
@@ -265,6 +293,212 @@ window.Screens.collectives = {
       });
       if (window.lucide) window.lucide.createIcons();
     }
+
+    // --- Сверка логистики (21.08.2026) — сумма факт. расхода (СДЭК/такси КЗ/
+    // такси РФ) разбивается между заказами коллективки взаимосвязанными
+    // ползунками (сумма долей всегда 100% — перетягивание одного пропорционально
+    // подстраивает остальные), с живым предпросмотром разницы к уже учтённой
+    // оценке ДО сохранения. Пересчёт при движении ползунка/вводе суммы — чисто
+    // на фронте (не ходит на сервер), сервер — только на "Сохранить сверку".
+    let logisticsOrders = []; // [{orderId, productDisplay, clientDisplay, alreadyEstimated, lastShare}]
+    let logisticsShares = []; // [{orderId, percent}], параллельно logisticsOrders
+
+    function round1(v) { return Math.round(v * 10) / 10; }
+
+    // Последний элемент "прочих" гасит погрешность округления — сумма долей
+    // всегда РОВНО 100, без дрейфа на десятые доли процента.
+    function normalizeSharesSum(shares) {
+      if (shares.length === 0) return;
+      const sumExceptLast = shares.slice(0, -1).reduce((s, x) => s + x.percent, 0);
+      shares[shares.length - 1].percent = round1(100 - sumExceptLast);
+    }
+
+    async function loadLogisticsSection(collectiveId) {
+      const sdekInput = document.getElementById('logistics-sdek');
+      const taxiKzInput = document.getElementById('logistics-taxi-kz');
+      const taxiRfInput = document.getElementById('logistics-taxi-rf');
+      const listContainer2 = document.getElementById('logistics-shares-list');
+
+      try {
+        const context = await callServer('getCollectiveLogisticsContext', collectiveId);
+        logisticsOrders = context.orders;
+
+        const costs = context.actualLogisticsCosts || { sdekCost: 0, taxiKzCost: 0, taxiRfCost: 0 };
+        sdekInput.value = costs.sdekCost || '';
+        taxiKzInput.value = costs.taxiKzCost || '';
+        taxiRfInput.value = costs.taxiRfCost || '';
+
+        if (logisticsOrders.length === 0) {
+          logisticsShares = [];
+          listContainer2.innerHTML = '<div class="text-xs text-gray-400 py-1">Нет заказов для сверки</div>';
+          document.getElementById('logistics-save-btn').disabled = true;
+          updateLogisticsPreview();
+          return;
+        }
+        document.getElementById('logistics-save-btn').disabled = false;
+
+        const totalCost = (costs.sdekCost || 0) + (costs.taxiKzCost || 0) + (costs.taxiRfCost || 0);
+        if (totalCost > 0) {
+          // Сверка уже проводилась — восстанавливаем доли, которые дали
+          // именно lastShare при том totalCost (предзаполнение для правки).
+          logisticsShares = logisticsOrders.map(o => ({ orderId: o.orderId, percent: round1((o.lastShare / totalCost) * 100) }));
+        } else {
+          const equal = round1(100 / logisticsOrders.length);
+          logisticsShares = logisticsOrders.map(o => ({ orderId: o.orderId, percent: equal }));
+        }
+        normalizeSharesSum(logisticsShares);
+
+        renderLogisticsShares();
+        updateLogisticsPreview();
+      } catch (error) {
+        listContainer2.innerHTML = `<div class="text-xs text-red-500">Не удалось загрузить сверку: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    function renderLogisticsShares() {
+      const container = document.getElementById('logistics-shares-list');
+      container.innerHTML = logisticsOrders.map(o => {
+        const share = logisticsShares.find(s => s.orderId === o.orderId);
+        const percent = share ? share.percent : 0;
+        return `
+          <div class="p-2 bg-gray-50 rounded-lg text-xs" data-order-id="${escapeHtmlClient(o.orderId)}">
+            <div class="flex items-center justify-between gap-2">
+              <div class="truncate font-medium text-gray-800">${escapeHtmlClient(o.productDisplay)} — ${escapeHtmlClient(o.clientDisplay || 'без клиента')}</div>
+              <div class="shrink-0 font-semibold text-indigo-600 logistics-percent-label">${percent}%</div>
+            </div>
+            <input type="range" min="0" max="100" step="0.5" value="${percent}" class="logistics-slider w-full mt-1">
+            <div class="flex items-center justify-between text-[11px] text-gray-400 mt-0.5">
+              <span>Оценка: ${o.alreadyEstimated.toLocaleString('ru-RU')} ₽</span>
+              <span class="logistics-diff-label">—</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('[data-order-id]').forEach(row => {
+        const slider = row.querySelector('.logistics-slider');
+        slider.addEventListener('input', () => {
+          redistributeShares(row.dataset.orderId, parseFloat(slider.value) || 0);
+          updateSliderPositions(row.dataset.orderId);
+          updateLogisticsPreview();
+        });
+      });
+    }
+
+    // Перетягивание одного ползунка пропорционально подстраивает остальные —
+    // сумма долей всегда остаётся 100% (не просто числа, которые нужно
+    // вручную свести к 100, как в "Долях выплат" на экране "Настройки").
+    function redistributeShares(changedOrderId, rawNewValue) {
+      const idx = logisticsShares.findIndex(s => s.orderId === changedOrderId);
+      if (idx === -1) return;
+      const n = logisticsShares.length;
+      const newValue = Math.max(0, Math.min(100, rawNewValue));
+
+      if (n === 1) {
+        logisticsShares[0].percent = 100;
+        return;
+      }
+
+      const otherIdx = logisticsShares.map((_, i) => i).filter(i => i !== idx);
+      const remaining = round1(100 - newValue);
+      const othersSum = otherIdx.reduce((s, i) => s + logisticsShares[i].percent, 0);
+
+      if (othersSum <= 0) {
+        const equal = remaining / otherIdx.length;
+        otherIdx.forEach(i => { logisticsShares[i].percent = round1(equal); });
+      } else {
+        otherIdx.forEach(i => { logisticsShares[i].percent = round1(remaining * (logisticsShares[i].percent / othersSum)); });
+      }
+      logisticsShares[idx].percent = newValue;
+
+      const drift = round1(100 - logisticsShares.reduce((s, x) => s + x.percent, 0));
+      if (drift !== 0) {
+        const fixIdx = otherIdx[otherIdx.length - 1];
+        logisticsShares[fixIdx].percent = round1(logisticsShares[fixIdx].percent + drift);
+      }
+    }
+
+    // Обновляет позиции/подписи ОСТАЛЬНЫХ ползунков, не трогая DOM того,
+    // который сейчас реально тянет пользователь — полная перерисовка
+    // (innerHTML) на каждое 'input'-событие пересоздала бы его узел и
+    // оборвала бы перетягивание на середине жеста.
+    function updateSliderPositions(activeOrderId) {
+      document.querySelectorAll('#logistics-shares-list [data-order-id]').forEach(row => {
+        const orderId = row.dataset.orderId;
+        const share = logisticsShares.find(s => s.orderId === orderId);
+        if (!share) return;
+        row.querySelector('.logistics-percent-label').textContent = share.percent + '%';
+        if (orderId !== activeOrderId) {
+          row.querySelector('.logistics-slider').value = share.percent;
+        }
+      });
+    }
+
+    function updateLogisticsPreview() {
+      const sdek = parseFloat(document.getElementById('logistics-sdek').value) || 0;
+      const taxiKz = parseFloat(document.getElementById('logistics-taxi-kz').value) || 0;
+      const taxiRf = parseFloat(document.getElementById('logistics-taxi-rf').value) || 0;
+      const total = Math.round((sdek + taxiKz + taxiRf) * 100) / 100;
+      document.getElementById('logistics-total').textContent = total.toLocaleString('ru-RU');
+
+      document.querySelectorAll('#logistics-shares-list [data-order-id]').forEach(row => {
+        const orderId = row.dataset.orderId;
+        const order = logisticsOrders.find(o => o.orderId === orderId);
+        const share = logisticsShares.find(s => s.orderId === orderId);
+        const label = row.querySelector('.logistics-diff-label');
+        if (!order || !share || !label) return;
+
+        const shareAmount = Math.round(total * share.percent / 100 * 100) / 100;
+        const diff = Math.round((shareAmount - order.alreadyEstimated) * 100) / 100;
+
+        if (diff > 0) {
+          label.textContent = `Доля: ${shareAmount.toLocaleString('ru-RU')} ₽ (+${diff.toLocaleString('ru-RU')} к оценке)`;
+          label.className = 'logistics-diff-label text-amber-600';
+        } else if (diff < 0) {
+          label.textContent = `Доля: ${shareAmount.toLocaleString('ru-RU')} ₽ (переплата ${Math.abs(diff).toLocaleString('ru-RU')} ₽)`;
+          label.className = 'logistics-diff-label text-red-500';
+        } else {
+          label.textContent = `Доля: ${shareAmount.toLocaleString('ru-RU')} ₽ (совпадает с оценкой)`;
+          label.className = 'logistics-diff-label text-gray-400';
+        }
+      });
+    }
+
+    ['logistics-sdek', 'logistics-taxi-kz', 'logistics-taxi-rf'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateLogisticsPreview);
+    });
+
+    const logisticsSaveBtn = document.getElementById('logistics-save-btn');
+    const logisticsErrorText = document.getElementById('logistics-error-text');
+    logisticsSaveBtn.addEventListener('click', async () => {
+      if (logisticsSaveBtn.disabled) return;
+      logisticsErrorText.classList.add('hidden');
+
+      if (logisticsShares.length === 0) {
+        logisticsErrorText.textContent = 'В коллективке нет заказов для сверки.';
+        logisticsErrorText.classList.remove('hidden');
+        return;
+      }
+
+      const sdekCost = parseFloat(document.getElementById('logistics-sdek').value) || 0;
+      const taxiKzCost = parseFloat(document.getElementById('logistics-taxi-kz').value) || 0;
+      const taxiRfCost = parseFloat(document.getElementById('logistics-taxi-rf').value) || 0;
+
+      logisticsSaveBtn.disabled = true;
+      try {
+        await callServer('saveCollectiveLogisticsReconciliation', currentDetailId, {
+          sdekCost, taxiKzCost, taxiRfCost, shares: logisticsShares
+        });
+        showSaveToast(true, 'Сверка логистики сохранена');
+        await loadLogisticsSection(currentDetailId); // перезагрузка — lastShare теперь отражает только что сохранённое
+      } catch (error) {
+        logisticsErrorText.textContent = error.message;
+        logisticsErrorText.classList.remove('hidden');
+        showSaveToast(false, 'Не удалось сохранить сверку: ' + error.message);
+      } finally {
+        logisticsSaveBtn.disabled = false;
+      }
+    });
 
     const detailSaveBtn = document.getElementById('detail-save-btn');
     detailSaveBtn.addEventListener('click', async () => {
@@ -305,6 +539,7 @@ window.Screens.collectives = {
               await callServer('assignOrderToCollective', item.orderId, currentDetailId);
               const details = await callServer('getCollectiveDetails', currentDetailId);
               renderOrdersList(details.orders);
+              loadLogisticsSection(currentDetailId); // состав заказов сменился — сверка тоже должна обновиться
               loadCollectives();
             } catch (error) {
               showSaveToast(false, 'Не удалось добавить заказ: ' + error.message);
