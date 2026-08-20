@@ -372,18 +372,17 @@ window.Screens.payments = {
       const poolLeftover = Math.max(0, totalPoolPayments - currentCreditBalance - totalAllocated);
 
       // "Сколько надо заплатить" — по запросу VASY, чтобы менеджер сразу видел
-      // итог, не складывая стадии в уме. New-model — точная сумма по ВСЕМ
-      // стадиям (stagesBalance уже покрывает Основная+Вес+СДЭК+Доставка_РФ).
-      // Old-model — только "Основная" (mainBalance) — у Вес/СДЭК/Доставка_РФ
-      // там нет partial-tracking, только булев флаг, честной суммы не
-      // существует, поэтому не притворяемся, что она есть (сноска ниже).
-      const newModelTarget = newModelOrders.reduce((sum, o) =>
+      // итог, не складывая стадии в уме. Один и тот же цикл по stagesBalance
+      // для обеих моделей — new-model уже покрывал Основная+Вес+СДЭК+
+      // Доставка_РФ, old-model получил Вес/СДЭК/Доставка_РФ по флагу
+      // 20.08.2026 (buildOldModelSecondaryStages, ordersService.js) — тот же
+      // принцип "флаг=Да значит оплачено целиком", что уже применён к
+      // "Основной" 17.08.2026, не партиальный учёт (в старой модели его
+      // никогда и не было).
+      const grandTarget = currentOrders.reduce((sum, o) =>
         sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.target, 0), 0);
-      const newModelPaid = totalAllocated;
-      const oldModelTarget = oldModelOrders.reduce((sum, o) => sum + (o.details.mainBalance ? o.details.mainBalance.target : 0), 0);
-      const oldModelPaid = oldModelOrders.reduce((sum, o) => sum + (o.details.mainBalance ? o.details.mainBalance.paid : 0), 0);
-      const grandTarget = newModelTarget + oldModelTarget;
-      const grandPaid = newModelPaid + oldModelPaid;
+      const grandPaid = currentOrders.reduce((sum, o) =>
+        sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
       const grandRemaining = Math.max(0, grandTarget - grandPaid);
 
       clientView.innerHTML = `
@@ -407,7 +406,7 @@ window.Screens.payments = {
               <div class="text-2xl font-bold text-gray-900">${money(grandRemaining)} ₽</div>
               <div class="text-xs text-gray-400">осталось из ${money(grandTarget)} ₽ (оплачено ${money(grandPaid)} ₽)</div>
             </div>
-            ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели считается только «Основная» — вес/СДЭК/доставка по РФ там без частичного учёта, не включены.</p>` : ''}
+            ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели Вес/СДЭК/Доставка по РФ считаются по флажку — «Да» значит оплачено целиком, без частичного учёта.</p>` : ''}
           </div>
         ` : ''}
 
@@ -608,6 +607,17 @@ window.Screens.payments = {
       // существует только для new-model). См. ordersService.getMainBalanceForOrder.
       const mb = o.details.mainBalance || { target: 0, paid: 0, remaining: 0, payments: [] };
       const payments = mb.payments || [];
+      // Вес/СДЭК/Доставка_РФ по флагу (20.08.2026) — stagesBalance для
+      // old-model теперь содержит "Основная" (=mb, уже показана выше) +
+      // эти три; здесь только они, target=0 значит "для этого заказа поле
+      // просто не заполнено", не показываем пустые строки.
+      const secondaryStages = (o.details.stagesBalance || []).filter((s) => s.stage !== 'Основная' && s.target > 0);
+      const secondaryHtml = secondaryStages.map((s) => `
+        <div class="flex items-center justify-between py-1 text-[12px]">
+          <span class="text-gray-500">${escapeHtmlClient(stageLabel(s.stage))}</span>
+          <span class="${s.covered ? 'text-emerald-600' : 'text-gray-400'}">${s.covered ? '✓ ' + money(s.target) + ' ₽' : money(s.target) + ' ₽ не оплачено'}</span>
+        </div>
+      `).join('');
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-2 mb-2">
@@ -634,6 +644,7 @@ window.Screens.payments = {
           ${currentCreditBalance > 0 && mb.remaining > 0.01 ? `
             <button data-action="apply-credit-to-order" data-order-id="${o.orderId}" data-remaining="${mb.remaining}" class="mt-2 w-full text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg py-1.5">Оплатить из кредита (${money(Math.min(currentCreditBalance, mb.remaining))} ₽ доступно)</button>
           ` : ''}
+          ${secondaryHtml ? `<div class="mt-2 pt-2 border-t border-gray-50">${secondaryHtml}</div>` : ''}
         </div>
       `;
     }
