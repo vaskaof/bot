@@ -252,77 +252,45 @@ window.Screens.orderDetails = {
       const list = document.getElementById('d-payments-list');
       list.innerHTML = '';
 
-      // New-model: старый булево-флаговый список (d.payments.lines) может
-      // честно показывать "Нет" даже когда деньги уже реально лежат в пуле,
-      // просто ждут, пока весь тир (по ВСЕМ открытым заказам клиента) наберётся
-      // целиком (tier-batch, §19 личной памяти Architect'а) — тот же класс
-      // путаницы, что уже чинили на админском экране «Оплаты». Показываем
-      // здесь честную картину из d-rollup-card (renderOrderRollup ниже,
-      // считана из d.stagesBalance) вместо дублирующего/противоречащего списка.
-      // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): раньше здесь была одна
-      // фраза-заглушка "Разбивка по оплате — ниже", которая указывала на
-      // d-rollup-card ниже — но тот блок показывает только ИТОГ и
-      // приоритетную стадию, не разбивку по каждому этапу. Теперь настоящий
-      // список этапов (d.stagesBalance — уже приходит с сервера, новый
-      // сетевой вызов не нужен), с прогресс-баром на каждый, тем же
-      // визуальным языком, что sov-прогресс на client/screens/profile.js.
-      if (d.isNewModel) {
-        const known = (d.stagesBalance || []).filter((s) => s.target > 0);
-        if (known.length === 0) {
-          list.innerHTML = '<div class="text-sm text-gray-400">Стоимость этапов ещё не рассчитана менеджером.</div>';
-        } else {
-          const firstUncovered = known.find((s) => !s.covered);
-          known.forEach((s) => {
-            const pct = Math.max(0, Math.min(100, Math.round((s.paid / s.target) * 100)));
-            const isPriority = firstUncovered && s.stage === firstUncovered.stage;
-            const row = document.createElement('div');
-            row.className = `mb-2.5 last:mb-0${isPriority ? ' -mx-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200' : ''}`;
-            row.innerHTML = `
-              <div class="flex items-center justify-between text-sm mb-1">
-                <span class="text-gray-600 flex items-center gap-1">${isPriority ? '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-500"></i>' : ''}${escapeHtmlClient(stageLabel(s.stage))}${s.isForecast ? ' <span class="text-[10px] text-gray-400">(предварительно)</span>' : ''}</span>
-                <span class="${s.covered ? 'text-green-600' : 'text-gray-700'} font-medium">${s.paid.toFixed(2)} / ${s.target.toFixed(2)} ₽</span>
-              </div>
-              <div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div class="h-full rounded-full transition-all ${s.covered ? 'bg-green-500' : 'bg-indigo-500'}" style="width:${pct}%"></div>
-              </div>
-            `;
-            list.appendChild(row);
-          });
-          if (window.lucide) window.lucide.createIcons();
-        }
-      } else if (d.payments.lines.length === 0) {
-        list.innerHTML = '<div class="text-sm text-green-600 font-medium">Все платежи получены, спасибо!</div>';
+      // Единый визуальный язык для обеих моделей (20.08.2026,
+      // project_bot_knopka_audit_backlog_remaining п.1 — раньше new-model
+      // показывал прогресс-бары по d.stagesBalance, old-model — плоский
+      // список текстом по d.payments.lines, клиент с заказами обеих моделей
+      // видел явно разный UI под одним и тем же понятием). Теперь
+      // d.stagesBalance приходит с сервера для ОБЕИХ моделей
+      // (ordersService.getClientOrderDetails, buildOldModelStagesBalance
+      // для old-model) — старая ветка (d.payments.lines/calculatePaymentStatus)
+      // на бэкенде осталась нетронутой (используется только "Итого к оплате"
+      // на других экранах), просто здесь больше не читается.
+      // Старая модель никогда не имела частичного учёта — её бар всегда либо
+      // 0%, либо 100% (флаг Да/Нет), это честно, не выдумываем частичность.
+      const known = (d.stagesBalance || []).filter((s) => s.target > 0);
+      if (known.length === 0) {
+        list.innerHTML = d.isNewModel
+          ? '<div class="text-sm text-gray-400">Стоимость этапов ещё не рассчитана менеджером.</div>'
+          : '<div class="text-sm text-green-600 font-medium">Все платежи получены, спасибо!</div>';
       } else {
-        d.payments.lines.forEach(line => {
+        const firstUncovered = known.find((s) => !s.covered);
+        known.forEach((s) => {
+          const pct = Math.max(0, Math.min(100, Math.round((s.paid / s.target) * 100)));
+          // Приоритетная подсветка — только new-model (waterfall-порядок
+          // между этапами, §3); у старой модели этапы независимы друг от
+          // друга, "приоритета" между ними по смыслу нет.
+          const isPriority = d.isNewModel && firstUncovered && s.stage === firstUncovered.stage;
           const row = document.createElement('div');
-          let valueHtml;
-          // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): "Уточняется" раньше было
-          // голым словом без контекста — клиент не понимал, ждать ли ему
-          // чего-то или это ошибка. Подпись под строкой только для этого
-          // статуса (status:'unclear' — ordersService.calculatePaymentStatus,
-          // сумма этапа менеджером ещё не введена).
-          if (line.status === 'paid') {
-            valueHtml = `<span class="text-green-600 font-medium">${line.sum.toFixed(2)} ₽ оплачено</span>`;
-          } else if (line.status === 'owed') {
-            valueHtml = `<span class="text-red-500 font-medium">${line.sum.toFixed(2)} ₽ к оплате</span>`;
-          } else {
-            valueHtml = `<span class="text-amber-500 font-medium">Уточняется</span>`;
-          }
+          row.className = `mb-2.5 last:mb-0${isPriority ? ' -mx-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200' : ''}`;
           row.innerHTML = `
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-600">${line.label}</span>${valueHtml}
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-gray-600 flex items-center gap-1">${isPriority ? '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-500"></i>' : ''}${escapeHtmlClient(stageLabel(s.stage))}${s.isForecast ? ' <span class="text-[10px] text-gray-400">(предварительно)</span>' : ''}</span>
+              <span class="${s.covered ? 'text-green-600' : 'text-gray-700'} font-medium">${s.paid.toFixed(2)} / ${s.target.toFixed(2)} ₽</span>
             </div>
-            ${line.status === 'unclear' ? '<div class="text-[11px] text-gray-400 mt-0.5">Менеджер ещё не рассчитал точную стоимость этого этапа</div>' : ''}
+            <div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div class="h-full rounded-full transition-all ${s.covered ? 'bg-green-500' : 'bg-indigo-500'}" style="width:${pct}%"></div>
+            </div>
           `;
           list.appendChild(row);
         });
-
-        if (d.payments.totalOwed > 0) {
-          const totalRow = document.createElement('div');
-          totalRow.className = 'flex items-center justify-between text-sm font-semibold pt-2 mt-2 border-t border-gray-100';
-          totalRow.innerHTML = `<span>Итого к оплате</span><span class="text-red-600">${d.payments.totalOwed.toFixed(2)} ₽</span>`;
-          list.appendChild(totalRow);
-        }
+        if (window.lucide) window.lucide.createIcons();
       }
 
       renderOrderRollup(d);
@@ -348,12 +316,17 @@ window.Screens.orderDetails = {
     // За ЭТОТ заказ — бесплатно, чистая фронтенд-арифметика над уже
     // отданным d.stagesBalance (массив УЖЕ в приоритетном порядке, §3) —
     // никакой новой бизнес-логики здесь не считается, только сумма/поиск
-    // первой непокрытой стадии. Только new-model — у старой модели нет
-    // partial-tracking по стадиям (см. d.payments.lines выше).
+    // первой непокрытой стадии. 20.08.2026 (unification п.1, VASY: "у новой
+    // модели должен быть приоритетный итог и всего итог, если у старой
+    // приоритета нет — то должен быть всего итог") — работает для ОБЕИХ
+    // моделей теперь (d.stagesBalance приходит для обеих, см. комментарий
+    // выше у d-payments-list), приоритетная строка — только new-model:
+    // этапы старой модели независимы друг от друга (Да/Нет-флаги), порядка
+    // между ними по смыслу нет, "приоритета" быть не может.
     function renderOrderRollup(d) {
       const card = document.getElementById('d-rollup-card');
       const orderBox = document.getElementById('d-order-rollup');
-      if (!d.isNewModel || !d.stagesBalance || d.stagesBalance.length === 0) {
+      if (!d.stagesBalance || d.stagesBalance.length === 0) {
         orderBox.innerHTML = '';
         updateRollupCardVisibility();
         return;
@@ -362,7 +335,7 @@ window.Screens.orderDetails = {
       if (known.length === 0) { orderBox.innerHTML = ''; updateRollupCardVisibility(); return; }
 
       const totalRemaining = known.reduce((sum, s) => sum + Math.max(s.remaining, 0), 0);
-      const priority = known.find((s) => s.remaining > 0.01);
+      const priority = d.isNewModel ? known.find((s) => s.remaining > 0.01) : null;
 
       if (totalRemaining <= 0.01) {
         orderBox.innerHTML = '<div class="text-green-600 font-medium">По этому заказу всё оплачено.</div>';
