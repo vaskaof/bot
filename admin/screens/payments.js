@@ -608,9 +608,9 @@ window.Screens.payments = {
       const mb = o.details.mainBalance || { target: 0, paid: 0, remaining: 0, payments: [] };
       const payments = mb.payments || [];
       // Вес/СДЭК/Доставка_РФ по флагу (20.08.2026) — stagesBalance для
-      // old-model теперь содержит "Основная" (=mb, уже показана выше) +
-      // эти три; здесь только они, target=0 значит "для этого заказа поле
-      // просто не заполнено", не показываем пустые строки.
+      // old-model теперь содержит "Основная" + эти три; здесь только
+      // второстепенные, target=0 значит "для этого заказа поле просто не
+      // заполнено", не показываем пустые строки.
       const secondaryStages = (o.details.stagesBalance || []).filter((s) => s.stage !== 'Основная' && s.target > 0);
       const secondaryHtml = secondaryStages.map((s) => `
         <div class="flex items-center justify-between py-1 text-[12px]">
@@ -618,6 +618,17 @@ window.Screens.payments = {
           <span class="${s.covered ? 'text-emerald-600' : 'text-gray-400'}">${s.covered ? '✓ ' + money(s.target) + ' ₽' : money(s.target) + ' ₽ не оплачено'}</span>
         </div>
       `).join('');
+      // ИСПРАВЛЕНО 20.08.2026 (репорт VASY — карточка показывала "✓ оплачено"
+      // в заголовке, хотя ниже написано "Вес: не оплачено", т.к. заголовок
+      // раньше считался ТОЛЬКО по "Основной" (mb), Вес/СДЭК/РФ туда не
+      // входили). Заголовок теперь — сумма ПО ВСЕМ стадиям (та же логика,
+      // что уже у renderNewModelOrderCard's orderTarget/orderPaid), mb
+      // остаётся только для списка платежей/заметки про флаг и суммы
+      // кредита ниже (обе именно про "Основную", не про весь заказ).
+      const stagesBalance = o.details.stagesBalance || [];
+      const orderTarget = stagesBalance.reduce((sum, s) => sum + s.target, 0);
+      const orderPaid = stagesBalance.reduce((sum, s) => sum + s.paid, 0);
+      const orderRemaining = Math.max(0, orderTarget - orderPaid);
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-2 mb-2">
@@ -629,8 +640,8 @@ window.Screens.payments = {
               </div>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-sm font-semibold text-gray-900">${money(mb.paid)} / ${money(mb.target)} ₽</div>
-              <div class="text-[11px] ${mb.remaining <= 0.01 ? 'text-emerald-600' : 'text-gray-400'}">${mb.remaining <= 0.01 ? '✓ оплачено' : 'осталось ' + money(mb.remaining) + ' ₽'}</div>
+              <div class="text-sm font-semibold text-gray-900">${money(orderPaid)} / ${money(orderTarget)} ₽</div>
+              <div class="text-[11px] ${orderRemaining <= 0.01 ? 'text-emerald-600' : 'text-gray-400'}">${orderRemaining <= 0.01 ? '✓ оплачено' : 'осталось ' + money(orderRemaining) + ' ₽'}</div>
             </div>
           </div>
           ${payments.length > 0 ? `<div class="divide-y divide-gray-50 border-t border-gray-50">${payments.map((p) => renderPaymentRow(p, 'order', o.orderId)).join('')}</div>`
