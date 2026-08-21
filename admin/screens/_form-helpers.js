@@ -5,6 +5,8 @@
  * edit-order.html (populateSelect/initTagToggle/renderDropdown). Используются
  * order-new.js/order-edit.js.
  */
+const DICT_ADD_NEW_VALUE = '__add_new_dictionary_value__';
+
 window.FormHelpers = {
   /** Заполняет <select> значениями справочника с плейсхолдером "не выбрано". */
   populateSelect(selector, values) {
@@ -12,6 +14,62 @@ window.FormHelpers = {
     if (!select || !values) return;
     const placeholder = '<option value="" selected disabled>— не выбрано —</option>';
     select.innerHTML = placeholder + values.map(v => `<option value="${v}">${v}</option>`).join('');
+  },
+
+  /**
+   * Справочный `<select>` + возможность добавить своё значение прямо из формы
+   * (21.08.2026, Фаза 2 миграции на Postgres, домен "Справочники" — аналог
+   * "создать выпуск" на лету, только без полноценной модалки: справочники —
+   * плоские строки, не карточки с полями). Заполняет список ЧЕРЕЗ
+   * populateSelect + добавляет опцию "+ Добавить своё значение…" в конец.
+   * При её выборе — `showPromptModal` (common.js), новое значение уходит на
+   * сервер (`addDictionaryValue`), список локально обновляется и новое
+   * значение сразу выбирается. Отмена/пустой ввод — селект возвращается на
+   * значение, которое было выбрано до открытия модалки.
+   * @param {string} selector CSS-селектор `<select>`
+   * @param {string} category Один из ключей ответа getDictionaries
+   * @param {string[]} values Текущий список значений категории
+   */
+  wireDictionarySelect(selector, category, values) {
+    const select = document.querySelector(selector);
+    if (!select) return;
+
+    let currentValues = values || [];
+    let lastRealValue = ''; // значение ДО открытия "+Добавить" — сентинел сюда никогда не попадает
+
+    function render() {
+      FormHelpers.populateSelect(selector, currentValues);
+      const addOption = document.createElement('option');
+      addOption.value = DICT_ADD_NEW_VALUE;
+      addOption.textContent = '+ Добавить своё значение…';
+      select.appendChild(addOption);
+    }
+    render();
+
+    select.addEventListener('change', async () => {
+      if (select.value !== DICT_ADD_NEW_VALUE) {
+        lastRealValue = select.value;
+        return;
+      }
+
+      const input = await showPromptModal('Новое значение справочника:', { placeholder: 'Введите значение' });
+      const trimmed = input ? input.trim() : '';
+      if (trimmed === '') {
+        select.value = lastRealValue;
+        return;
+      }
+
+      try {
+        const result = await callServer('addDictionaryValue', category, trimmed);
+        currentValues = result.values;
+        render();
+        select.value = result.value;
+        lastRealValue = result.value;
+      } catch (error) {
+        showSaveToast(false, error.message || 'Не удалось добавить значение справочника.');
+        select.value = lastRealValue;
+      }
+    });
   },
 
   /**

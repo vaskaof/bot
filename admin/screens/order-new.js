@@ -768,11 +768,15 @@ window.Screens.orderNew = {
     const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     dateInput.value = todayFormatter.format(new Date());
 
-    FormHelpers.populateSelect('select[data-dict="statusDelivery"]', dictionaries.statusDelivery);
-    FormHelpers.populateSelect('select[data-dict="statusOrder"]', dictionaries.statusOrder);
-    FormHelpers.populateSelect('select[data-dict="purchaseChannel"]', dictionaries.purchaseChannel);
-    FormHelpers.populateSelect('select[data-dict="purchaseAccount"]', dictionaries.purchaseAccount);
-    FormHelpers.populateSelect('select[data-dict="cargo"]', dictionaries.cargo);
+    // wireDictionarySelect — не просто populateSelect: добавляет "+Добавить
+    // своё значение" (21.08.2026, Фаза 2 миграции на Postgres, домен
+    // "Справочники" — VASY попросил возможность добавлять справочники прямо
+    // из формы заказа, аналогично созданию выпуска).
+    FormHelpers.wireDictionarySelect('select[data-dict="statusDelivery"]', 'statusDelivery', dictionaries.statusDelivery);
+    FormHelpers.wireDictionarySelect('select[data-dict="statusOrder"]', 'statusOrder', dictionaries.statusOrder);
+    FormHelpers.wireDictionarySelect('select[data-dict="purchaseChannel"]', 'purchaseChannel', dictionaries.purchaseChannel);
+    FormHelpers.wireDictionarySelect('select[data-dict="purchaseAccount"]', 'purchaseAccount', dictionaries.purchaseAccount);
+    FormHelpers.wireDictionarySelect('select[data-dict="cargo"]', 'cargo', dictionaries.cargo);
 
     // Лестница статусов доставки (13.08.2026, VASY-репорт: "на новом заказе
     // не вижу") — новый заказ ещё не сохранён, сервер её посчитать не может
