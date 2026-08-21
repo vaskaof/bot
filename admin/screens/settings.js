@@ -30,9 +30,10 @@ const CATEGORY_LABELS = {
   forecast: 'Прогноз расходов на заказ',
   payout_share: 'Доли выплат',
   delivery_position_threshold: 'Пороги для "Доход Руб"',
-  economy: 'Экономика (совы/билеты)'
+  economy: 'Экономика (совы/билеты)',
+  currency_margin: 'Наценка на конвертацию (курсы валют)'
 };
-const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -43,7 +44,8 @@ const SHARE_SUM_TOLERANCE = 0.01;
 // показываются прямо в выпадающем списке формы.
 const ADDABLE_CATEGORIES = [
   { value: 'commission', label: 'Комиссия', help: 'Проценты, связанные с самой комиссией/бронью посредничества по заказу.' },
-  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' }
+  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' },
+  { value: 'currency_margin', label: 'Наценка на конвертацию', help: 'Множитель наценки на одно звено конвертации через тенге (например 1.04 = "+4%"). Ключ должен быть Маржа_KZT_<КОД>, например Маржа_KZT_GBP.' }
 ];
 const TYPE_OPTIONS = [
   { value: 'percent', label: 'Процент (%)', help: 'Значение — процент от базы (например, от суммы товара или от комиссии).' },
@@ -184,7 +186,7 @@ window.Screens.settings = {
             <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
           </div>
           <input type="number" step="0.01" class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
-          <span class="text-sm text-gray-400 w-4">${s.type === 'percent' ? '%' : '₽'}</span>
+          <span class="text-sm text-gray-400 w-4">${s.category === 'currency_margin' ? '×' : (s.type === 'percent' ? '%' : '₽')}</span>
           <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
           </button>
