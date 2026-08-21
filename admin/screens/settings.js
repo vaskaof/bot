@@ -44,8 +44,25 @@ const SHARE_SUM_TOLERANCE = 0.01;
 // показываются прямо в выпадающем списке формы.
 const ADDABLE_CATEGORIES = [
   { value: 'commission', label: 'Комиссия', help: 'Проценты, связанные с самой комиссией/бронью посредничества по заказу.' },
-  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' },
-  { value: 'currency_margin', label: 'Наценка на конвертацию', help: 'Множитель наценки на одно звено конвертации через тенге (например 1.04 = "+4%"). Ключ должен быть Маржа_KZT_<КОД>, например Маржа_KZT_GBP.' }
+  { value: 'tax_reserve', label: 'Налоговый резерв', help: 'Проценты, откладываемые в резерв под налоги — вычитаются из комиссии до раздела на доли выплат.' }
+];
+
+// Наценка на конвертацию через тенге (project_bot_knopka_full_postgres_
+// migration, 21.08.2026) — ФИКСИРОВАННЫЕ позиции, ключи СОВПАДАЮТ с backend
+// currencyService.js (MARGIN_KEY_RUB_KZT/MARGIN_KEY_BY_CODE), тот же принцип,
+// что ECONOMY_SETTINGS_DEFS/FORECAST_FIELD_DEFS выше — ключ должен быть
+// известен заранее, не произволен. ИЗНАЧАЛЬНО эта категория была в
+// ADDABLE_CATEGORIES (общая форма "Добавить позицию") — реальный баг, найден
+// VASY в тот же день: общая форма генерирует ключ из лейбла (slugKey), у
+// VASY физически не было способа ввести именно "Маржа_KZT_GBP" — узнать
+// точный алгоритм слага снаружи невозможно. GBP-строка показывается ПУСТОЙ
+// (setting=undefined), пока VASY не впишет и не сохранит значение сам.
+const CURRENCY_MARGIN_DEFS = [
+  { key: 'Маржа_RUB_KZT', label: 'Наценка: рубль → тенге' },
+  { key: 'Маржа_KZT_USD', label: 'Наценка: тенге → доллар' },
+  { key: 'Маржа_KZT_CNY', label: 'Наценка: тенге → юань' },
+  { key: 'Маржа_KZT_EUR', label: 'Наценка: тенге → евро' },
+  { key: 'Маржа_KZT_GBP', label: 'Наценка: тенге → фунт' }
 ];
 const TYPE_OPTIONS = [
   { value: 'percent', label: 'Процент (%)', help: 'Значение — процент от базы (например, от суммы товара или от комиссии).' },
@@ -141,7 +158,7 @@ window.Screens.settings = {
     function renderBody(settings) {
       const body = document.getElementById('settings-body');
       const byCategory = {};
-      const specialCategories = ['payout_share', 'forecast', 'delivery_position_threshold', 'economy'];
+      const specialCategories = ['payout_share', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin'];
       settings.forEach(s => {
         if (specialCategories.includes(s.category)) return; // свои особые блоки, не общий цикл
         (byCategory[s.category] = byCategory[s.category] || []).push(s);
@@ -149,12 +166,14 @@ window.Screens.settings = {
       const forecastRows = settings.filter(s => s.category === 'forecast');
       const positionThresholdRows = settings.filter(s => s.category === 'delivery_position_threshold');
       const economyRows = settings.filter(s => s.category === 'economy');
+      const currencyMarginRows = settings.filter(s => s.category === 'currency_margin');
 
       body.innerHTML = CATEGORY_ORDER.map(cat => {
         if (cat === 'payout_share') return sharesSectionHtml();
         if (cat === 'forecast') return forecastSectionHtml(forecastRows);
         if (cat === 'delivery_position_threshold') return positionThresholdSectionHtml(positionThresholdRows);
         if (cat === 'economy') return economySectionHtml(economyRows);
+        if (cat === 'currency_margin') return currencyMarginSectionHtml(currencyMarginRows);
         return plainSectionHtml(cat, byCategory[cat] || []);
       }).join('');
 
@@ -163,6 +182,7 @@ window.Screens.settings = {
       wireForecastSection();
       wirePositionThresholdSection();
       wireEconomySection();
+      wireCurrencyMarginSection();
       wireAddPosition();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -186,7 +206,7 @@ window.Screens.settings = {
             <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
           </div>
           <input type="number" step="0.01" class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
-          <span class="text-sm text-gray-400 w-4">${s.category === 'currency_margin' ? '×' : (s.type === 'percent' ? '%' : '₽')}</span>
+          <span class="text-sm text-gray-400 w-4">${s.type === 'percent' ? '%' : '₽'}</span>
           <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
           </button>
@@ -351,6 +371,60 @@ window.Screens.settings = {
           </button>
         </div>
       `;
+    }
+
+    function currencyMarginRowHtml(def, setting) {
+      const value = setting ? setting.value : '';
+      return `
+        <div class="flex items-center gap-2 p-3" data-margin-key="${def.key}" data-margin-label="${escapeHtmlClient(def.label)}">
+          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+          <input type="number" step="0.001" min="0" class="margin-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" placeholder="1.00" value="${value}" />
+          <span class="text-sm text-gray-400 w-4">×</span>
+          <button type="button" class="margin-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function currencyMarginSectionHtml(rows) {
+      return `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.currency_margin}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="currency_margin">
+            ${CURRENCY_MARGIN_DEFS.map(def => currencyMarginRowHtml(def, rows.find(r => r.key === def.key))).join('')}
+          </div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Множитель наценки на одно звено конвертации через тенге (например 1.04 = "+4%", 0.94 = "-6%"). "Наценка: тенге → фунт" пуста, пока не впишешь и не сохранишь значение — без неё фунт просто не участвует в расчёте курса заказа.</div>
+        </section>
+      `;
+    }
+
+    function wireCurrencyMarginSection() {
+      const container = document.querySelector('[data-category="currency_margin"]');
+      if (!container) return;
+
+      container.querySelectorAll('[data-margin-key]').forEach(row => {
+        const key = row.dataset.marginKey;
+        const label = row.dataset.marginLabel;
+        const saveBtn = row.querySelector('.margin-save-btn');
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return;
+          const value = parseFloat(row.querySelector('.margin-value-input').value);
+          if (isNaN(value) || value <= 0) {
+            showSaveToast(false, 'Значение должно быть числом больше 0.');
+            return;
+          }
+          saveBtn.disabled = true;
+          try {
+            await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category: 'currency_margin' });
+            showSaveToast(true, 'Сохранено.');
+          } catch (error) {
+            showSaveToast(false, error.message);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      });
     }
 
     function economySectionHtml(rows) {
