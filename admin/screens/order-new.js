@@ -1446,13 +1446,27 @@ window.Screens.orderNew = {
       const icon = refreshRateBtn.querySelector('svg');
       if (icon) icon.classList.add('animate-spin');
 
-      const finalRates = await getExchangeRatesStub();
-      if (finalRates) {
-        currentRates = finalRates;
-        applyCurrentCurrencyRate();
+      // ИСПРАВЛЕНО (найдено e2e-тестом 23.08.2026) — оба вызывающих места
+      // (клик по кнопке-обновить и авто-вызов при открытии экрана, ниже по
+      // файлу) зовут refreshRate() без .catch(). Если currencyService ещё не
+      // успел ни разу заполнить курсы (сразу после рестарта/деплоя — реальное
+      // окно в проде, не только тестовый стенд) или live-запрос к источнику
+      // курсов временно недоступен, `refreshRate` на бэкенде кидает ошибку —
+      // раньше это было необработанным исключением: экран падал без единого
+      // сообщения админу, а иконка обновления оставалась крутиться навсегда
+      // (код ниже неё просто не выполнялся). Теперь — тот же showSaveToast,
+      // что и любая другая ошибка сохранения/загрузки на этом экране.
+      try {
+        const finalRates = await getExchangeRatesStub();
+        if (finalRates) {
+          currentRates = finalRates;
+          applyCurrentCurrencyRate();
+        }
+      } catch (error) {
+        showSaveToast(false, `Не удалось обновить курсы валют: ${error.message}`);
+      } finally {
+        if (icon) icon.classList.remove('animate-spin');
       }
-
-      if (icon) icon.classList.remove('animate-spin');
     }
 
     const currencySelect = document.getElementById('currency-select');

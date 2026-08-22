@@ -436,28 +436,47 @@ window.Screens.contests = {
         const confirmText = finalReward < s.reward
           ? `Одобрить и начислить ${finalReward} сов (снижено с заявленных ${s.reward})?`
           : `Одобрить и начислить ${finalReward} сов?`;
-        if (!(await showConfirmModal(confirmText, { confirmLabel: 'Одобрить' }))) return;
-        e.currentTarget.disabled = true;
+        // ИСПРАВЛЕНО (найдено e2e-тестом 23.08.2026; тот же баг и тот же фикс,
+        // что admin/screens/payments.js approve-claim-btn, 20.08.2026 round 2)
+        // — `e.currentTarget` в нативном DOM Event обнуляется браузером сразу
+        // после синхронной фазы обработки клика, т.е. сразу после первого
+        // await (здесь — showConfirmModal). Обращение к e.currentTarget ПОСЛЕ
+        // await кидало необработанный TypeError ДО вызова approveTaskSubmission
+        // — клик "Одобрить" полностью ничего не делал (заявка оставалась
+        // висеть на модерации, без единой ошибки на экране). Берём ссылку на
+        // кнопку ДО await, используем только её.
+        const btn = e.currentTarget;
         try {
+          if (!(await showConfirmModal(confirmText, { confirmLabel: 'Одобрить' }))) return;
+          btn.disabled = true;
           await callServer('approveTaskSubmission', s.submissionId, finalReward);
           showSaveToast(true, 'Заявка одобрена, совы начислены');
           loadModeration();
           loadApproved();
         } catch (error) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           showSaveToast(false, `Не удалось одобрить: ${error.message}`);
         }
       });
 
       card.querySelector('.reject-btn').addEventListener('click', async (e) => {
-        const comment = (await showPromptModal('Причина отклонения (необязательно):', { defaultValue: '' })) || '';
-        e.currentTarget.disabled = true;
+        // Тот же фикс, что у "Одобрить" выше — ссылка на кнопку берётся ДО
+        // await, не через e.currentTarget после него.
+        const btn = e.currentTarget;
         try {
+          // ИСПРАВЛЕНО заодно (тот же баг, что payments.js reject-claim-btn) —
+          // cancel из showPromptModal резолвится `null` (её собственный
+          // контракт), раньше `|| ''` схлопывал "отменил" и "подтвердил с
+          // пустой причиной" в одно и то же значение — клик "Отмена" в
+          // модалке всё равно уходил в отклонение заявки.
+          const comment = await showPromptModal('Причина отклонения (необязательно):', { defaultValue: '' });
+          if (comment === null) return;
+          btn.disabled = true;
           await callServer('rejectTaskSubmission', s.submissionId, comment);
           showSaveToast(true, 'Заявка отклонена');
           loadModeration();
         } catch (error) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           showSaveToast(false, `Не удалось отклонить: ${error.message}`);
         }
       });
@@ -506,14 +525,17 @@ window.Screens.contests = {
       `;
 
       card.querySelector('.revoke-reward-btn').addEventListener('click', async (e) => {
-        if (!(await showConfirmModal(`Отозвать ${s.reward} сов у клиента за «${s.taskTitle}»? Списание нельзя отменить кнопкой — только повторным одобрением заявки.`, { confirmLabel: 'Отозвать', danger: true }))) return;
-        e.currentTarget.disabled = true;
+        // Тот же фикс, что у "Одобрить"/"Отклонить" выше — ссылка на кнопку
+        // берётся ДО await, не через e.currentTarget после него.
+        const btn = e.currentTarget;
         try {
+          if (!(await showConfirmModal(`Отозвать ${s.reward} сов у клиента за «${s.taskTitle}»? Списание нельзя отменить кнопкой — только повторным одобрением заявки.`, { confirmLabel: 'Отозвать', danger: true }))) return;
+          btn.disabled = true;
           await callServer('revokeTaskReward', s.submissionId);
           showSaveToast(true, 'Награда отозвана');
           loadApproved();
         } catch (error) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           showSaveToast(false, `Не удалось отозвать: ${error.message}`);
         }
       });

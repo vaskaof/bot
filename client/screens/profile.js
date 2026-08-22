@@ -170,7 +170,14 @@ window.Screens.profile = {
     async function loadCreditBalance() {
       try {
         const amount = await callServer('getMyCreditBalance');
-        document.getElementById('credit-amount').textContent = `${amount.toFixed(2)} ₽`;
+        // ИСПРАВЛЕНО (найдено e2e-тестом 23.08.2026) — если клиент успевает
+        // уйти с экрана «Профиль» раньше, чем этот запрос завершится,
+        // #credit-amount уже удалён из DOM (router.js#renderRoute очищает
+        // #screen-root на смену маршрута) — textContent на null бросал
+        // необработанный TypeError (unhandled rejection, экран уже другой,
+        // пользователь ничего не видел, но ошибка реальная).
+        const el = document.getElementById('credit-amount');
+        if (el) el.textContent = `${amount.toFixed(2)} ₽`;
       } catch (error) {
         console.error('getMyCreditBalance:', error.message);
       }
@@ -184,7 +191,10 @@ window.Screens.profile = {
     async function loadPoolLeftover() {
       try {
         const amount = await callServer('getMyPoolLeftover');
-        document.getElementById('pool-leftover-amount').textContent = `${amount.toFixed(2)} ₽`;
+        // Тот же фикс, что у loadCreditBalance выше — экран мог уже смениться
+        // к моменту ответа.
+        const el = document.getElementById('pool-leftover-amount');
+        if (el) el.textContent = `${amount.toFixed(2)} ₽`;
       } catch (error) {
         console.error('getMyPoolLeftover:', error.message);
       }
@@ -193,6 +203,13 @@ window.Screens.profile = {
     async function loadReferralInfo() {
       try {
         const info = await callServer('getReferralInfo');
+        // Тот же фикс, что у loadCreditBalance/loadPoolLeftover выше — если
+        // экран уже размонтирован (клиент ушёл, пока ждали ответ), все
+        // document.getElementById(...) ниже по функции вернут null разом
+        // (появляются/исчезают вместе с этим экраном). Проверяем один
+        // представительный элемент вместо расстановки null-проверок на
+        // каждую из семи строк ниже.
+        if (!document.getElementById('sovy-progress-label')) return;
         document.getElementById('sovy-progress-label').textContent = `${info.balance.sovyProgress}/100`;
         document.getElementById('sovy-progress-bar').style.width = `${info.balance.sovyProgress}%`;
         document.getElementById('tickets-count').textContent = info.balance.tickets;
@@ -220,7 +237,8 @@ window.Screens.profile = {
           inviteTextBlock.textContent = '';
         }
       } catch (error) {
-        document.getElementById('referral-text').textContent = `Ошибка загрузки: ${error.message}`;
+        const referralTextEl = document.getElementById('referral-text');
+        if (referralTextEl) referralTextEl.textContent = `Ошибка загрузки: ${error.message}`;
       }
     }
 
