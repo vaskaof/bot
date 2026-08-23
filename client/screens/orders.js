@@ -96,11 +96,16 @@ window.Screens.orders = {
     function renderPriorityRollup(rollup) {
       const card = document.getElementById('priority-rollup-card');
       if (!rollup || rollup.priorityAmount <= 0.01) { card.classList.add('hidden'); return; }
+      // `priorityIsForecast` (24.08.2026, VASY) — та же пометка "(предварительно)"/
+      // "цена подтверждена", что на экране заказа (order-details.js's priorityLineHtml).
+      const clarification = rollup.priorityIsForecast === true
+        ? ' <span class="text-amber-500">(предварительно)</span>'
+        : (rollup.priorityIsForecast === false ? ' <span class="text-amber-600">(цена подтверждена)</span>' : '');
       card.innerHTML = `
         <div class="text-[11px] text-amber-700">Приоритетно нужно оплатить сейчас</div>
         <div class="flex items-baseline gap-2">
           <div class="text-2xl font-bold text-amber-700">${rollup.priorityAmount.toFixed(2)} ₽</div>
-          <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(rollup.priorityStage))}</div>
+          <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(rollup.priorityStage))}${clarification}</div>
         </div>
       `;
       card.classList.remove('hidden');

@@ -303,11 +303,22 @@ window.Screens.orderDetails = {
     // просто амбер-текстом — единственный самый важный call-to-action на
     // экране визуально не выделялся среди прочих строк. Общий хелпер для
     // обоих rollup-блоков (за заказ / за весь пул), чтобы не расходиться.
-    function priorityLineHtml(amount, stage) {
+    //
+    // `isForecast` (24.08.2026, VASY: "у приоритетных оплат помечать
+    // (предварительно) и какое-то уточнение если сформированная цена") —
+    // та же пометка, что уже стоит у строк в полном списке стадий (см. ниже,
+    // "(предварительно)"), теперь и на самой заметной строке экрана.
+    // `true`/`false` — известно, предварительная сумма или уже подтверждённая
+    // менеджером; `null`/`undefined` — источник её не передал (старый вызов),
+    // строка выглядит как раньше, без уточнения.
+    function priorityLineHtml(amount, stage, isForecast) {
+      const clarification = isForecast === true
+        ? ' <span class="text-[10px] text-amber-500">(предварительно, сумма может измениться)</span>'
+        : (isForecast === false ? ' <span class="text-[10px] text-amber-600">— цена подтверждена</span>' : '');
       return `
         <div class="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-700">
           <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
-          <span>Приоритетно сейчас: <b>${amount.toFixed(2)} ₽</b> (${escapeHtmlClient(stageLabel(stage))})</span>
+          <span>Приоритетно сейчас: <b>${amount.toFixed(2)} ₽</b> (${escapeHtmlClient(stageLabel(stage))})${clarification}</span>
         </div>
       `;
     }
@@ -346,7 +357,7 @@ window.Screens.orderDetails = {
             <span class="text-lg font-bold text-gray-900">${totalRemaining.toFixed(2)} ₽</span>
             <span class="text-[12px] text-gray-400">осталось к оплате</span>
           </div>
-          ${priority ? priorityLineHtml(priority.remaining, priority.stage) : ''}
+          ${priority ? priorityLineHtml(priority.remaining, priority.stage, priority.isForecast) : ''}
         `;
       }
       if (window.lucide) window.lucide.createIcons();
@@ -367,7 +378,7 @@ window.Screens.orderDetails = {
           <span class="text-lg font-bold text-gray-900">${rollup.totalRemaining.toFixed(2)} ₽</span>
           <span class="text-[12px] text-gray-400">осталось к оплате всего</span>
         </div>
-        ${rollup.priorityAmount > 0.01 ? priorityLineHtml(rollup.priorityAmount, rollup.priorityStage) : ''}
+        ${rollup.priorityAmount > 0.01 ? priorityLineHtml(rollup.priorityAmount, rollup.priorityStage, rollup.priorityIsForecast) : ''}
       `;
       box.classList.remove('hidden');
       if (window.lucide) window.lucide.createIcons();
