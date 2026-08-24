@@ -13,6 +13,12 @@
  * тогда, заново не появляются; платежи, оставленные "в пул", уже могли уйти
  * на другие открытые заказы клиента. Баннер ниже — explicit предупреждение
  * об этом, не убирать при рефакторинге экрана.
+ *
+ * `wasInCollective` (Э3, 24.08.2026, REFACTOR-COLLECTIVES.md §3 п.8) —
+ * admin-подпись коллективки, в которой заказ состоял (связь `order_
+ * collectives` переживает soft-delete заказа, см. backend JSDoc
+ * `getDeletedOrdersList`) — строка показывается, только если заказ реально
+ * был привязан.
  */
 window.Screens = window.Screens || {};
 window.Screens.deletedOrders = {
@@ -57,6 +63,7 @@ window.Screens.deletedOrders = {
             <p class="text-xs text-gray-500 truncate">${escapeHtmlClient(order.clientDisplay || '')}</p>
             <p class="text-[11px] text-gray-400 mt-1">${escapeHtmlClient(order.statusOrder || '')}${order.statusOrder && order.statusDelivery ? ' · ' : ''}${escapeHtmlClient(order.statusDelivery || '')}</p>
             <p class="text-[11px] text-gray-400 mt-1">Удалил: ${escapeHtmlClient(order.deletedInfo || '—')}</p>
+            ${order.wasInCollective ? `<p class="text-[11px] text-gray-400 mt-1">Была в коллективке: ${escapeHtmlClient(order.wasInCollective)}</p>` : ''}
           </div>
           <button data-restore-id="${escapeHtmlClient(order.orderId)}" class="restore-order-btn shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border border-indigo-500 text-indigo-600 hover:bg-indigo-50">Восстановить</button>
         </div>

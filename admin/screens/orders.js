@@ -5,6 +5,16 @@
  * 02.08.2026). Локальная теневая копия escapeHtmlClient (существовала в
  * оригинале, дублировала общую из common.js без экранирования кавычек) —
  * убрана, используется общая.
+ *
+ * Множественный выбор + массовые действия (Э3 рефакторинга коллективок,
+ * 24.08.2026, REFACTOR-COLLECTIVES.md §3) — режим "Выбрать" + чекбоксы +
+ * нижняя панель. "В коллективку"/"Создать коллективку из выбранных" строят
+ * текст подтверждения ЛОКАЛЬНО (`o.collectiveId` уже в `getOrdersList`,
+ * `getCollectivesList` — свежий список коллективок с `orderCount`), группируя
+ * по исходной коллективке (decision (а), VASY 24.08.2026) — БЕЗ похода на
+ * сервер за превью: `assignOrdersToCollective` вызывается СРАЗУ после
+ * подтверждения. "Удалить" — безопасный вариант, `getBulkOrderDeletionPreview`
+ * СНАЧАЛА (чистые/с оплатами разделены сервером), исполнение только чистых.
  */
 window.Screens = window.Screens || {};
 
@@ -14,7 +24,9 @@ window.Screens = window.Screens || {};
 // order-new.js: переживает пересоздание DOM этого экрана при возврате из
 // редактирования В РАМКАХ той же SPA-сессии (не localStorage — полная
 // перезагрузка страницы это состояние сбросит, тут это не требовалось,
-// только "туда-обратно" внутри одного захода в приложение).
+// только "туда-обратно" внутри одного захода в приложение). Режим "Выбрать"
+// НЕ входит сюда намеренно — сбрасывается при каждом новом заходе на экран
+// (см. render() ниже), выбор заказов не должен переживать уход и возврат.
 const ordersListState = { query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0 };
 
 window.Screens.orders = {
@@ -37,7 +49,7 @@ window.Screens.orders = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 flex items-center justify-between gap-1">
           <button type="button" id="new-order-btn" title="Новый заказ" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="plus" class="w-5 h-5"></i>
@@ -50,6 +62,10 @@ window.Screens.orders = {
           <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="trash-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Удалённые</span>
+          </button>
+          <button type="button" id="select-mode-btn" title="Выбрать несколько" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="list-checks" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Выбрать</span>
           </button>
           <button type="button" id="refresh-orders" title="Обновить список" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="refresh-cw" class="w-5 h-5"></i>
@@ -87,6 +103,39 @@ window.Screens.orders = {
           Показать ещё
         </button>
       </main>
+
+      <!-- Нижняя панель массовых действий (Э3) — видна только в режиме "Выбрать" -->
+      <div id="bulk-actions-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-40 px-4 py-3">
+        <div class="max-w-2xl mx-auto">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
+            <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="bulk-assign-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">В коллективку</button>
+            <button type="button" id="bulk-create-collective-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Создать коллективку</button>
+            <button type="button" id="bulk-delete-btn" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
+          </div>
+        </div>
+      </div>
+
+      ${CollectivePickerModal.html()}
+
+      <!-- Массовое удаление — превью "чистые/с оплатами" (Э3, §3 п.7) -->
+      <div id="bulk-delete-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Массовое удаление</h2>
+            <button type="button" id="bulk-delete-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 overflow-y-auto space-y-3" id="bulk-delete-body"></div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <button type="button" id="bulk-delete-confirm-btn" class="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
+          </div>
+        </div>
+      </div>
     `;
 
     const PAGE_SIZE = 50;
@@ -96,6 +145,11 @@ window.Screens.orders = {
     let displayCount = ordersListState.displayCount;
     let sortDirection = ordersListState.sortDirection;
 
+    // Режим "Выбрать" (Э3) — module-scope этого render(), НЕ ordersListState
+    // (см. её комментарий выше).
+    let selectMode = false;
+    const selectedIds = new Set();
+
     const listContainer = document.getElementById('orders-list');
     const emptyMessage = document.getElementById('empty-message');
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -104,6 +158,12 @@ window.Screens.orders = {
     const sortDirBtn = document.getElementById('sort-direction');
     const refreshBtn = document.getElementById('refresh-orders');
     const countLabel = document.getElementById('orders-count');
+    const selectModeBtn = document.getElementById('select-mode-btn');
+    const bulkBar = document.getElementById('bulk-actions-bar');
+    const bulkSelectedCount = document.getElementById('bulk-selected-count');
+    const bulkAssignBtn = document.getElementById('bulk-assign-btn');
+    const bulkCreateBtn = document.getElementById('bulk-create-collective-btn');
+    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
 
     document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
@@ -179,6 +239,37 @@ window.Screens.orders = {
 
     loadMoreBtn.addEventListener('click', () => { displayCount += PAGE_SIZE; render(); });
 
+    // --- Режим "Выбрать" (Э3) ---
+
+    function setSelectMode(on) {
+      selectMode = on;
+      if (!on) selectedIds.clear();
+      selectModeBtn.classList.toggle('bg-indigo-50', on);
+      bulkBar.classList.toggle('hidden', !on);
+      render();
+    }
+
+    selectModeBtn.addEventListener('click', () => setSelectMode(!selectMode));
+    document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
+
+    function updateBulkBar() {
+      bulkSelectedCount.textContent = selectedIds.size;
+      const disabled = selectedIds.size === 0;
+      bulkAssignBtn.disabled = disabled;
+      bulkCreateBtn.disabled = disabled;
+      bulkDeleteBtn.disabled = disabled;
+    }
+
+    function toggleSelected(orderId) {
+      if (selectedIds.has(orderId)) selectedIds.delete(orderId);
+      else selectedIds.add(orderId);
+      updateBulkBar();
+    }
+
+    function selectedOrders() {
+      return allOrders.filter((o) => selectedIds.has(o.orderId));
+    }
+
     // Снимок состояния в момент ухода с экрана (роутер шлёт abort на
     // signal перед монтированием следующего экрана, см. router.js) —
     // проще и надёжнее, чем разбрасывать запись в ordersListState по
@@ -227,16 +318,24 @@ window.Screens.orders = {
       }
 
       loadMoreBtn.classList.toggle('hidden', displayCount >= sorted.length);
+      updateBulkBar();
     }
 
     function buildCard(o) {
       const card = document.createElement('div');
-      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors';
+      const isSelected = selectedIds.has(o.orderId);
+      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
       card.addEventListener('click', () => {
+        if (selectMode) { toggleSelected(o.orderId); render(); return; }
         navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
       });
       card.innerHTML = `
         <div class="flex items-start gap-3">
+          ${selectMode ? `
+            <div class="shrink-0 pt-0.5">
+              <input type="checkbox" class="order-select-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600" ${isSelected ? 'checked' : ''}>
+            </div>
+          ` : ''}
           ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-2">
@@ -280,7 +379,185 @@ window.Screens.orders = {
           remarkToggle.textContent = expanded ? 'Свернуть' : 'Показать полностью';
         });
       }
+      const checkbox = card.querySelector('.order-select-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => { e.stopPropagation(); toggleSelected(o.orderId); render(); });
+      }
       return card;
     }
+
+    // --- "В коллективку" / "Создать коллективку из выбранных" (Э3, п.5 —
+    // текст подтверждения группирует по исходной коллективке, decision (а)) ---
+
+    /**
+     * @param {Object[]} orders Выбранные заказы (с полем collectiveId)
+     * @param {string|null} targetCollectiveId null — целевая коллективка ещё не создана ("Создать из выбранных")
+     * @param {Map<string,Object>} collectivesById Свежий getCollectivesList, индексированный по collectiveId
+     * @returns {string|null} null — нечего делать (все выбранные уже в целевой)
+     */
+    function buildAssignConfirmText(orders, targetCollectiveId, collectivesById) {
+      const bySource = new Map(); // collectiveId -> orders[]
+      let brandNewCount = 0;
+
+      for (const o of orders) {
+        if (!o.collectiveId) { brandNewCount++; continue; }
+        if (o.collectiveId === targetCollectiveId) continue; // уже там — нечего переносить
+        const list = bySource.get(o.collectiveId) || [];
+        list.push(o);
+        bySource.set(o.collectiveId, list);
+      }
+
+      const parts = [];
+      if (brandNewCount > 0) parts.push(`${brandNewCount} новых`);
+      for (const [srcId, list] of bySource) {
+        const src = collectivesById.get(srcId);
+        const name = src ? (src.name || `ID ${srcId}`) : `ID ${srcId}`;
+        const remaining = src ? Math.max(0, src.orderCount - list.length) : '?';
+        parts.push(`${list.length} переедут из «${name}» (её сверка будет пересчитана на оставшиеся ${remaining})`);
+      }
+      if (parts.length === 0) return null;
+      return `${parts.join(', ')}.`;
+    }
+
+    async function doAssign(orderIds, collectiveId) {
+      const result = await callServer('assignOrdersToCollective', orderIds, collectiveId);
+      const okCount = result.moved.length + result.added.length;
+      if (result.failed.length > 0) {
+        showSaveToast(false, `Готово частично: ${okCount} из ${orderIds.length}, ${result.failed.length} не удалось.`);
+      } else {
+        showSaveToast(true, `Готово: ${okCount} заказ(ов) в коллективке.`);
+      }
+      setSelectMode(false);
+      allOrders = await callServer('getOrdersList');
+      render();
+    }
+
+    const collectivePicker = CollectivePickerModal.init({
+      onPicked: async (collective) => {
+        const orders = selectedOrders();
+        if (orders.length === 0) return;
+        const collectivesById = new Map((await callServer('getCollectivesList')).map((c) => [c.collectiveId, c]));
+        const text = buildAssignConfirmText(orders, collective.collectiveId, collectivesById);
+        if (text === null) {
+          showSaveToast(false, `Все выбранные заказы уже в «${collective.name || collective.collectiveId}».`);
+          return;
+        }
+        const confirmed = await showConfirmModal(`${text}\n\nПродолжить?`, { confirmLabel: 'В коллективку' });
+        if (!confirmed) return;
+        try {
+          await doAssign([...selectedIds], collective.collectiveId);
+        } catch (error) {
+          showSaveToast(false, 'Не удалось выполнить: ' + error.message);
+        }
+      }
+    });
+
+    bulkAssignBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      collectivePicker.open();
+    });
+
+    bulkCreateBtn.addEventListener('click', async () => {
+      if (selectedIds.size === 0) return;
+      const name = await showPromptModal('Название новой коллективки');
+      if (!name || !name.trim()) return;
+
+      const orders = selectedOrders();
+      const collectivesById = new Map((await callServer('getCollectivesList')).map((c) => [c.collectiveId, c]));
+      const text = buildAssignConfirmText(orders, null, collectivesById);
+      const confirmed = await showConfirmModal(
+        `Создать «${name.trim()}» из ${orders.length} заказ(ов): ${text || 'все новые.'}\n\nПродолжить?`,
+        { confirmLabel: 'Создать' }
+      );
+      if (!confirmed) return;
+
+      try {
+        const created = await callServer('createCollective', { name: name.trim() });
+        await doAssign([...selectedIds], created.collectiveId);
+      } catch (error) {
+        showSaveToast(false, 'Не удалось создать коллективку: ' + error.message);
+      }
+    });
+
+    // --- "Удалить" (безопасный вариант, Э3 §3 п.7) ---
+
+    const bulkDeleteModal = document.getElementById('bulk-delete-modal');
+    const bulkDeleteBody = document.getElementById('bulk-delete-body');
+    const bulkDeleteConfirmBtn = document.getElementById('bulk-delete-confirm-btn');
+    let bulkDeleteCleanIds = [];
+
+    function closeBulkDeleteModal() {
+      bulkDeleteModal.classList.add('hidden');
+      bulkDeleteModal.classList.remove('flex');
+    }
+    document.getElementById('bulk-delete-close').addEventListener('click', closeBulkDeleteModal);
+    bulkDeleteModal.addEventListener('click', (e) => { if (e.target === bulkDeleteModal) closeBulkDeleteModal(); });
+
+    bulkDeleteBtn.addEventListener('click', async () => {
+      if (selectedIds.size === 0) return;
+      let preview;
+      try {
+        preview = await callServer('getBulkOrderDeletionPreview', [...selectedIds]);
+      } catch (error) {
+        showSaveToast(false, 'Не удалось подготовить удаление: ' + error.message);
+        return;
+      }
+
+      bulkDeleteCleanIds = preview.clean.map((o) => o.orderId);
+      const parts = [];
+      if (preview.clean.length > 0) {
+        parts.push(`<div><div class="text-sm text-gray-700 mb-1">Будут удалены сразу (без активных платежей): <b>${preview.clean.length}</b></div>
+          <div class="text-[12px] text-gray-400">${preview.clean.map((o) => escapeHtmlClient(o.productDisplay)).join(', ')}</div></div>`);
+      }
+      if (preview.withPayments.length > 0) {
+        parts.push(`<div>
+          <div class="text-sm text-amber-700 mb-1">С активными платежами — удалите по одному:</div>
+          <div class="space-y-1">
+            ${preview.withPayments.map((o) => `
+              <div class="flex items-center justify-between gap-2 p-2 border border-amber-100 bg-amber-50 rounded-lg">
+                <span class="text-[13px] text-gray-700 truncate">${escapeHtmlClient(o.productDisplay)} · № ${escapeHtmlClient(o.orderId)}${o.error ? '' : ` · платежей: ${o.paymentsCount}`}</span>
+                <button type="button" class="bulk-delete-open-order-btn shrink-0 text-indigo-600 text-[12px] font-medium" data-order-id="${escapeHtmlClient(o.orderId)}">Открыть</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>`);
+      }
+      bulkDeleteBody.innerHTML = parts.join('') || '<div class="text-sm text-gray-400">Нечего удалять.</div>';
+      bulkDeleteBody.querySelectorAll('.bulk-delete-open-order-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          closeBulkDeleteModal();
+          navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
+        });
+      });
+
+      bulkDeleteConfirmBtn.disabled = bulkDeleteCleanIds.length === 0;
+      bulkDeleteConfirmBtn.textContent = bulkDeleteCleanIds.length > 0 ? `Удалить ${bulkDeleteCleanIds.length}` : 'Удалить';
+      bulkDeleteModal.classList.remove('hidden');
+      bulkDeleteModal.classList.add('flex');
+    });
+
+    bulkDeleteConfirmBtn.addEventListener('click', async () => {
+      if (bulkDeleteCleanIds.length === 0 || bulkDeleteConfirmBtn.disabled) return;
+      const confirmed = await showConfirmModal(`Удалить ${bulkDeleteCleanIds.length} заказ(ов)? Действие необратимо без явного восстановления.`, { confirmLabel: 'Удалить', danger: true });
+      if (!confirmed) return;
+
+      bulkDeleteConfirmBtn.disabled = true;
+      try {
+        const result = await callServer('bulkDeleteOrders', bulkDeleteCleanIds);
+        if (result.failed.length > 0) {
+          showSaveToast(false, `Удалено ${result.deleted.length} из ${bulkDeleteCleanIds.length}, ${result.failed.length} не удалось (см. по одному).`);
+        } else {
+          showSaveToast(true, `Удалено: ${result.deleted.length}.`);
+        }
+        closeBulkDeleteModal();
+        setSelectMode(false);
+        allOrders = await callServer('getOrdersList');
+        render();
+      } catch (error) {
+        showSaveToast(false, 'Не удалось удалить: ' + error.message);
+      } finally {
+        bulkDeleteConfirmBtn.disabled = false;
+      }
+    });
   }
 };

@@ -28,6 +28,16 @@
  * карточка заказа и итоговый баннер после сохранения показывают перерасход/
  * недорасход СИММЕТРИЧНО, явным текстом с действием ("довзыщите"/"возможен
  * возврат"), а не просто цветной цифрой, как было в Э1-версии модалки.
+ *
+ * Множественный выбор + массовые действия (Э3, 24.08.2026,
+ * REFACTOR-COLLECTIVES.md §3) — тот же режим "Выбрать" + чекбоксы, что
+ * `orders.js`, здесь только два действия ("Убрать из коллективки"/
+ * "Перенести в другую", п.2 Э3), без "Удалить" (массовое удаление — только
+ * с экрана "Заказы"). Одиночные действия (крестик на карточке, "Добавить
+ * заказ" через поиск) тоже получили подтверждение здесь же — раньше "Убрать"
+ * срабатывало без единого вопроса, но с этим срезом молча пишет
+ * корректирующую проводку сверки (авто-пересчёт, см. `financeService.
+ * recalculateCollectiveReconciliation`), это уже не "бесплатное" действие.
  */
 window.Screens = window.Screens || {};
 window.Screens.collectiveDetail = {
@@ -44,7 +54,7 @@ window.Screens.collectiveDetail = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
+      <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
         <!-- Общая датаlist для всех ползунков доли (§1 п.2) — засечки на
              каждый шаг 1/8; поддерживается не везде (Safari/iOS WebView
              даталист-засечки для range не рисует вообще), поэтому под каждым
@@ -115,19 +125,43 @@ window.Screens.collectiveDetail = {
           </div>
 
           <!-- Единый список заказов -->
-          <div class="text-[11px] text-gray-400 px-1">Заказы (<span id="order-count-label">0</span>)</div>
+          <div class="flex items-center justify-between px-1">
+            <div class="text-[11px] text-gray-400">Заказы (<span id="order-count-label">0</span>)</div>
+            <button type="button" id="select-mode-btn" class="text-[11px] font-medium text-indigo-600">Выбрать</button>
+          </div>
           <div id="order-list"></div>
           <div id="order-empty" class="hidden text-center text-sm text-gray-400 py-6">Заказов пока нет</div>
 
           <button id="detail-delete-btn" class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium">Удалить коллективку</button>
         </div>
       </main>
+
+      <!-- Нижняя панель массовых действий (Э3) — видна только в режиме "Выбрать" -->
+      <div id="bulk-actions-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-40 px-4 py-3">
+        <div class="max-w-2xl mx-auto">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
+            <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="bulk-unassign-btn" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Убрать из коллективки</button>
+            <button type="button" id="bulk-transfer-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Перенести в другую</button>
+          </div>
+        </div>
+      </div>
+
+      ${CollectivePickerModal.html()}
     `;
 
     let details = null; // {collectiveId,name,trackNumber,status,stage,summary,...}
     let orders = []; // единый массив карточек — объединяет getCollectiveDetails.orders + alreadyEstimated/units из getCollectiveLogisticsContext
     let actualCosts = { sdekCost: 0, taxiKzCost: 0, taxiRfCost: 0 };
     const unitDebounceTimers = new Map(); // orderId -> timer, отдельный дебаунс на каждый ползунок
+
+    // Режим "Выбрать" (Э3) — module-scope этого render(), сбрасывается при
+    // каждом новом заходе на экран (тот же принцип, что orders.js).
+    let selectMode = false;
+    const selectedIds = new Set();
 
     const loadErrorEl = document.getElementById('load-error');
     const bodyEl = document.getElementById('screen-body');
@@ -299,6 +333,94 @@ window.Screens.collectiveDetail = {
       return { text: `${shareText} — совпадает с оценкой.`, cls: 'text-gray-400' };
     }
 
+    // --- Режим "Выбрать" (Э3) ---
+
+    const selectModeBtn = document.getElementById('select-mode-btn');
+    const bulkBar = document.getElementById('bulk-actions-bar');
+    const bulkSelectedCount = document.getElementById('bulk-selected-count');
+    const bulkUnassignBtn = document.getElementById('bulk-unassign-btn');
+    const bulkTransferBtn = document.getElementById('bulk-transfer-btn');
+
+    function setSelectMode(on) {
+      selectMode = on;
+      if (!on) selectedIds.clear();
+      selectModeBtn.textContent = on ? 'Готово' : 'Выбрать';
+      bulkBar.classList.toggle('hidden', !on);
+      renderOrderList();
+    }
+
+    selectModeBtn.addEventListener('click', () => setSelectMode(!selectMode));
+    document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
+
+    function updateBulkBar() {
+      bulkSelectedCount.textContent = selectedIds.size;
+      const disabled = selectedIds.size === 0;
+      bulkUnassignBtn.disabled = disabled;
+      bulkTransferBtn.disabled = disabled;
+    }
+
+    function toggleSelected(orderId) {
+      if (selectedIds.has(orderId)) selectedIds.delete(orderId);
+      else selectedIds.add(orderId);
+      updateBulkBar();
+    }
+
+    function selectedOrders() {
+      return orders.filter((o) => selectedIds.has(o.orderId));
+    }
+
+    function currentTotalCost() {
+      return round2((actualCosts.sdekCost || 0) + (actualCosts.taxiKzCost || 0) + (actualCosts.taxiRfCost || 0));
+    }
+
+    bulkUnassignBtn.addEventListener('click', async () => {
+      if (selectedIds.size === 0) return;
+      const remaining = Math.max(0, orders.length - selectedIds.size);
+      const recalcNote = currentTotalCost() > 0 ? ` Сверка коллективки будет пересчитана на оставшиеся ${remaining}.` : '';
+      const confirmed = await showConfirmModal(`Убрать ${selectedIds.size} заказ(ов) из коллективки?${recalcNote}`, { confirmLabel: 'Убрать', danger: true });
+      if (!confirmed) return;
+
+      try {
+        const result = await callServer('unassignOrdersFromCollective', [...selectedIds]);
+        if (result.failed.length > 0) showSaveToast(false, `Убрано ${result.removed.length}, ${result.failed.length} не удалось.`);
+        else showSaveToast(true, `Убрано: ${result.removed.length}.`);
+        setSelectMode(false);
+        await loadAll();
+      } catch (error) {
+        showSaveToast(false, 'Не удалось убрать заказы: ' + error.message);
+      }
+    });
+
+    const bulkTransferPicker = CollectivePickerModal.init({
+      onPicked: async (targetCollective) => {
+        const toMove = selectedOrders();
+        if (toMove.length === 0) return;
+        const remaining = Math.max(0, orders.length - toMove.length);
+        const recalcNote = currentTotalCost() > 0 ? ` Сверка «${details.name || details.collectiveId}» будет пересчитана на оставшиеся ${remaining}.` : '';
+        const confirmed = await showConfirmModal(
+          `Перенести ${toMove.length} заказ(ов) в «${targetCollective.name || targetCollective.collectiveId}»?${recalcNote}`,
+          { confirmLabel: 'Перенести' }
+        );
+        if (!confirmed) return;
+
+        try {
+          const result = await callServer('assignOrdersToCollective', toMove.map((o) => o.orderId), targetCollective.collectiveId);
+          const okCount = result.moved.length + result.added.length;
+          if (result.failed.length > 0) showSaveToast(false, `Перенесено ${okCount}, ${result.failed.length} не удалось.`);
+          else showSaveToast(true, `Перенесено: ${okCount}.`);
+          setSelectMode(false);
+          await loadAll();
+        } catch (error) {
+          showSaveToast(false, 'Не удалось перенести: ' + error.message);
+        }
+      }
+    });
+
+    bulkTransferBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      bulkTransferPicker.open({ excludeCollectiveId: collectiveId });
+    });
+
     function renderOrderList() {
       const listEl = document.getElementById('order-list');
       const emptyEl = document.getElementById('order-empty');
@@ -317,18 +439,28 @@ window.Screens.collectiveDetail = {
       listEl.innerHTML = '';
       orders.forEach((o) => listEl.appendChild(buildOrderCard(o, totalCost, unitsSum)));
       if (window.lucide) window.lucide.createIcons();
+      updateBulkBar();
     }
 
     function buildOrderCard(o, totalCost, unitsSum) {
       const card = document.createElement('div');
-      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors';
+      const isSelected = selectedIds.has(o.orderId);
+      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
       card.dataset.orderId = o.orderId;
-      card.addEventListener('click', () => navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`));
+      card.addEventListener('click', () => {
+        if (selectMode) { toggleSelected(o.orderId); renderOrderList(); return; }
+        navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
+      });
 
       const diff = diffLabel(o, totalCost, unitsSum);
 
       card.innerHTML = `
         <div class="flex items-start gap-3">
+          ${selectMode ? `
+            <div class="shrink-0 pt-0.5">
+              <input type="checkbox" class="order-select-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600" ${isSelected ? 'checked' : ''}>
+            </div>
+          ` : ''}
           ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-2">
@@ -336,9 +468,11 @@ window.Screens.collectiveDetail = {
                 <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
                 <div class="text-[11px] text-gray-300 mt-0.5">№ ${escapeHtmlClient(o.orderId)}</div>
               </div>
+              ${selectMode ? '' : `
               <button type="button" class="unassign-order-btn shrink-0 text-red-400 p-1" title="Убрать из коллективки">
                 <i data-lucide="x" class="w-4 h-4"></i>
               </button>
+              `}
             </div>
             <div class="flex flex-wrap gap-1.5 mt-1.5">
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
@@ -366,10 +500,17 @@ window.Screens.collectiveDetail = {
         </div>
       `;
 
-      card.querySelector('.unassign-order-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        unassignOrder(o.orderId);
-      });
+      const unassignBtn = card.querySelector('.unassign-order-btn');
+      if (unassignBtn) {
+        unassignBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          unassignOrder(o.orderId);
+        });
+      }
+      const checkbox = card.querySelector('.order-select-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => { e.stopPropagation(); toggleSelected(o.orderId); renderOrderList(); });
+      }
 
       const remarkToggle = card.querySelector('.order-remark-toggle');
       if (remarkToggle) {
@@ -425,6 +566,19 @@ window.Screens.collectiveDetail = {
     }
 
     async function unassignOrder(orderId) {
+      // Подтверждение (Э3) — раньше срабатывало без единого вопроса, но с
+      // авто-пересчётом сверки (`financeService.recalculateCollectiveReconciliation`)
+      // это уже не "бесплатное" действие, если сверка коллективки уже
+      // проводилась (иначе пересчитывать нечего — не спрашиваем зря).
+      if (currentTotalCost() > 0) {
+        const remaining = Math.max(0, orders.length - 1);
+        const confirmed = await showConfirmModal(
+          `Убрать заказ из коллективки? Сверка будет пересчитана на оставшиеся ${remaining}.`,
+          { confirmLabel: 'Убрать', danger: true }
+        );
+        if (!confirmed) return;
+      }
+
       try {
         await callServer('unassignOrderFromCollective', orderId);
         await loadAll();
@@ -513,6 +667,24 @@ window.Screens.collectiveDetail = {
           li.addEventListener('click', async () => {
             detailOrderDropdown.classList.remove('active');
             detailOrderSearch.value = '';
+
+            // Перенос из ДРУГОЙ коллективки того же этапа (Э3) — раньше
+            // это происходило молча; теперь тянет авто-пересчёт сверки той
+            // коллективки, откуда заказ уходит, если она уже сверялась.
+            if (item.collectiveId && item.collectiveId !== collectiveId) {
+              let sourceName = item.collectiveId;
+              try {
+                const list = await callServer('getCollectivesList');
+                const source = list.find((c) => c.collectiveId === item.collectiveId);
+                if (source) sourceName = source.name || source.collectiveId;
+              } catch (e) { /* best-effort — покажем хотя бы ID */ }
+              const confirmed = await showConfirmModal(
+                `Заказ уже в коллективке «${sourceName}» — это перенос, её сверка (если уже проводилась) будет пересчитана. Продолжить?`,
+                { confirmLabel: 'Перенести' }
+              );
+              if (!confirmed) return;
+            }
+
             try {
               await callServer('assignOrderToCollective', item.orderId, collectiveId);
               await loadAll();
