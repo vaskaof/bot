@@ -111,15 +111,18 @@ window.Screens.orders = {
             <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
-          <div class="flex gap-2">
-            <button type="button" id="bulk-assign-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">В коллективку</button>
-            <button type="button" id="bulk-create-collective-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Создать коллективку</button>
-            <button type="button" id="bulk-delete-btn" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="bulk-assign-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">В коллективку</button>
+            <button type="button" id="bulk-create-collective-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Создать коллективку</button>
+            <!-- Э5, REFACTOR-COLLECTIVES.md §3 -->
+            <button type="button" id="bulk-status-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Сменить статус</button>
+            <button type="button" id="bulk-delete-btn" class="py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
           </div>
         </div>
       </div>
 
       ${CollectivePickerModal.html()}
+      ${DeliveryStatusModal.html()}
 
       <!-- Массовое удаление — превью "чистые/с оплатами" (Э3, §3 п.7) -->
       <div id="bulk-delete-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
@@ -164,6 +167,7 @@ window.Screens.orders = {
     const bulkAssignBtn = document.getElementById('bulk-assign-btn');
     const bulkCreateBtn = document.getElementById('bulk-create-collective-btn');
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+    const bulkStatusBtn = document.getElementById('bulk-status-btn');
 
     document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
@@ -258,6 +262,7 @@ window.Screens.orders = {
       bulkAssignBtn.disabled = disabled;
       bulkCreateBtn.disabled = disabled;
       bulkDeleteBtn.disabled = disabled;
+      bulkStatusBtn.disabled = disabled;
     }
 
     function toggleSelected(orderId) {
@@ -568,6 +573,28 @@ window.Screens.orders = {
       } finally {
         bulkDeleteConfirmBtn.disabled = false;
       }
+    });
+
+    // --- "Сменить статус доставки" (Э5, REFACTOR-COLLECTIVES.md §3 "Э5") ---
+
+    const deliveryStatusModal = DeliveryStatusModal.init({
+      getStatusDictionary: async () => (await callServer('getDictionaries')).statusDelivery,
+      onApplied: async ({ closedCount, forcedCount, failedCount }) => {
+        const total = closedCount + forcedCount;
+        if (failedCount > 0) {
+          showSaveToast(false, `Статус изменён у ${total}, не удалось у ${failedCount} (см. лог).`);
+        } else if (total > 0) {
+          showSaveToast(true, `Статус изменён у ${total} заказ(ов).`);
+        }
+        setSelectMode(false);
+        allOrders = await callServer('getOrdersList');
+        render();
+      }
+    });
+
+    bulkStatusBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      deliveryStatusModal.open([...selectedIds]);
     });
   }
 };

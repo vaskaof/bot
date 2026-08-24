@@ -143,14 +143,17 @@ window.Screens.collectiveDetail = {
             <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
-          <div class="flex gap-2">
-            <button type="button" id="bulk-unassign-btn" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Убрать из коллективки</button>
-            <button type="button" id="bulk-transfer-btn" class="flex-1 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Перенести в другую</button>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="bulk-unassign-btn" class="py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Убрать из коллективки</button>
+            <button type="button" id="bulk-transfer-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Перенести в другую</button>
+            <!-- Э5, REFACTOR-COLLECTIVES.md §3 -->
+            <button type="button" id="bulk-status-btn" class="col-span-2 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Сменить статус доставки</button>
           </div>
         </div>
       </div>
 
       ${CollectivePickerModal.html()}
+      ${DeliveryStatusModal.html()}
     `;
 
     let details = null; // {collectiveId,name,trackNumber,status,stage,summary,...}
@@ -430,6 +433,7 @@ window.Screens.collectiveDetail = {
     const bulkSelectedCount = document.getElementById('bulk-selected-count');
     const bulkUnassignBtn = document.getElementById('bulk-unassign-btn');
     const bulkTransferBtn = document.getElementById('bulk-transfer-btn');
+    const bulkStatusBtn = document.getElementById('bulk-status-btn');
 
     function setSelectMode(on) {
       selectMode = on;
@@ -447,6 +451,7 @@ window.Screens.collectiveDetail = {
       const disabled = selectedIds.size === 0;
       bulkUnassignBtn.disabled = disabled;
       bulkTransferBtn.disabled = disabled;
+      bulkStatusBtn.disabled = disabled;
     }
 
     function toggleSelected(orderId) {
@@ -511,6 +516,27 @@ window.Screens.collectiveDetail = {
     bulkTransferBtn.addEventListener('click', () => {
       if (selectedIds.size === 0) return;
       bulkTransferPicker.open({ excludeCollectiveId: collectiveId });
+    });
+
+    // --- "Сменить статус доставки" (Э5, REFACTOR-COLLECTIVES.md §3 "Э5") ---
+
+    const deliveryStatusModal = DeliveryStatusModal.init({
+      getStatusDictionary: async () => (await callServer('getDictionaries')).statusDelivery,
+      onApplied: async ({ closedCount, forcedCount, failedCount }) => {
+        const total = closedCount + forcedCount;
+        if (failedCount > 0) {
+          showSaveToast(false, `Статус изменён у ${total}, не удалось у ${failedCount} (см. лог).`);
+        } else if (total > 0) {
+          showSaveToast(true, `Статус изменён у ${total} заказ(ов).`);
+        }
+        setSelectMode(false);
+        await loadAll();
+      }
+    });
+
+    bulkStatusBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      deliveryStatusModal.open([...selectedIds]);
     });
 
     function renderOrderList() {

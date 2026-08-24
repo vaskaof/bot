@@ -606,7 +606,7 @@ window.Screens.orderEdit = {
     // проксировался на старый GAS-индекс (только зашедшие в бота клиенты).
     function searchClientStub(query) { return callServer('searchClients', query); }
 
-    async function saveOrder() {
+    async function saveOrder(confirmedCloseWithDebt) {
       const client = manualClientData
         ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
         : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
@@ -650,6 +650,10 @@ window.Screens.orderEdit = {
         notifyClient: document.getElementById('notify-client-checkbox').checked,
         purchaseLink: purchaseLinkInput.value.trim()
       };
+      // Гейт долга (Q7, см. блок выше save-order-btn) — подтверждение уже
+      // получено ДО вызова saveOrder, здесь только прокидывается на сервер,
+      // который перепроверяет его сам (страховка от гонки, не второй UX-путь).
+      if (confirmedCloseWithDebt) fields.confirmedCloseWithDebt = true;
 
       // Черновик — ДО отправки, как у order-new.js, только чисто UX-цель
       // (см. ORDER_EDIT_DRAFT_KEY выше) — updateOrder сам по себе безопасен
@@ -1281,15 +1285,22 @@ window.Screens.orderEdit = {
     // применена здесь тоже для единообразия, хотя updateOrder безопаснее
     // при повторе (перезаписывает ту же строку, не плодит новые).
     // Закрывающие статусы — тот же литерал, что backend
-    // ordersSheetsClient.ORDER_CLOSING_STATUSES (Config.js-конвенция: копируем
+    // ordersRepository.ORDER_CLOSING_STATUSES (Config.js-конвенция: копируем
     // значение как есть, не изобретаем свой код, см. личную память
     // feedback_gas_original_contract_values). Заказ в одном из этих статусов
     // выходит из платёжного движка целиком (ни waterfall, ни точечное
     // распределение больше не тронут его стадии — getOpenOrdersForClient его
-    // не отдаёт) — предупреждение при переходе, по запросу VASY (13.08.2026,
-    // найдено на живом заказе 3E7473: заказ дошёл до "Получено клиентом" при
-    // непокрытом долге, оплата "молча" перестала быть возможной).
+    // не отдаёт).
     const ORDER_CLOSING_STATUSES = ['Получено клиентом', 'возврат средств'];
+    // Гейт долга (Q7, REFACTOR-COLLECTIVES.md §5 Q7/§6.2, 25.08.2026, Э5
+    // рефакторинга коллективок) — ТОЛЬКО этот статус, "возврат средств"
+    // исключён явным решением VASY (долг там — нормальное состояние).
+    // Заменяет более раннюю (13.08.2026, найдено на живом заказе 3E7473)
+    // клиент-локальную/только-new-model проверку — теперь считается на
+    // сервере (previewDeliveryStatusChange, та же функция, что и у массовой
+    // смены статуса на "Заказах"/в коллективке), покрывает обе модели, не
+    // только new-model.
+    const ORDER_CLOSING_STATUS_WITH_DEBT_GATE = 'Получено клиентом';
 
     function findUnpaidNewModelStages() {
       if (!loadedDetails || !loadedDetails.isNewModel) return [];
@@ -1306,7 +1317,35 @@ window.Screens.orderEdit = {
       }
 
       const nextStatusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
-      if (ORDER_CLOSING_STATUSES.includes(nextStatusDelivery)) {
+      let confirmedCloseWithDebt = false;
+
+      // Гейт применяется только на РЕАЛЬНОМ переходе в закрывающий (не на
+      // каждом сохранении уже закрытого заказа) — та же проверка, что
+      // сервер сделает повторно как страховку (previousStatus известен уже
+      // здесь, лишний запрос на no-op-сохранение не нужен).
+      const wasAlreadyClosing = loadedDetails && ORDER_CLOSING_STATUSES.includes(loadedDetails.statusDelivery);
+      if (nextStatusDelivery === ORDER_CLOSING_STATUS_WITH_DEBT_GATE && !wasAlreadyClosing) {
+        let preview;
+        try {
+          preview = await callServer('previewDeliveryStatusChange', [currentOrderId], nextStatusDelivery);
+        } catch (error) {
+          showSaveToast(false, `Не удалось проверить оплату перед закрытием: ${error.message}`);
+          return;
+        }
+        const debtEntry = (preview.withDebt || [])[0];
+        if (debtEntry) {
+          const proceed = await showConfirmModal(
+            `Заказ переходит в статус «Получено клиентом», но по нему остаётся непогашенный долг ${debtEntry.debt.toFixed(2)} ₽.\n\n` +
+            `После закрытия остаток перестаёт быть целью — деньги, которые клиент занесёт позже, на этот заказ уже не пойдут, а сам долг нигде не будет виден как открытая позиция.\n\n` +
+            `Всё равно закрыть?`,
+            { confirmLabel: 'Закрыть', danger: true }
+          );
+          if (!proceed) return;
+          confirmedCloseWithDebt = true;
+        }
+      } else if (ORDER_CLOSING_STATUSES.includes(nextStatusDelivery)) {
+        // "возврат средств" (и повторное сохранение уже закрытого статуса) —
+        // без гейта, только общее информационное предупреждение, без изменений.
         const unpaidStages = findUnpaidNewModelStages();
         if (unpaidStages.length > 0) {
           const debtText = unpaidStages.map((s) => `${s.stage}: ${s.remaining.toFixed(2)} ₽`).join(', ');
@@ -1326,7 +1365,7 @@ window.Screens.orderEdit = {
       // Пульсация, не вращение — см. .save-pulse в admin/app.html.
       if (icon) icon.classList.add('save-pulse');
       try {
-        const result = await saveOrder();
+        const result = await saveOrder(confirmedCloseWithDebt);
         showSaveToast(true, 'Изменения сохранены');
         if (result.notifyWarning) {
           setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);
