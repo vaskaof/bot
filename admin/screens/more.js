@@ -36,7 +36,10 @@ window.Screens.more = {
       { route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' },
       { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
       { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },
-      { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' }
+      { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' },
+      // Э2 рефакторинга экономики, 25.08.2026 — "Факт выкупа" сюда не входит,
+      // он привязан к заказу и открывается с экрана заказа (order-edit.js).
+      { route: 'wallet', icon: 'coins', title: 'Кошелёк ₸', description: 'Конвертация ₽→₸, буфер по каналам, личные закупки' }
     ];
 
     const list = document.getElementById('more-list');

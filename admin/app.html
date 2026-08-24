@@ -17,7 +17,9 @@
   <script src="screens/_delete-order-modal.js?v=2"></script>
   <script src="screens/_collective-picker-modal.js?v=1"></script>
   <script src="screens/_delivery-status-modal.js?v=1"></script>
+  <script src="screens/_purchase-event-modal.js?v=1"></script>
   <script src="screens/wishlist-demand.js?v=8"></script>
+  <script src="screens/wallet.js?v=1"></script>
   <script src="screens/home.js?v=3"></script>
   <script src="screens/more.js?v=2"></script>
   <script src="screens/clients.js?v=3"></script>
@@ -30,7 +32,7 @@
   <script src="screens/collective-detail.js?v=4"></script>
   <script src="screens/contests.js?v=8"></script>
   <script src="screens/order-new.js?v=11"></script>
-  <script src="screens/order-edit.js?v=17"></script>
+  <script src="screens/order-edit.js?v=18"></script>
   <script src="screens/payments.js?v=14"></script>
   <script src="screens/settings.js?v=5"></script>
   <style>
@@ -175,6 +177,11 @@
       <button type="button" data-nav-key="clients" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="users" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Клиенты</span>
+      </button>
+      <!-- Э2 рефакторинга экономики, 25.08.2026 — "Кошелёк ₸" (wallet.js), тот же принцип, что остальные MORE_GROUP-кнопки выше. -->
+      <button type="button" data-nav-key="wallet" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="coins" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Кошелёк</span>
       </button>
 
       <!-- Узкий экран: сворачивает три кнопки выше под одну -->

@@ -42,6 +42,9 @@ window.Screens.orderEdit = {
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить
       </label>
+      <button id="purchase-event-btn" title="Факт выкупа" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="receipt" class="w-6 h-6"></i>
+      </button>
       <button id="duplicate-order-btn" title="Дублировать заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy" class="w-6 h-6"></i>
       </button>
@@ -510,6 +513,7 @@ window.Screens.orderEdit = {
       ${SkuModal.html()}
       ${ManualClientModal.html()}
       ${DeleteOrderModal.html()}
+      ${PurchaseEventModal.html()}
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
@@ -1434,6 +1438,17 @@ window.Screens.orderEdit = {
       onConfirmed: async (resolutions) => {
         await finishDeleteOrder(resolutions);
       }
+    });
+
+    // "Факт выкупа" (Э2 рефакторинга экономики, 25.08.2026, хвост "экран
+    // менеджера") — orderId/валюта берутся из уже загруженного заказа,
+    // менеджер их не вводит руками. onRecorded ничего не обновляет на самом
+    // экране заказа намеренно — "Итог Руб"/"Доход Руб" считаются от других
+    // полей (не от purchase_events), обновлять здесь нечего.
+    const purchaseEventModal = PurchaseEventModal.init({});
+    document.getElementById('purchase-event-btn').addEventListener('click', () => {
+      if (!currentOrderId || !loadedDetails) return;
+      purchaseEventModal.open(currentOrderId, loadedDetails.currency);
     });
 
     const deleteOrderBtn = document.getElementById('delete-order-btn');

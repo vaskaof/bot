@@ -28,7 +28,7 @@
  * MORE_GROUP ниже — единственное место, которое обе стороны (view app.html
  * и подсветка активного пункта здесь) обязаны знать одинаково.
  */
-const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients'];
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -40,6 +40,10 @@ const ROUTES = [
   { path: 'contests', screen: 'contests', navKey: 'contests', showNav: true },
   { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
   { path: 'analytics', screen: 'analytics', navKey: 'analytics', showNav: true },
+  // Э2 рефакторинга экономики, 25.08.2026 — форма "Конвертация" + отчёты
+  // буфера/личных закупок, см. wallet.js. В MORE_GROUP наравне с settings/
+  // contests/analytics/clients — та же логика сворачивания под "Ещё".
+  { path: 'wallet', screen: 'wallet', navKey: 'wallet', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
