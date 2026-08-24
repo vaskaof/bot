@@ -103,6 +103,17 @@ function matchRoute(hash) {
     return { screen: 'orderEdit', navKey: null, showNav: false, params: { orderId: decodeURIComponent(editMatch[1]) } };
   }
 
+  // Адресуемый маршрут карточки коллективки (Э2 рефакторинга коллективок,
+  // 24.08.2026) — заменяет модалку `collective-detail-modal` в collectives.js.
+  // Тот же паттерн разбора, что editMatch выше. Решает жалобу VASY "ушёл в
+  // заказ, вернулся в закрытую модалку" — тап по карточке заказа теперь ведёт
+  // на настоящий `orders/{id}/edit`, а "Назад" там — обычный history.back(),
+  // который сам вернёт сюда, раз оба перехода — реальные записи в history.
+  const collectiveMatch = clean.match(/^collectives\/([^/]+)$/);
+  if (collectiveMatch) {
+    return { screen: 'collectiveDetail', navKey: null, showNav: true, params: { collectiveId: decodeURIComponent(collectiveMatch[1]) } };
+  }
+
   const route = ROUTES.find((r) => r.path === clean);
   if (route) return { screen: route.screen, navKey: route.navKey, showNav: route.showNav, params: queryParams };
 
