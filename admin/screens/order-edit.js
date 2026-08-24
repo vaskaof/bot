@@ -243,15 +243,31 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
+          <!-- Э4 рефакторинга коллективок (§3, 24.08.2026) — ДВЕ независимые
+               привязки (плечо 1 «КЗ→РФ» / плечо 2 «По РФ») вместо одного
+               селекта — заказ может ехать через оба этапа одновременно. -->
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
                 <i data-lucide="package-2" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Коллективка</span>
+              <span class="text-sm font-medium text-gray-700">Коллективка КЗ→РФ</span>
             </div>
             <div class="flex-1 w-full">
-              <select id="collective-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+              <select id="collective-select-stage1" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+                <option value="">— не привязано —</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                <i data-lucide="package-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Коллективка по РФ</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="collective-select-stage2" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
                 <option value="">— не привязано —</option>
               </select>
             </div>
@@ -454,18 +470,32 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4 rounded-b-2xl">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+          <!-- "Доставка по РФ" (Э4 рефакторинга коллективок, §2.5,
+               24.08.2026) — тем же приёмом, что "Доставка КЗ→РФ" выше,
+               зеркало, файл в файл. -->
+          <div class="field-row flex flex-col p-4 gap-2 rounded-b-2xl">
+            <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                 <i data-lucide="truck" class="w-5 h-5"></i>
               </div>
               <span class="text-sm font-medium text-gray-700">Доставка по РФ</span>
+              <span class="ml-auto text-[15px] font-semibold text-gray-900"><span id="delivery-rf-total-display">0.00</span> ₽</span>
             </div>
-            <div class="flex-1 w-full flex items-center justify-between gap-2">
-              <div class="flex items-baseline gap-1">
-                <input type="number" id="delivery-rf-sum-input" class="w-28 bg-transparent border-none outline-none text-[15px] font-medium text-gray-900 placeholder-gray-300" placeholder="0.00" step="0.01">
-                <span class="text-sm text-gray-500 font-medium">₽</span>
+            <div class="grid grid-cols-3 gap-2 pl-12">
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси (отправка)</label>
+                <input type="number" id="taxi-rf-send-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
               </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Отправка</label>
+                <input type="number" id="shipping-rf-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+              <div>
+                <label class="text-[11px] text-gray-400 block mb-0.5">Такси (получение)</label>
+                <input type="number" id="taxi-rf-receive-sum-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              </div>
+            </div>
+            <div class="flex items-center justify-end gap-1 pl-12">
               <div class="flex items-center gap-1 shrink-0" id="delivery-rf-paid-toggle" data-value="Нет">
                 <button type="button" data-toggle-value="Да" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Да</button>
                 <button type="button" data-toggle-value="Нет" class="toggle-btn px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">Нет</button>
@@ -496,13 +526,16 @@ window.Screens.orderEdit = {
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
-    let weightSumInput, deliveryRfSumInput;
+    let weightSumInput;
     let weightUsdInput, weightUsdRateDisplay;
     // "Доставка КЗ→РФ" (13.08.2026, редизайн) — больше не одно поле, сумма
     // 3 живых полей ниже; deliveryKzRfTotalDisplay — read-only, не input.
     let taxiKzSumInput, sdekCostSumInput, taxiRfSumInput, deliveryKzRfTotalDisplay;
+    // "Доставка по РФ" (Э4 рефакторинга коллективок, §2.5, 24.08.2026) —
+    // тот же паттерн, зеркало трёх строк выше.
+    let taxiRfSendSumInput, shippingRfSumInput, taxiRfReceiveSumInput, deliveryRfTotalDisplay;
     let usdToRubRate = 0; // курс "Доллар" из finalRates (13.08.2026, $→₽ калькулятор веса) — этот экран раньше курсы вообще не запрашивал
-    let collectiveSelect, sdekTypeSelect;
+    let collectiveSelectStage1, collectiveSelectStage2, sdekTypeSelect;
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
     let purchaseLinkInput, purchaseLinkHint, purchaseLinkResolveBtn;
@@ -609,7 +642,10 @@ window.Screens.orderEdit = {
         taxiRfSum: taxiRfSumInput.value,
         deliveryKzRfSum: computeDeliveryKzRfTotal().toFixed(2),
         deliveryKzRfPaid: document.getElementById('delivery-kzrf-paid-toggle').dataset.value,
-        deliveryRfSum: deliveryRfSumInput.value,
+        // "Доставка по РФ" (Э4, §2.5) — тот же принцип, зеркало 3 строк выше.
+        taxiRfSendSum: taxiRfSendSumInput.value,
+        shippingRfSum: shippingRfSumInput.value,
+        taxiRfReceiveSum: taxiRfReceiveSumInput.value,
         deliveryRfPaid: document.getElementById('delivery-rf-paid-toggle').dataset.value,
         notifyClient: document.getElementById('notify-client-checkbox').checked,
         purchaseLink: purchaseLinkInput.value.trim()
@@ -674,13 +710,16 @@ window.Screens.orderEdit = {
     rateKztInput = document.getElementById('rate-kzt-input');
     rateRubInput = document.getElementById('rate-rub-input');
     weightSumInput = document.getElementById('weight-sum-input');
-    deliveryRfSumInput = document.getElementById('delivery-rf-sum-input');
     weightUsdInput = document.getElementById('weight-usd-input');
     weightUsdRateDisplay = document.getElementById('weight-usd-rate-display');
     taxiKzSumInput = document.getElementById('taxi-kz-sum-input');
     sdekCostSumInput = document.getElementById('sdek-cost-sum-input');
     taxiRfSumInput = document.getElementById('taxi-rf-sum-input');
     deliveryKzRfTotalDisplay = document.getElementById('delivery-kzrf-total-display');
+    taxiRfSendSumInput = document.getElementById('taxi-rf-send-sum-input');
+    shippingRfSumInput = document.getElementById('shipping-rf-sum-input');
+    taxiRfReceiveSumInput = document.getElementById('taxi-rf-receive-sum-input');
+    deliveryRfTotalDisplay = document.getElementById('delivery-rf-total-display');
 
     // "Доставка КЗ→РФ" — живой sum трёх полей, обновляется в display на
     // каждый ввод (13.08.2026, редизайн).
@@ -691,7 +730,17 @@ window.Screens.orderEdit = {
       deliveryKzRfTotalDisplay.textContent = computeDeliveryKzRfTotal().toFixed(2);
     }
     [taxiKzSumInput, sdekCostSumInput, taxiRfSumInput].forEach((input) => input.addEventListener('input', updateDeliveryKzRfTotalDisplay));
-    collectiveSelect = document.getElementById('collective-select');
+
+    // "Доставка по РФ" (Э4, §2.5) — тот же паттерн, зеркало блока выше.
+    function computeDeliveryRfTotal() {
+      return (parseFloat(taxiRfSendSumInput.value) || 0) + (parseFloat(shippingRfSumInput.value) || 0) + (parseFloat(taxiRfReceiveSumInput.value) || 0);
+    }
+    function updateDeliveryRfTotalDisplay() {
+      deliveryRfTotalDisplay.textContent = computeDeliveryRfTotal().toFixed(2);
+    }
+    [taxiRfSendSumInput, shippingRfSumInput, taxiRfReceiveSumInput].forEach((input) => input.addEventListener('input', updateDeliveryRfTotalDisplay));
+    collectiveSelectStage1 = document.getElementById('collective-select-stage1');
+    collectiveSelectStage2 = document.getElementById('collective-select-stage2');
     purchaseLinkInput = document.getElementById('purchase-link-input');
     purchaseLinkHint = document.getElementById('purchase-link-hint');
     purchaseLinkResolveBtn = document.getElementById('purchase-link-resolve-btn');
@@ -920,34 +969,45 @@ window.Screens.orderEdit = {
       }
     }, { signal });
 
-    // --- Коллективка — выпадающий список, назначение сразу при выборе ---
-    async function populateCollectiveSelect() {
+    // --- Коллективка — ДВА независимых списка по этапу (Э4, §3), назначение
+    // сразу при выборе. Каждый список показывает ТОЛЬКО коллективки СВОЕГО
+    // этапа — assignOrderToCollective сам пишет связь в стадию ЦЕЛЕВОЙ
+    // коллективки (её собственный `stage`, см. collectivesService), так что
+    // выбор в "нужном" списке гарантированно попадает в нужное плечо.
+    async function populateCollectiveSelects() {
       try {
         const list = await callServer('getCollectivesList');
-        const options = list.map(c => {
-          const trackPart = c.trackNumber ? ` (${c.trackNumber})` : '';
-          return `<option value="${c.collectiveId}">${c.collectiveId}${trackPart} — ${c.status}</option>`;
-        }).join('');
-        collectiveSelect.innerHTML = '<option value="">— не привязано —</option>' + options;
+        const buildOptions = (stage) => list
+          .filter((c) => c.stage === stage)
+          .map((c) => {
+            const trackPart = c.trackNumber ? ` (${c.trackNumber})` : '';
+            return `<option value="${c.collectiveId}">${c.collectiveId}${trackPart} — ${c.status}</option>`;
+          }).join('');
+        collectiveSelectStage1.innerHTML = '<option value="">— не привязано —</option>' + buildOptions('КЗ→РФ');
+        collectiveSelectStage2.innerHTML = '<option value="">— не привязано —</option>' + buildOptions('По РФ');
       } catch (error) {
         // Список коллективок не критичен для остальной формы — тихо игнорируем
       }
     }
 
-    collectiveSelect.addEventListener('change', async () => {
-      const newId = collectiveSelect.value;
-      try {
-        if (newId === '') {
-          await callServer('unassignOrderFromCollective', currentOrderId);
-          showSaveToast(true, 'Заказ отвязан от коллективки');
-        } else {
-          await callServer('assignOrderToCollective', currentOrderId, newId);
-          showSaveToast(true, 'Заказ привязан к коллективке');
+    function wireCollectiveSelect(selectEl, stage) {
+      selectEl.addEventListener('change', async () => {
+        const newId = selectEl.value;
+        try {
+          if (newId === '') {
+            await callServer('unassignOrderFromCollective', currentOrderId, stage);
+            showSaveToast(true, 'Заказ отвязан от коллективки');
+          } else {
+            await callServer('assignOrderToCollective', currentOrderId, newId);
+            showSaveToast(true, 'Заказ привязан к коллективке');
+          }
+        } catch (error) {
+          showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
         }
-      } catch (error) {
-        showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
-      }
-    });
+      });
+    }
+    wireCollectiveSelect(collectiveSelectStage1, 'КЗ→РФ');
+    wireCollectiveSelect(collectiveSelectStage2, 'По РФ');
 
     // --- Треугольник Комиссия % / Комиссия ₽ / Основная оплата — база
     // amountRubBase считается из УЖЕ сохранённых сумм заказа (см. loadOrder),
@@ -1104,7 +1164,11 @@ window.Screens.orderEdit = {
 
       document.getElementById('currency-select').value = details.currency || 'Доллар';
       sdekTypeSelect.value = details.sdekDeliveryType || CONSTANTS_CLIENT.SDEK_TYPE_COLLECTIVE;
-      collectiveSelect.value = details.collectiveId || '';
+      // Э4 (§3) — details.collectiveLinks:[{stage,collectiveId,...}], до
+      // ДВУХ записей (по одной на этап). Каждый селект — своя стадия.
+      const links = details.collectiveLinks || [];
+      collectiveSelectStage1.value = (links.find((l) => l.stage === 'КЗ→РФ') || {}).collectiveId || '';
+      collectiveSelectStage2.value = (links.find((l) => l.stage === 'По РФ') || {}).collectiveId || '';
       amountInput.value = details.amount || '';
       rateKztInput.value = details.rateKztToCurrency;
       rateRubInput.value = details.rateRubToKzt;
@@ -1177,7 +1241,11 @@ window.Screens.orderEdit = {
       sdekCostSumInput.value = details.payments.deliveryKzRf.sdek || '';
       taxiRfSumInput.value = details.payments.deliveryKzRf.taxiRf || '';
       updateDeliveryKzRfTotalDisplay();
-      deliveryRfSumInput.value = details.payments.deliveryRf.sum || '';
+      // "Доставка по РФ" (Э4, §2.5) — тот же принцип, зеркало 4 строк выше.
+      taxiRfSendSumInput.value = details.payments.deliveryRf.taxiRfSend || '';
+      shippingRfSumInput.value = details.payments.deliveryRf.shippingRf || '';
+      taxiRfReceiveSumInput.value = details.payments.deliveryRf.taxiRfReceive || '';
+      updateDeliveryRfTotalDisplay();
 
       if (details.client.telegramId) {
         try {
@@ -1368,7 +1436,7 @@ window.Screens.orderEdit = {
       deleteOrderModal.open(preview.payments, preview.isNewModel);
     });
 
-    populateCollectiveSelect();
+    populateCollectiveSelects();
     loadOrder();
   }
 };

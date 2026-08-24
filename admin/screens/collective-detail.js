@@ -205,10 +205,17 @@ window.Screens.collectiveDetail = {
       renderSummary();
     }
 
+    // Статусы по этапу (Э4, §2.1/§5 Q3) — тот же список, что backend
+    // collectiveStages.COLLECTIVE_STAGES, хардкожен на фронте по тому же
+    // принципу, что COST_FIELD_LABELS ниже (сервер — источник истины при
+    // валидации, здесь только отображение).
+    const STAGE_STATUSES = {
+      'КЗ→РФ': ['Формируется', 'Отправлено (СДЭК)', 'Прибыло к посреднику РФ', 'Завершено'],
+      'По РФ': ['Формируется', 'Отправлено', 'Доставлено']
+    };
+
     function renderStatusOptions(currentStatus) {
-      // Список статусов пока захардкожен на этап 'КЗ→РФ' (единственный,
-      // доступный текущему UI до Э4) — тот же список, что уже был в модалке.
-      const statuses = ['Формируется', 'Отправлено (СДЭК)', 'Прибыло к посреднику РФ', 'Завершено'];
+      const statuses = STAGE_STATUSES[details.stage] || STAGE_STATUSES['КЗ→РФ'];
       const select = document.getElementById('detail-status');
       select.innerHTML = statuses.map((s) => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`).join('');
     }
@@ -232,7 +239,7 @@ window.Screens.collectiveDetail = {
       // Предупреждение при переводе в терминальный статус этапа без сверки
       // (Э2, п.8) — "терминальный" здесь буквально последний пункт списка
       // статусов выше (тот же список, что и в renderStatusOptions).
-      const statuses = ['Формируется', 'Отправлено (СДЭК)', 'Прибыло к посреднику РФ', 'Завершено'];
+      const statuses = STAGE_STATUSES[details.stage] || STAGE_STATUSES['КЗ→РФ'];
       const movingToTerminal = status === statuses[statuses.length - 1] && details.status !== status;
       const totalActualCost = round2((actualCosts.sdekCost || 0) + (actualCosts.taxiKzCost || 0) + (actualCosts.taxiRfCost || 0));
       if (movingToTerminal && totalActualCost === 0) {
@@ -283,32 +290,115 @@ window.Screens.collectiveDetail = {
       'По РФ': [{ id: 'cost-1', key: 'sdekCost', label: 'Отправка, ₽' }, { id: 'cost-2', key: 'taxiKzCost', label: 'Такси (отправка), ₽' }, { id: 'cost-3', key: 'taxiRfCost', label: 'Такси (получение), ₽' }]
     };
 
+    // ₽/₸ на каждом факт.-поле (Э4, §2.6, 24.08.2026, доп. запрос VASY —
+    // "СДЭК сейчас тоже расценивается в тенге, но расценка может меняться")
+    // — переключатель НЕЗАВИСИМ на каждом из трёх полей, не общий на всю
+    // коллективку (в отличие от блока "Доставка КЗ→РФ" в форме заказа, здесь
+    // валюта — не подпись слота, а то, в чём менеджер реально платил).
+    // Курс — БЕЗ клиентской наценки (currencyService.getRawKztToRubRate,
+    // см. её JSDoc за обоснованием) — тот же принцип, что $→₽ калькулятор
+    // веса в форме заказа: клиент конвертирует сам, отправляет уже готовую
+    // ₽-сумму, тенге-ввод никогда не уходит на сервер как источник истины.
+    let rawKztToRubRate = null; // кэш на время экрана, обновляется явной кнопкой
+    const costFieldCurrency = {}; // key -> 'RUB'|'KZT'
+    const costFieldOriginal = {}; // key -> введённая сумма В ТЕКУЩЕЙ валюте поля (для KZT — тенге)
+
+    async function ensureRawRate() {
+      if (rawKztToRubRate !== null) return rawKztToRubRate;
+      const { kztToRub } = await callServer('getRawKztToRubRate');
+      rawKztToRubRate = kztToRub;
+      return rawKztToRubRate;
+    }
+
     function renderCostFields() {
       const fields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
+      const currencyKeyOf = { sdekCost: 'sdekCostCurrency', taxiKzCost: 'taxiKzCostCurrency', taxiRfCost: 'taxiRfCostCurrency' };
+      const originalKeyOf = { sdekCost: 'sdekCostOriginal', taxiKzCost: 'taxiKzCostOriginal', taxiRfCost: 'taxiRfCostOriginal' };
+      fields.forEach((f) => {
+        const currency = actualCosts[currencyKeyOf[f.key]] || 'RUB';
+        costFieldCurrency[f.key] = currency;
+        const original = actualCosts[originalKeyOf[f.key]];
+        costFieldOriginal[f.key] = currency === 'KZT' && original !== null && original !== undefined ? original : (actualCosts[f.key] || '');
+      });
+
       const grid = document.getElementById('cost-fields-grid');
       grid.innerHTML = fields.map((f) => `
         <div>
-          <label class="text-[10px] text-gray-400">${f.label}</label>
-          <input type="number" id="${f.id}" min="0" step="0.01" value="${actualCosts[f.key] || ''}" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+          <label class="text-[10px] text-gray-400">${f.label.replace(', ₽', '')}</label>
+          <div class="flex items-center gap-1">
+            <input type="number" id="${f.id}" min="0" step="0.01" value="${costFieldOriginal[f.key]}" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+            <button type="button" class="currency-toggle-btn shrink-0 text-[11px] font-medium px-1.5 py-1.5 rounded-lg border border-gray-200 text-gray-500" data-field="${f.key}">${costFieldCurrency[f.key] === 'KZT' ? '₸' : '₽'}</button>
+          </div>
+          <div id="${f.id}-kzt-hint" class="text-[10px] text-gray-400 mt-0.5 ${costFieldCurrency[f.key] === 'KZT' ? '' : 'hidden'}"></div>
         </div>
       `).join('');
-      fields.forEach((f) => document.getElementById(f.id).addEventListener('input', updateCostsPreview));
+
+      fields.forEach((f) => {
+        document.getElementById(f.id).addEventListener('input', () => { costFieldOriginal[f.key] = document.getElementById(f.id).value; updateCostsPreview(); });
+      });
+      grid.querySelectorAll('.currency-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const key = btn.dataset.field;
+          costFieldCurrency[key] = costFieldCurrency[key] === 'KZT' ? 'RUB' : 'KZT';
+          btn.textContent = costFieldCurrency[key] === 'KZT' ? '₸' : '₽';
+          const hint = document.getElementById(`${fields.find((x) => x.key === key).id}-kzt-hint`);
+          hint.classList.toggle('hidden', costFieldCurrency[key] !== 'KZT');
+          if (costFieldCurrency[key] === 'KZT') { try { await ensureRawRate(); } catch (e) { /* сеть недоступна — hint покажет "курс недоступен" ниже */ } }
+          updateCostsPreview();
+        });
+      });
+
       updateCostsPreview();
     }
 
+    // Читает поля формы в {sdekCost,taxiKzCost,taxiRfCost} УЖЕ В РУБЛЯХ
+    // (конвертирует KZT-поля по rawKztToRubRate) + `*Currency`/`*Original`
+    // для аудируемости — ровно контракт setCollectiveActualLogisticsCosts (§2.6).
+    // `result[f.key] = null` — поле в ₸, но курс ещё не загружен: НЕ
+    // подставляем тенге-число как рубли (реальный риск молчаливого 5-кратного
+    // завышения расхода) и не тихо считаем его нулём — `readCostFields` явно
+    // сигналит "не готово", вызывающая сторона (updateCostsPreview/save-хендлер)
+    // решает, что показать/заблокировать.
     function readCostFields() {
       const fields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
+      const currencyKeyOf = { sdekCost: 'sdekCostCurrency', taxiKzCost: 'taxiKzCostCurrency', taxiRfCost: 'taxiRfCostCurrency' };
+      const originalKeyOf = { sdekCost: 'sdekCostOriginal', taxiKzCost: 'taxiKzCostOriginal', taxiRfCost: 'taxiRfCostOriginal' };
       const result = {};
-      fields.forEach((f) => { result[f.key] = parseFloat(document.getElementById(f.id).value) || 0; });
+      fields.forEach((f) => {
+        const rawValue = parseFloat(document.getElementById(f.id).value) || 0;
+        const currency = costFieldCurrency[f.key] || 'RUB';
+        if (currency === 'KZT') {
+          result[f.key] = rawKztToRubRate ? round2(rawValue * rawKztToRubRate) : null;
+          result[currencyKeyOf[f.key]] = 'KZT';
+          result[originalKeyOf[f.key]] = rawValue;
+        } else {
+          result[f.key] = rawValue;
+          result[currencyKeyOf[f.key]] = 'RUB';
+          result[originalKeyOf[f.key]] = null;
+        }
+      });
       return result;
     }
 
     function round2(v) { return Math.round(v * 100) / 100; }
 
     function updateCostsPreview() {
+      const fields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
       const costs = readCostFields();
-      actualCosts = costs;
-      const total = round2(costs.sdekCost + costs.taxiKzCost + costs.taxiRfCost);
+      // actualCosts.sdekCost и т.д. — только для отображения ("Итого" ниже,
+      // диффы в карточках заказов, шапка) ДО реального сохранения, null
+      // (курс ещё не готов) трактуется как 0 ЗДЕСЬ, но не при сохранении —
+      // см. logisticsSaveBtn ниже, там null блокирует запрос целиком.
+      actualCosts = { ...actualCosts, ...costs, sdekCost: costs.sdekCost ?? 0, taxiKzCost: costs.taxiKzCost ?? 0, taxiRfCost: costs.taxiRfCost ?? 0 };
+      fields.forEach((f) => {
+        if (costFieldCurrency[f.key] !== 'KZT') return;
+        const hint = document.getElementById(`${f.id}-kzt-hint`);
+        if (!hint) return;
+        hint.textContent = rawKztToRubRate
+          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу ${rawKztToRubRate.toFixed(4)} ₽/₸`
+          : 'Курс ЦБ РФ недоступен — переключите на ₽ или дождитесь курса, сохранение пока заблокировано';
+      });
+      const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
       document.getElementById('logistics-total').textContent = total.toLocaleString('ru-RU');
       renderOrderList(); // доля в ₽/разница видны только когда total > 0 (п.3) — пересчитать видимость
     }
@@ -381,7 +471,9 @@ window.Screens.collectiveDetail = {
       if (!confirmed) return;
 
       try {
-        const result = await callServer('unassignOrdersFromCollective', [...selectedIds]);
+        // Этап — ВСЕГДА этап ПРОСМАТРИВАЕМОЙ коллективки (Э4): экран
+        // scoped на одну коллективку/один этап, неоднозначности нет.
+        const result = await callServer('unassignOrdersFromCollective', [...selectedIds], details.stage);
         if (result.failed.length > 0) showSaveToast(false, `Убрано ${result.removed.length}, ${result.failed.length} не удалось.`);
         else showSaveToast(true, `Убрано: ${result.removed.length}.`);
         setSelectMode(false);
@@ -580,7 +672,8 @@ window.Screens.collectiveDetail = {
       }
 
       try {
-        await callServer('unassignOrderFromCollective', orderId);
+        // Этап — этап ЭТОЙ коллективки (Э4, тот же принцип, что bulkUnassignBtn выше).
+        await callServer('unassignOrderFromCollective', orderId, details.stage);
         await loadAll();
       } catch (error) {
         showSaveToast(false, 'Не удалось убрать заказ: ' + error.message);
@@ -605,6 +698,17 @@ window.Screens.collectiveDetail = {
       }
 
       const costs = readCostFields();
+      // Э4 (§2.6) — поле в ₸ без загруженного курса даёт costs[key]===null
+      // (см. readCostFields) — реальный риск денежной ошибки (тенге как
+      // рубли/тихий 0), сохранение блокируется, не отправляется на сервер.
+      const stageFields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
+      const unresolvedKzt = stageFields.filter((f) => costs[f.key] === null).map((f) => f.label.replace(', ₽', ''));
+      if (unresolvedKzt.length > 0) {
+        logisticsErrorText.textContent = `Курс ЦБ РФ недоступен для поля(ей) в ₸: ${unresolvedKzt.join(', ')}. Переключите на ₽ или дождитесь курса.`;
+        logisticsErrorText.classList.remove('hidden');
+        return;
+      }
+
       logisticsSaveBtn.disabled = true;
       try {
         const result = await callServer('saveCollectiveLogisticsReconciliation', collectiveId, {

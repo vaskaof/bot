@@ -36,6 +36,14 @@ window.Screens.collectives = {
           <input type="text" id="collective-list-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по ID/треку/названию..." autocomplete="off">
         </div>
 
+        <!-- Фильтр по этапу (Э4 рефакторинга коллективок, §3, 24.08.2026) —
+             тот же список этапов, что backend collectiveStages.js. -->
+        <div class="flex gap-1.5 mb-2" id="stage-filter-tabs">
+          <button type="button" data-stage="" class="stage-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border">Все</button>
+          <button type="button" data-stage="КЗ→РФ" class="stage-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border">КЗ→РФ</button>
+          <button type="button" data-stage="По РФ" class="stage-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border">По РФ</button>
+        </div>
+
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="collective-count"></div>
 
         <div id="collective-list"></div>
@@ -59,6 +67,13 @@ window.Screens.collectives = {
               <label class="text-xs font-medium text-gray-500">Трек-номер</label>
               <input type="text" id="new-collective-track" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Необязательно, можно добавить позже">
             </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Этап</label>
+              <select id="new-collective-stage" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
+                <option value="КЗ→РФ">КЗ→РФ</option>
+                <option value="По РФ">По РФ</option>
+              </select>
+            </div>
             <div id="create-collective-error" class="text-xs text-red-500 hidden"></div>
           </div>
           <div class="p-4 border-t border-gray-100 flex gap-2">
@@ -70,11 +85,30 @@ window.Screens.collectives = {
     `;
 
     let allCollectives = [];
+    let stageFilter = ''; // '' = все этапы
 
     const listContainer = document.getElementById('collective-list');
     const emptyMessage = document.getElementById('empty-message');
     const searchInput = document.getElementById('collective-list-search');
     const countLabel = document.getElementById('collective-count');
+
+    // Фильтр по этапу (Э4, §3) — тот же принцип, что режим "Выбрать" на
+    // других экранах: активная кнопка подсвечена, состояние в замыкании.
+    const stageFilterBtns = document.querySelectorAll('.stage-filter-btn');
+    function renderStageFilterButtons() {
+      stageFilterBtns.forEach((btn) => {
+        const active = btn.dataset.stage === stageFilter;
+        btn.className = `stage-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-gray-200 text-gray-500'}`;
+      });
+    }
+    stageFilterBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        stageFilter = btn.dataset.stage;
+        renderStageFilterButtons();
+        render();
+      });
+    });
+    renderStageFilterButtons();
 
     loadCollectives();
 
@@ -94,8 +128,11 @@ window.Screens.collectives = {
     function render() {
       const query = searchInput.value.trim().toLowerCase();
       let filtered = allCollectives;
+      if (stageFilter !== '') {
+        filtered = filtered.filter(c => c.stage === stageFilter);
+      }
       if (query !== '') {
-        filtered = allCollectives.filter(c => `${c.collectiveId} ${c.trackNumber} ${c.name}`.toLowerCase().includes(query));
+        filtered = filtered.filter(c => `${c.collectiveId} ${c.trackNumber} ${c.name}`.toLowerCase().includes(query));
       }
 
       countLabel.textContent = `Найдено: ${filtered.length}`;
@@ -123,6 +160,7 @@ window.Screens.collectives = {
           <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(c.createdAt)}</div>
         </div>
         <div class="flex items-center gap-2 mt-2">
+          <span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${escapeHtmlClient(c.stage)}</span>
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">${escapeHtmlClient(c.status)}</span>
           <span class="text-[11px] text-gray-500">Заказов: ${c.orderCount}</span>
         </div>
@@ -136,6 +174,7 @@ window.Screens.collectives = {
     document.getElementById('add-collective-btn').addEventListener('click', () => {
       document.getElementById('new-collective-name').value = '';
       document.getElementById('new-collective-track').value = '';
+      document.getElementById('new-collective-stage').value = 'КЗ→РФ';
       createErrorText.classList.add('hidden');
       createModal.classList.remove('hidden');
       createModal.classList.add('flex');
@@ -156,6 +195,7 @@ window.Screens.collectives = {
       createErrorText.classList.add('hidden');
       const name = document.getElementById('new-collective-name').value.trim();
       const trackNumber = document.getElementById('new-collective-track').value.trim();
+      const stage = document.getElementById('new-collective-stage').value;
 
       // Название обязательно с Э2 (VASY, Q5) — та же валидация уже стоит на
       // сервере (createCollective отказывает без имени), проверяем и здесь,
@@ -168,7 +208,7 @@ window.Screens.collectives = {
 
       createSaveBtn.disabled = true;
       try {
-        await callServer('createCollective', { name, trackNumber });
+        await callServer('createCollective', { name, trackNumber, stage });
         closeCreateModal();
         loadCollectives();
       } catch (error) {
