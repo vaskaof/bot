@@ -72,6 +72,18 @@
       height: calc(70px + env(safe-area-inset-bottom));
       padding-bottom: env(safe-area-inset-bottom);
     }
+    /* Панель массовых действий (Э3 рефакторинга коллективок, `orders.js`/
+       `collective-detail.js` — общий id `bulk-actions-bar` на обоих экранах,
+       один селектор правит оба) — `bottom-0` в разметке ставила её ПОД
+       #bottom-nav (тот же bottom:0, z-40 у обоих — bottom-nav позже в DOM,
+       перехватывал клики по нижним кнопкам панели). Найдено 25.08.2026 при
+       e2e-тесте Э5 (delivery-status-gate.spec.js) — с 4-й кнопкой ("Сменить
+       статус доставки", 2×2 grid) панель стала выше, перекрытие выросло с
+       "почти незаметного" до блокирующего клики совсем. Поднимаем панель
+       НАД навигацией — та же высота, что #bottom-nav сама себе выставляет. */
+    #bulk-actions-bar {
+      bottom: calc(70px + env(safe-area-inset-bottom));
+    }
   </style>
 </head>
 
