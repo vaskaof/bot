@@ -53,6 +53,15 @@
  *      резолвом (сознательное решение не усложнять то, что сложно
  *      сопровождать вручную), просто count внутри блока 7: скорее всего
  *      означает "менеджер забыл занести факт выкупа" для закрытых заказов.
+ *   9. "Баланс кассы ₸" (getWalletBalance, Э5 п.1 оставшегося чек-листа,
+ *      D-06, 26.08.2026) — НАСТОЯЩИЙ тенговый остаток кошелька, не
+ *      рублёвый эквивалент (`money_movements` книгует "Кассу КЗ" в рублях
+ *      по конвенции проводки, см. `ledgerService.js`). Читает
+ *      `kzt_wallet_ledger` (Э2) напрямую — тот же атомарный писатель, что
+ *      и рублёвая нога проводки, разойтись физически не может. Раньше
+ *      баланс был виден только МГНОВЕННО, как результат последней
+ *      конвертации (`walletBalanceKztAfter` в блоке 1) — этот блок
+ *      персистентный, грузится при заходе на экран.
  */
 window.Screens = window.Screens || {};
 
@@ -71,6 +80,11 @@ window.Screens.wallet = {
 
     root.innerHTML = `
       <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl mx-auto space-y-5">
+        <section>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Баланс кассы ₸</div>
+          <div id="wallet-balance-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
+        </section>
+
         <section>
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Конвертация ₽ → ₸</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
@@ -154,12 +168,41 @@ window.Screens.wallet = {
     `;
 
     wireFxForm();
+    loadWalletBalance();
     loadFxPolicyOverview();
     loadFxAlerts();
     wireFxRecomputeForm();
     loadOwnPurchases();
     loadMarginReport();
     if (window.lucide) window.lucide.createIcons();
+
+    // Э5, D-06 (26.08.2026). Реальный ₸-остаток, не рублёвый эквивалент.
+    async function loadWalletBalance() {
+      const body = document.getElementById('wallet-balance-body');
+      try {
+        const balance = await callServer('getWalletBalance');
+        if (!balance) {
+          body.innerHTML = `<div class="text-gray-400">Касса пуста — ещё не было ни одной конвертации ₽ → ₸.</div>`;
+          return;
+        }
+        const lastEntry = new Date(balance.lastEntryAt).toLocaleString('ru-RU');
+        body.innerHTML = `
+          <div class="grid grid-cols-2 gap-3 text-center">
+            <div>
+              <div class="text-[11px] text-gray-400">Остаток</div>
+              <div class="text-lg font-semibold text-gray-900">${Number(balance.balanceKzt).toLocaleString('ru-RU')} ₸</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-400">WAC</div>
+              <div class="text-lg font-semibold text-gray-900">${Number(balance.wac).toFixed(4)} ₽/₸</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-gray-400 mt-2 text-center">По состоянию на ${lastEntry}</div>
+        `;
+      } catch (error) {
+        body.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
 
     function wireFxForm() {
       const submitBtn = document.getElementById('fx-submit-btn');
@@ -184,6 +227,7 @@ window.Screens.wallet = {
           document.getElementById('fx-rub-out-input').value = '';
           document.getElementById('fx-kzt-in-input').value = '';
           document.getElementById('fx-bank-fee-input').value = '';
+          loadWalletBalance();
         } catch (error) {
           showFxError(error.message);
         } finally {
