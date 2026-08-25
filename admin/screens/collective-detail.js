@@ -587,12 +587,24 @@ window.Screens.collectiveDetail = {
     function buildOrderCard(o, totalCost, unitsSum) {
       const card = document.createElement('div');
       const isSelected = selectedIds.has(o.orderId);
-      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
+      // 25.08.2026 (репорт VASY — случайные открытия заказа при скролле
+      // списка) — карточка целиком БОЛЬШЕ НЕ переходит на редактирование
+      // заказа; клик по карточке вне режима "Выбрать" теперь ничего не
+      // делает, переход — только с фото/названия/ID (см. `[data-open-order]`
+      // ниже, `openOrderTap`). В режиме "Выбрать" карточка целиком
+      // по-прежнему переключает отметку — это осознанный режим, случайных
+      // касаний там не боялись.
+      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 active:bg-gray-50 transition-colors ${selectMode ? 'cursor-pointer' : ''} ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
       card.dataset.orderId = o.orderId;
       card.addEventListener('click', () => {
+        if (selectMode) { toggleSelected(o.orderId); renderOrderList(); }
+      });
+
+      function openOrderTap(e) {
+        e.stopPropagation();
         if (selectMode) { toggleSelected(o.orderId); renderOrderList(); return; }
         navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
-      });
+      }
 
       const diff = diffLabel(o, totalCost, unitsSum);
 
@@ -603,12 +615,12 @@ window.Screens.collectiveDetail = {
               <input type="checkbox" class="order-select-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600" ${isSelected ? 'checked' : ''}>
             </div>
           ` : ''}
-          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100 cursor-pointer" data-open-order onerror="this.style.display='none'">` : ''}
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(o.productDisplay)}</div>
-                <div class="text-[11px] text-gray-300 mt-0.5">№ ${escapeHtmlClient(o.orderId)}</div>
+                <div class="font-semibold text-gray-900 text-[15px] truncate cursor-pointer" data-open-order>${escapeHtmlClient(o.productDisplay)}</div>
+                <div class="text-[11px] text-gray-400 mt-0.5 cursor-pointer" data-open-order>№ ${escapeHtmlClient(o.orderId)}</div>
               </div>
               ${selectMode ? '' : `
               <button type="button" class="unassign-order-btn shrink-0 text-red-400 p-1" title="Убрать из коллективки">
@@ -647,17 +659,37 @@ window.Screens.collectiveDetail = {
                 <div class="flex-1 border-r border-white bg-indigo-200"></div>
                 <div class="flex-1"></div>
               </div>
-              <!-- Доп. правка 25.08.2026 (репорт VASY — "текст тусклый") —
-                   gray-300 на 9px практически нечитаем, поднято до gray-500/600
-                   + 10px; "0"/"2" тоже получили вес (font-medium), не только "1". -->
-              <div class="flex justify-between text-[10px] text-gray-500 px-0.5 mt-0.5">
-                <span class="font-medium text-gray-600">0</span><span>½</span><span class="text-indigo-500 font-semibold">1 · обычный</span><span>1½</span><span class="font-medium text-gray-600">2 · вдвое</span>
+              <!-- Доп. правка 25.08.2026 (репорт VASY, второй раунд) — раньше
+                   цифра и пояснение шли ОДНОЙ строкой в одном <span> ("1 ·
+                   обычный"), из-за чего у "1"/"2" span был заметно шире, чем
+                   у голых "0"/"½"/"1½" — justify-between распределяет ГРАНИЦЫ
+                   элементов, а не их центры, так что широкий span сдвигал
+                   саму цифру в сторону от реальной точки на шкале выше.
+                   Теперь цифры — абсолютно спозиционированные точки РОВНО на
+                   0/25/50/75/100% (те же координаты, что границы 4 сегментов
+                   шкалы выше), все на одной высоте; пояснение — отдельной
+                   строкой ниже, поэтому не толкает цифру и его можно
+                   написать чуть подробнее. -->
+              <div class="relative h-[27px] mt-1.5">
+                <span class="absolute left-0 top-0 text-[10px] font-medium text-gray-600 leading-none">0</span>
+                <span class="absolute left-1/4 top-0 -translate-x-1/2 text-[10px] text-gray-500 leading-none">½</span>
+                <span class="absolute left-1/2 top-0 -translate-x-1/2 text-[10px] font-semibold text-indigo-500 leading-none">1</span>
+                <span class="absolute left-3/4 top-0 -translate-x-1/2 text-[10px] text-gray-500 leading-none">1½</span>
+                <span class="absolute right-0 top-0 text-[10px] font-medium text-gray-600 leading-none">2</span>
+
+                <span class="absolute left-0 top-[13px] text-[9px] text-gray-400 leading-none whitespace-nowrap">не участвует</span>
+                <span class="absolute left-1/2 top-[13px] -translate-x-1/2 text-[9px] text-indigo-400 font-medium leading-none whitespace-nowrap">обычный вес</span>
+                <span class="absolute right-0 top-[13px] text-[9px] text-gray-400 leading-none whitespace-nowrap">вдвое тяжелее</span>
               </div>
               ${diff ? `<div class="diff-label text-[11px] mt-1 ${diff.cls}">${diff.text}</div>` : ''}
             </div>
           </div>
         </div>
       `;
+
+      // Переход на заказ теперь только с фото/названия/ID (см. openOrderTap
+      // выше и className-комментарий у card) — не со всей карточки.
+      card.querySelectorAll('[data-open-order]').forEach((el) => el.addEventListener('click', openOrderTap));
 
       const unassignBtn = card.querySelector('.unassign-order-btn');
       if (unassignBtn) {
@@ -694,6 +726,34 @@ window.Screens.collectiveDetail = {
         e.stopPropagation();
       });
       const slider = card.querySelector('.units-slider');
+
+      // 25.08.2026 (репорт VASY — "пальцем можно случайно нажать на ползунок
+      // и он сразу перескочет") — нативный <input type=range> в большинстве
+      // мобильных браузеров/WebView по умолчанию прыгает на позицию касания
+      // при ЛЮБОМ тапе по треку, не только при захвате самой точки — ровно
+      // то, что делает случайное касание при скролле списка опасным. Гасим
+      // этот прыжок: на нажатии/касании проверяем, что палец/курсор стартовал
+      // рядом с ТЕКУЩИМ положением точки (допуск ~её видимый радиус + чуть
+      // запаса), иначе preventDefault() — браузер тогда вообще не начинает
+      // жест, значение не меняется. Настоящее перетаскивание САМОЙ точки
+      // (после успешного захвата рядом с ней) не тронуто — работает штатно,
+      // дальнейшее движение пальца/курсора этим обработчиком не перехватывается.
+      const THUMB_GRAB_TOLERANCE_PX = 14;
+      function isNearThumb(clientX) {
+        const rect = slider.getBoundingClientRect();
+        const min = parseFloat(slider.min);
+        const max = parseFloat(slider.max);
+        const percent = (parseFloat(slider.value) - min) / (max - min);
+        const thumbX = rect.left + percent * rect.width;
+        return Math.abs(clientX - thumbX) <= THUMB_GRAB_TOLERANCE_PX;
+      }
+      function guardSliderGrab(e) {
+        const point = e.touches && e.touches[0] ? e.touches[0] : e;
+        if (!isNearThumb(point.clientX)) e.preventDefault();
+      }
+      slider.addEventListener('mousedown', guardSliderGrab);
+      slider.addEventListener('touchstart', guardSliderGrab, { passive: false });
+
       slider.addEventListener('input', () => {
         const newUnits = parseFloat(slider.value);
         o.currentUnits = newUnits;
