@@ -21,9 +21,11 @@
  * что был в старой модалке (openDetailModal + loadLogisticsSection), но
  * рендерятся уже ОДНИМ списком карточек, не двумя.
  *
- * Доли — ползунок 0…2 шаг 1/8 (§1 п.2, §2.4; диапазон расширен 1→2
+ * Доли — ползунок 0…2 шаг 1/4 (§1 п.2, §2.4; диапазон расширен 1→2
  * 25.08.2026 по запросу VASY — "1" была потолком шкалы, стала серединой:
- * 0 = не участвует, 1 = обычный вес заказа, 2 = вдвое тяжелее обычного),
+ * 0 = не участвует, 1 = обычный вес заказа, 2 = вдвое тяжелее обычного; шаг
+ * тем же днём доп. правкой сужен 1/8→1/4 — 8 позиций ползунка на весь
+ * диапазон вместо 16, репорт VASY "слишком дробно"),
  * сохраняется В ЗАКАЗ с дебаунсом ~600мс через setOrderLogisticsUnits,
  * ОТДЕЛЬНО от "Сохранить сверку" (та пишет только денежные проводки).
  * Алгоритм связанных ползунков (redistributeShares/normalizeSharesSum/
@@ -66,16 +68,16 @@ window.Screens.collectiveDetail = {
     root.innerHTML = `
       <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
         <!-- Общая датаlist для всех ползунков доли (§1 п.2, диапазон 0…2 с
-             25.08.2026) — засечки на каждый шаг 1/8; поддерживается не везде
-             (Safari/iOS WebView даталист-засечки для range не рисует вообще),
-             поэтому под каждым ползунком ЕЩЁ и статичная текстовая шкала
+             25.08.2026, шаг сужен 1/8→1/4 доп. правкой тем же днём — 8 шагов
+             ползунка на весь диапазон, не 16, по прямому запросу VASY) —
+             засечки на каждый шаг 1/4; поддерживается не везде (Safari/iOS
+             WebView даталист-засечки для range не рисует вообще), поэтому
+             под каждым ползунком ЕЩЁ и статичная текстовая шкала
              "0 · ½ · 1 (обычный) · 1½ · 2 (вдвое)" ниже — единственный
              надёжный кросс-платформенный вариант в Telegram Mini App. -->
         <datalist id="units-ticks">
-          <option value="0"></option><option value="0.125"></option><option value="0.25"></option><option value="0.375"></option>
-          <option value="0.5"></option><option value="0.625"></option><option value="0.75"></option><option value="0.875"></option>
-          <option value="1"></option><option value="1.125"></option><option value="1.25"></option><option value="1.375"></option>
-          <option value="1.5"></option><option value="1.625"></option><option value="1.75"></option><option value="1.875"></option><option value="2"></option>
+          <option value="0"></option><option value="0.25"></option><option value="0.5"></option><option value="0.75"></option>
+          <option value="1"></option><option value="1.25"></option><option value="1.5"></option><option value="1.75"></option><option value="2"></option>
         </datalist>
 
         <div id="load-error" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-2xl p-4"></div>
@@ -632,19 +634,24 @@ window.Screens.collectiveDetail = {
                 <span class="inline-flex items-center gap-0.5">Доля логистики${helpIcon('Как работает доля логистики', '<p><b>1</b> — обычный заказ, все заказы наравне между собой. <b>2</b> — вдвое тяжелее/дороже обычного, получит примерно вдвое больше доли общего расхода. <b>0</b> — заказ вообще не участвует в раскладке (мелочь бесплатно).</p><p>Это вес ЗАКАЗА ОТНОСИТЕЛЬНО ДРУГИХ заказов в этой же коллективке, а не фиксированная доля в рублях — если поменять вес у нескольких заказов сразу, доли пересчитаются у всех.</p>')}</span>
                 <span class="units-fraction-label font-semibold text-indigo-600">${unitsFraction(o.currentUnits)}</span>
               </div>
-              <input type="range" min="0" max="2" step="0.125" value="${o.currentUnits}" list="units-ticks" class="units-slider w-full mt-1.5">
-              <!-- 4 деления шкалы (§1 п.2, диапазон 0…2 с 25.08.2026) — средние
-                   два сегмента (0,5…1,5) чуть подсвечены как "зона вокруг
-                   обычного веса", отметка "1" — акцентная и подписана явно
-                   "обычный", чтобы дефолт был виден без пояснений. -->
+              <input type="range" min="0" max="2" step="0.25" value="${o.currentUnits}" list="units-ticks" class="units-slider w-full mt-1.5">
+              <!-- 4 деления шкалы (§1 п.2, диапазон 0…2 с 25.08.2026, шаг
+                   сужен 1/8→1/4 25.08.2026 доп. правкой — 8 позиций ползунка
+                   на весь диапазон вместо 16, сами деления шкалы не менялись)
+                   — средние два сегмента (0,5…1,5) чуть подсвечены как "зона
+                   вокруг обычного веса", отметка "1" — акцентная и подписана
+                   явно "обычный", чтобы дефолт был виден без пояснений. -->
               <div class="flex mt-1 h-1 rounded-full overflow-hidden bg-gray-100">
                 <div class="flex-1 border-r border-white"></div>
                 <div class="flex-1 border-r border-white bg-indigo-200"></div>
                 <div class="flex-1 border-r border-white bg-indigo-200"></div>
                 <div class="flex-1"></div>
               </div>
-              <div class="flex justify-between text-[9px] text-gray-300 px-0.5 mt-0.5">
-                <span>0</span><span>½</span><span class="text-indigo-500 font-semibold">1 · обычный</span><span>1½</span><span>2 · вдвое</span>
+              <!-- Доп. правка 25.08.2026 (репорт VASY — "текст тусклый") —
+                   gray-300 на 9px практически нечитаем, поднято до gray-500/600
+                   + 10px; "0"/"2" тоже получили вес (font-medium), не только "1". -->
+              <div class="flex justify-between text-[10px] text-gray-500 px-0.5 mt-0.5">
+                <span class="font-medium text-gray-600">0</span><span>½</span><span class="text-indigo-500 font-semibold">1 · обычный</span><span>1½</span><span class="font-medium text-gray-600">2 · вдвое</span>
               </div>
               ${diff ? `<div class="diff-label text-[11px] mt-1 ${diff.cls}">${diff.text}</div>` : ''}
             </div>
@@ -675,7 +682,17 @@ window.Screens.collectiveDetail = {
       }
 
       const sliderBlock = card.querySelector('[data-slider-block]');
-      sliderBlock.addEventListener('click', (e) => e.stopPropagation());
+      sliderBlock.addEventListener('click', (e) => {
+        // Доп. правка 25.08.2026 (репорт VASY — "кнопка инфо не прожимается")
+        // — stopPropagation() здесь нужен, чтобы клик по ползунку/подписи не
+        // всплывал до card и не открывал заказ на редактирование, НО кнопка
+        // подсказки (.help-icon-btn) слушается через делегирование на
+        // document (common.js), которое стоит ВЫШЕ card в дереве — прежний
+        // безусловный stopPropagation() гасил событие ДО document, модалка
+        // подсказки просто никогда не получала клик.
+        if (e.target.closest('.help-icon-btn')) return;
+        e.stopPropagation();
+      });
       const slider = card.querySelector('.units-slider');
       slider.addEventListener('input', () => {
         const newUnits = parseFloat(slider.value);
