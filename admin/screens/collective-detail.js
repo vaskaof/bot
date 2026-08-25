@@ -8,7 +8,11 @@
  * прямую жалобу VASY "ушёл в заказ из коллективки, вернулся в закрытую
  * модалку" — тап по карточке заказа ведёт на настоящий `orders/{id}/edit`,
  * "Назад" там — обычный `history.back()`, который сам возвращает сюда
- * (оба перехода — реальные записи в history, не replace).
+ * (оба перехода — реальные записи в history, не replace). Доп. правка
+ * 25.08.2026 (тот же класс жалобы, но после РЕДАКТИРОВАНИЯ, не только
+ * "Назад" без изменений) — "Сохранить"/"Удалить" на order-edit.js раньше
+ * жёстко уводили на "Заказы" независимо от места входа; заменены на
+ * `navigateBack()` (router.js), которая тоже возвращает сюда.
  *
  * Единый список заказов (п.3 Э2) — раньше было два разных рендера одних и
  * тех же заказов (список заказов коллективки + список для сверки долей),
@@ -17,11 +21,17 @@
  * что был в старой модалке (openDetailModal + loadLogisticsSection), но
  * рендерятся уже ОДНИМ списком карточек, не двумя.
  *
- * Доли — ползунок 0…1 шаг 1/8 (§1 п.2, §2.4), сохраняется В ЗАКАЗ с
- * дебаунсом ~600мс через setOrderLogisticsUnits, ОТДЕЛЬНО от "Сохранить
- * сверку" (та пишет только денежные проводки). Алгоритм связанных ползунков
- * (redistributeShares/normalizeSharesSum/updateSliderPositions) с долями не
- * нужен — нормализация теперь на сервере (доля_i = units_i/Σunits, §2.4).
+ * Доли — ползунок 0…2 шаг 1/8 (§1 п.2, §2.4; диапазон расширен 1→2
+ * 25.08.2026 по запросу VASY — "1" была потолком шкалы, стала серединой:
+ * 0 = не участвует, 1 = обычный вес заказа, 2 = вдвое тяжелее обычного),
+ * сохраняется В ЗАКАЗ с дебаунсом ~600мс через setOrderLogisticsUnits,
+ * ОТДЕЛЬНО от "Сохранить сверку" (та пишет только денежные проводки).
+ * Алгоритм связанных ползунков (redistributeShares/normalizeSharesSum/
+ * updateSliderPositions) с долями не нужен — нормализация теперь на сервере
+ * (доля_i = units_i/Σunits, §2.4) — поэтому "2" не гарантирует буквально
+ * "вдвое дороже в деньгах" независимо от чужих ползунков в этой же
+ * коллективке, это вес ОТНОСИТЕЛЬНО остальных заказов; подсказка у самого
+ * поля (см. ниже) формулирует это без слова "нормализация".
  *
  * Находка D (план §0/§5 Q9, подтверждено VASY 24.08.2026) — сверка не
  * двигает цель оплаты клиента автоматически ни в одной модели, поэтому
@@ -55,14 +65,17 @@ window.Screens.collectiveDetail = {
 
     root.innerHTML = `
       <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
-        <!-- Общая датаlist для всех ползунков доли (§1 п.2) — засечки на
-             каждый шаг 1/8; поддерживается не везде (Safari/iOS WebView
-             даталист-засечки для range не рисует вообще), поэтому под каждым
-             ползунком ЕЩЁ и статичная текстовая строка "0 ¼ ½ ¾ 1" ниже —
-             единственный надёжный кросс-платформенный вариант в Telegram Mini App. -->
+        <!-- Общая датаlist для всех ползунков доли (§1 п.2, диапазон 0…2 с
+             25.08.2026) — засечки на каждый шаг 1/8; поддерживается не везде
+             (Safari/iOS WebView даталист-засечки для range не рисует вообще),
+             поэтому под каждым ползунком ЕЩЁ и статичная текстовая шкала
+             "0 · ½ · 1 (обычный) · 1½ · 2 (вдвое)" ниже — единственный
+             надёжный кросс-платформенный вариант в Telegram Mini App. -->
         <datalist id="units-ticks">
           <option value="0"></option><option value="0.125"></option><option value="0.25"></option><option value="0.375"></option>
-          <option value="0.5"></option><option value="0.625"></option><option value="0.75"></option><option value="0.875"></option><option value="1"></option>
+          <option value="0.5"></option><option value="0.625"></option><option value="0.75"></option><option value="0.875"></option>
+          <option value="1"></option><option value="1.125"></option><option value="1.25"></option><option value="1.375"></option>
+          <option value="1.5"></option><option value="1.625"></option><option value="1.75"></option><option value="1.875"></option><option value="2"></option>
         </datalist>
 
         <div id="load-error" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-2xl p-4"></div>
@@ -140,7 +153,7 @@ window.Screens.collectiveDetail = {
       <div id="bulk-actions-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-40 px-4 py-3">
         <div class="max-w-2xl mx-auto">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
+            <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Выбрано: <span id="bulk-selected-count">0</span>${helpIcon('Массовые действия', '<p><b>Убрать из коллективки</b> — заказы остаются как есть, просто больше не входят в эту коллективку и не участвуют в раскладке логистики. Уже записанная сверка пересчитается сама.</p><p><b>Перенести в другую</b> — то же самое, но заказы сразу попадают в выбранную коллективку.</p><p><b>Сменить статус доставки</b> — один статус сразу всем выбранным заказам. Если по заказу остался непогашенный долг, система предупредит и попросит подтвердить отдельно.</p>')}</span>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -408,9 +421,18 @@ window.Screens.collectiveDetail = {
 
     // --- Единый список заказов (карточка = миниатюра/статусы/примечание/ползунок доли/доля в ₽) ---
 
+    // Юникод-дроби вместо "N/8" (25.08.2026, репорт VASY — "дроби обозначь
+    // максимально понятно") — тот же символьный ряд, что уже используется в
+    // статичной шкале засечек ниже (¼/½/¾), просто на весь шаг 1/8, не
+    // только четверти. Диапазон теперь 0…2 (§1 п.2) — целая часть выводится
+    // отдельно, дробная часть только там, где она есть ("1", не "1 0/8").
+    const UNITS_FRACTION_GLYPHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
     function unitsFraction(units) {
       const eighths = Math.round(units * 8);
-      return eighths === 8 ? '1' : eighths === 0 ? '0' : `${eighths}/8`;
+      const whole = Math.floor(eighths / 8);
+      const remainder = eighths % 8;
+      if (remainder === 0) return String(whole);
+      return whole === 0 ? UNITS_FRACTION_GLYPHS[remainder] : `${whole}${UNITS_FRACTION_GLYPHS[remainder]}`;
     }
 
     function diffLabel(order, totalCost, unitsSum) {
@@ -607,11 +629,23 @@ window.Screens.collectiveDetail = {
 
             <div class="mt-2 pt-2 border-t border-gray-50" data-slider-block>
               <div class="flex items-center justify-between text-[11px] text-gray-500">
-                <span>Доля логистики</span>
+                <span class="inline-flex items-center gap-0.5">Доля логистики${helpIcon('Как работает доля логистики', '<p><b>1</b> — обычный заказ, все заказы наравне между собой. <b>2</b> — вдвое тяжелее/дороже обычного, получит примерно вдвое больше доли общего расхода. <b>0</b> — заказ вообще не участвует в раскладке (мелочь бесплатно).</p><p>Это вес ЗАКАЗА ОТНОСИТЕЛЬНО ДРУГИХ заказов в этой же коллективке, а не фиксированная доля в рублях — если поменять вес у нескольких заказов сразу, доли пересчитаются у всех.</p>')}</span>
                 <span class="units-fraction-label font-semibold text-indigo-600">${unitsFraction(o.currentUnits)}</span>
               </div>
-              <input type="range" min="0" max="1" step="0.125" value="${o.currentUnits}" list="units-ticks" class="units-slider w-full mt-1">
-              <div class="flex justify-between text-[9px] text-gray-300 px-0.5 -mt-0.5"><span>0</span><span>¼</span><span>½</span><span>¾</span><span>1</span></div>
+              <input type="range" min="0" max="2" step="0.125" value="${o.currentUnits}" list="units-ticks" class="units-slider w-full mt-1.5">
+              <!-- 4 деления шкалы (§1 п.2, диапазон 0…2 с 25.08.2026) — средние
+                   два сегмента (0,5…1,5) чуть подсвечены как "зона вокруг
+                   обычного веса", отметка "1" — акцентная и подписана явно
+                   "обычный", чтобы дефолт был виден без пояснений. -->
+              <div class="flex mt-1 h-1 rounded-full overflow-hidden bg-gray-100">
+                <div class="flex-1 border-r border-white"></div>
+                <div class="flex-1 border-r border-white bg-indigo-200"></div>
+                <div class="flex-1 border-r border-white bg-indigo-200"></div>
+                <div class="flex-1"></div>
+              </div>
+              <div class="flex justify-between text-[9px] text-gray-300 px-0.5 mt-0.5">
+                <span>0</span><span>½</span><span class="text-indigo-500 font-semibold">1 · обычный</span><span>1½</span><span>2 · вдвое</span>
+              </div>
               ${diff ? `<div class="diff-label text-[11px] mt-1 ${diff.cls}">${diff.text}</div>` : ''}
             </div>
           </div>

@@ -130,8 +130,38 @@ function matchRoute(hash) {
  * @param {Object} [params] Необязательно (Фаза 5, 04.08.2026) — сериализуется в query-строку.
  */
 function navigateTo(path, params) {
+  _hasNavigatedInSession = true;
   const qs = params ? buildQueryString(params) : '';
   window.location.hash = '#/' + path + (qs ? '?' + qs : '');
+}
+
+/**
+ * Ставится в true при первом же navigateTo() за это открытие приложения —
+ * используется navigateBack(), чтобы отличить "экран открыт обычным переходом
+ * внутри SPA" (тогда history.back() безопасен и вернёт на предыдущий реальный
+ * экран) от "экран — самая первая точка входа в этой сессии" (прямой заход по
+ * хэшу/восстановление вебвью на сохранённом хэше — тогда history.back() может
+ * увести за пределы приложения, там безопаснее navigateTo(fallback)).
+ */
+let _hasNavigatedInSession = false;
+
+/**
+ * "Закрыть текущий экран" — возвращает туда, откуда реально пришли (25.08.2026,
+ * репорт VASY: "Сохранить"/"Удалить" на редактировании заказа жёстко уводили на
+ * "Заказы", даже если экран открыли из коллективки/Напоминаний/Оплат/Главной —
+ * см. project_bot_knopka_collectives_refactor). В отличие от простого
+ * `history.back()` (уже применялся точечно, например collective-detail.js) —
+ * безопасен и при прямом заходе на экран без предшествующей навигации внутри
+ * приложения, тогда откатывается на явный `fallbackPath`.
+ * @param {string} fallbackPath Куда перейти, если возвращаться внутри SPA некуда.
+ * @param {Object} [fallbackParams]
+ */
+function navigateBack(fallbackPath, fallbackParams) {
+  if (_hasNavigatedInSession) {
+    history.back();
+  } else {
+    navigateTo(fallbackPath, fallbackParams);
+  }
 }
 
 /** Общий toast — та же общая функция, что и в клиентском router.js (независимая копия, разные шеллы). */

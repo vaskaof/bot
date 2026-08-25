@@ -55,7 +55,11 @@ window.Screens.orderEdit = {
         <i data-lucide="save" class="w-6 h-6"></i>
       </button>
     `;
-    document.getElementById('back-btn').addEventListener('click', () => history.back());
+    // navigateBack() вместо голого history.back() (25.08.2026) — тот же
+    // безопасный фолбэк на "orders", что и у "Сохранить"/"Удалить" ниже, на
+    // случай прямого захода на этот экран без предшествующей навигации внутри
+    // SPA (см. router.js).
+    document.getElementById('back-btn').addEventListener('click', () => navigateBack('orders'));
 
     root.innerHTML = `
       <div id="order-not-found-screen" class="hidden fixed inset-0 bg-[#f3f4f9] items-center justify-center z-50 px-6">
@@ -1377,7 +1381,11 @@ window.Screens.orderEdit = {
         // По запросу VASY (12.08.2026) — закрывать экран после сохранения.
         // save-toast переживает навигацию (элемент оболочки, не экрана), так
         // что отложенное предупреждение выше всё равно успеет показаться.
-        navigateTo('orders');
+        // navigateBack(), не хардкод 'orders' (25.08.2026, репорт VASY) —
+        // заказ на редактирование открывают не только со списка "Заказы", но
+        // и из коллективки/Напоминаний/Оплат/Главной; раньше отсюда всегда
+        // уходили на "Заказы", теряя место, откуда реально пришли.
+        navigateBack('orders');
       } catch (error) {
         showSaveToast(false, `Не получилось сохранить: ${error.message}`);
       } finally {
@@ -1463,7 +1471,7 @@ window.Screens.orderEdit = {
       try {
         await callServer('deleteOrder', currentOrderId, resolutions);
         showSaveToast(true, 'Заказ удалён');
-        navigateTo('orders');
+        navigateBack('orders'); // см. обоснование у "Сохранить" выше
       } catch (error) {
         showSaveToast(false, `Не получилось удалить: ${error.message}`);
       } finally {
