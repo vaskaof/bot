@@ -16,7 +16,7 @@
  * CONTINUED.md) добавило три блока ниже — backend был задеплоен раньше без
  * UI, ровно та же ситуация, что была с "Кошелёк ₸" перед хвостом Э2.
  *
- * Шесть независимых блоков, каждый сам грузится и сам обрабатывает свою
+ * Восемь независимых блоков, каждый сам грузится и сам обрабатывает свою
  * ошибку (тот же принцип, что settings.js — секция не должна блокировать
  * соседние):
  *   1. Форма "Конвертация ₽→₸" (recordFxConversion) — пишет WAC-кошелёк.
@@ -43,6 +43,16 @@
  *      (тот же контейнер, разделены только визуально).
  *   6. "Личные закупки" (getOwnPurchasesReport) — метрика личного контура,
  *      исключённого из остальных дашбордов (Э2, F-07/F-08).
+ *   7. "Валовая маржа" (getMarginReport, Э5 раунд 4, 26.08.2026) — цена
+ *      клиенту минус ПРИЗНАННЫЙ COGS (costService.syncCogsRecognition),
+ *      первая по-настоящему честная маржа в проекте (F-05). Пусто, пока
+ *      не появится ни одного заказа с признанной себестоимостью — на
+ *      26.08.2026 это ожидаемо (`purchase_events` только запускается).
+ *   8. Строка-сигнал "закрыто без учёта себестоимости"
+ *      (getClosedWithoutPurchaseReport) — НЕ отдельный алерт-блок с
+ *      резолвом (сознательное решение не усложнять то, что сложно
+ *      сопровождать вручную), просто count внутри блока 7: скорее всего
+ *      означает "менеджер забыл занести факт выкупа" для закрытых заказов.
  */
 window.Screens = window.Screens || {};
 
@@ -130,6 +140,16 @@ window.Screens.wallet = {
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Личные закупки</div>
           <div id="own-purchases-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
+
+        <section>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Валовая маржа</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4">
+            <p class="text-xs text-gray-500">Цена клиенту минус признанная себестоимость (не "Итог Руб" — реальный факт выкупа). Пусто, пока по заказу не записан хотя бы один факт выкупа.</p>
+            <div id="margin-summary-body" class="text-sm text-gray-400">Загрузка...</div>
+            <div id="margin-by-channel-body" class="text-sm text-gray-400"></div>
+            <div id="margin-closed-without-purchase-note" class="hidden text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2"></div>
+          </div>
+        </section>
       </main>
     `;
 
@@ -138,6 +158,7 @@ window.Screens.wallet = {
     loadFxAlerts();
     wireFxRecomputeForm();
     loadOwnPurchases();
+    loadMarginReport();
     if (window.lucide) window.lucide.createIcons();
 
     function wireFxForm() {
@@ -434,6 +455,78 @@ window.Screens.wallet = {
         `;
       } catch (error) {
         body.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    // Э5 раунд 4 (REFACTOR-ECONOMY.md §5, продолжение F-05, 26.08.2026).
+    async function loadMarginReport() {
+      const summaryBody = document.getElementById('margin-summary-body');
+      const channelBody = document.getElementById('margin-by-channel-body');
+      const noteEl = document.getElementById('margin-closed-without-purchase-note');
+      try {
+        const [report, closedWithoutPurchase] = await Promise.all([
+          callServer('getMarginReport'),
+          callServer('getClosedWithoutPurchaseReport')
+        ]);
+        const byOrder = report.byOrder || [];
+        const byChannel = report.byChannel || [];
+
+        if (byOrder.length === 0) {
+          summaryBody.innerHTML = `<div class="text-gray-400">Пока ни одного заказа с признанной себестоимостью.</div>`;
+        } else {
+          const totalPrice = byOrder.reduce((s, r) => s + Number(r.price_client_rub || 0), 0);
+          const totalCogs = byOrder.reduce((s, r) => s + Number(r.cogs_rub || 0), 0);
+          const totalMargin = totalPrice - totalCogs;
+          summaryBody.innerHTML = `
+            <div class="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div class="text-[11px] text-gray-400">Заказов</div>
+                <div class="text-base font-semibold text-gray-900">${byOrder.length}</div>
+              </div>
+              <div>
+                <div class="text-[11px] text-gray-400">Себестоимость</div>
+                <div class="text-base font-semibold text-gray-900">${totalCogs.toLocaleString('ru-RU')} ₽</div>
+              </div>
+              <div>
+                <div class="text-[11px] text-gray-400">Маржа</div>
+                <div class="text-base font-semibold ${totalMargin >= 0 ? 'text-emerald-700' : 'text-red-600'}">${totalMargin.toLocaleString('ru-RU')} ₽</div>
+              </div>
+            </div>
+          `;
+        }
+
+        channelBody.innerHTML = byChannel.length === 0 ? '' : `
+          <div class="overflow-x-auto pt-3 border-t border-gray-100">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left text-gray-400">
+                  <th class="pb-2 pr-2">Канал</th>
+                  <th class="pb-2 pr-2 text-right">Заказов</th>
+                  <th class="pb-2 pr-2 text-right">Маржа</th>
+                  <th class="pb-2 text-right">Средняя %</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                ${byChannel.map((r) => `
+                  <tr class="text-gray-700">
+                    <td class="py-2 pr-2 font-medium">${escapeHtmlClient(r.purchase_channel || '—')}</td>
+                    <td class="py-2 pr-2 text-right">${Number(r.orders_n)}</td>
+                    <td class="py-2 pr-2 text-right">${Number(r.margin_total_rub).toLocaleString('ru-RU')} ₽</td>
+                    <td class="py-2 text-right">${r.margin_avg_pct !== null ? Number(r.margin_avg_pct).toFixed(1) + '%' : '—'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        if (closedWithoutPurchase.count > 0) {
+          noteEl.textContent = `⚠ ${closedWithoutPurchase.count} заказ(ов) в статусе «Получено клиентом» без учтённой себестоимости — вероятно, факт выкупа не занесён. На старте механизма (26.08.2026) это ожидаемо для всей истории; если число растёт на СВЕЖИХ заказах — стоит напомнить менеджерам про кнопку «Факт выкупа».`;
+          noteEl.classList.remove('hidden');
+        }
+      } catch (error) {
+        summaryBody.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+        channelBody.innerHTML = '';
       }
     }
   }
