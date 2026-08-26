@@ -169,6 +169,14 @@ window.FormHelpers = {
           <textarea id="commission-reason-input" rows="2" class="w-full rounded-lg border border-red-200 px-3 py-2 text-sm" placeholder="Например: постоянный клиент, скидка по договорённости"></textarea>
         </div>
       </div>
+      <!-- Точка безубыточности (Э6, чек-лист п.7, 26.08.2026) — ОТДЕЛЬНАЯ
+           строка, не часть commission-hint-row выше: разный смысл (буфер
+           валютного риска + налог по КАНАЛУ заказа, не целевая комиссия
+           бизнеса) и разная видимость (не зависит от isDirty — актуальна,
+           пока введена хоть какая-то комиссия, не только на изменении). -->
+      <div id="commission-breakeven-row" class="hidden field-row px-4 pb-3 -mt-1 border-b border-gray-100">
+        <div id="commission-breakeven-text" class="text-[11px] leading-tight"></div>
+      </div>
     `;
   },
 
@@ -205,8 +213,16 @@ window.FormHelpers = {
    * вообще, даже если % уже исторически ниже порога: несвязанная правка
    * старого заказа не должна упираться в причину, которую менеджер не
    * вводил и не обязан знать (R-03).
+   * `setBreakeven` (Э6, чек-лист п.7, 26.08.2026) — отдельная, независимая от
+   * `isDirty`/`thresholds` строка: точка безубыточности показывает риск ПО
+   * КАНАЛУ заказа (валютный буфер + налог, см. `fxPolicyService.
+   * getBreakevenCommission`), не целевую комиссию бизнеса — актуальна, пока
+   * введена хоть какая-то комиссия, даже на несвязанной правке старого
+   * заказа (в отличие от подсказки/причины выше, которые намеренно молчат
+   * без `isDirty()`, R-03 — здесь нет аналогичного риска "требуем то, чего
+   * менеджер не вводил": ничего не требуется, только показывается).
    * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean}} [options]
-   * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, refresh():void, getReason():string, validate():boolean}}
+   * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, setBreakeven(b:{breakevenCommissionPercent:number|null,breakevenIsDefaultChannelPolicy:boolean|null,breakevenUnavailableReason:string|null}|null):void, refresh():void, getReason():string, validate():boolean}}
    */
   wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true } = {}) {
     const feePercentInput = document.querySelector(feePercentSelector);
@@ -215,19 +231,44 @@ window.FormHelpers = {
     const hintText = document.getElementById('commission-hint-text');
     const reasonBlock = document.getElementById('commission-reason-block');
     const reasonInput = document.getElementById('commission-reason-input');
-    const noop = { setThresholds() {}, refresh() {}, getReason: () => '', validate: () => true };
+    const breakevenRow = document.getElementById('commission-breakeven-row');
+    const breakevenText = document.getElementById('commission-breakeven-text');
+    const noop = { setThresholds() {}, setBreakeven() {}, refresh() {}, getReason: () => '', validate: () => true };
     if (!feePercentInput || !hintRow || !hintText || !reasonBlock || !reasonInput) return noop;
 
     let thresholds = { warnPercent: null, reasonPercent: null };
+    let breakeven = null;
+
+    function updateBreakeven() {
+      if (!breakevenRow || !breakevenText) return;
+      if (!breakeven || (breakeven.breakevenCommissionPercent === null && !breakeven.breakevenUnavailableReason)) {
+        breakevenRow.classList.add('hidden');
+        return;
+      }
+      if (breakeven.breakevenCommissionPercent === null) {
+        breakevenRow.classList.remove('hidden');
+        breakevenText.className = 'text-[11px] leading-tight text-gray-400';
+        breakevenText.textContent = breakeven.breakevenUnavailableReason;
+        return;
+      }
+      const pct = parseFloat(feePercentInput.value);
+      const channelNote = breakeven.breakevenIsDefaultChannelPolicy ? ' (общий буфер, не по этому каналу)' : '';
+      breakevenRow.classList.remove('hidden');
+      if (!isNaN(pct) && pct < breakeven.breakevenCommissionPercent) {
+        breakevenText.className = 'text-[11px] leading-tight text-red-500';
+        breakevenText.textContent = `Ниже точки безубыточности (${breakeven.breakevenCommissionPercent}%${channelNote}) — риск уйти в минус на курсе/налоге.`;
+      } else {
+        breakevenText.className = 'text-[11px] leading-tight text-gray-400';
+        breakevenText.textContent = `Точка безубыточности: ${breakeven.breakevenCommissionPercent}%${channelNote}.`;
+      }
+    }
 
     function update() {
       const pct = parseFloat(feePercentInput.value);
       if (isNaN(pct) || thresholds.reasonPercent === null || thresholds.warnPercent === null || !isDirty()) {
         hintRow.classList.add('hidden');
         reasonBlock.classList.add('hidden');
-        return;
-      }
-      if (pct < thresholds.reasonPercent) {
+      } else if (pct < thresholds.reasonPercent) {
         hintRow.classList.remove('hidden');
         hintText.className = 'text-[12px] leading-tight text-red-600';
         hintText.textContent = `Комиссия ${pct.toFixed(2)}% ниже порога ${thresholds.reasonPercent}% — без указанной причины заказ не сохранится.`;
@@ -241,6 +282,7 @@ window.FormHelpers = {
         hintRow.classList.add('hidden');
         reasonBlock.classList.add('hidden');
       }
+      updateBreakeven();
     }
 
     feePercentInput.addEventListener('input', update);
@@ -248,6 +290,7 @@ window.FormHelpers = {
 
     return {
       setThresholds(t) { thresholds = t || { warnPercent: null, reasonPercent: null }; update(); },
+      setBreakeven(b) { breakeven = b || null; updateBreakeven(); },
       refresh: update,
       getReason() { return reasonInput.value.trim(); },
       validate() {

@@ -1429,7 +1429,12 @@ window.Screens.orderNew = {
       // строки своя сумма, единого прогноза на форме нет, пропускаем.
       if (bulkMode && !isDuplicateFlow) return;
       try {
-        const forecast = await callServer('getOrderForecast', amountInput.value);
+        // Э6, чек-лист п.7 (точка безубыточности, 26.08.2026) — валюта/канал
+        // нужны ТОЛЬКО для этого блока, остальной прогноз от них не зависит
+        // (см. JSDoc financialSettingsService.getOrderForecast).
+        const currency = document.getElementById('currency-select').value;
+        const channel = document.querySelector('select[data-dict="purchaseChannel"]').value;
+        const forecast = await callServer('getOrderForecast', amountInput.value, currency, channel);
         if (!forecastEdited.weight) weightSumInput.value = forecast.weight > 0 ? forecast.weight.toFixed(2) : '';
         if (!forecastEdited.taxiKz) taxiKzSumInput.value = forecast.taxiKz > 0 ? forecast.taxiKz.toFixed(2) : '';
         if (!forecastEdited.sdek) sdekCostSumInput.value = forecast.sdek > 0 ? forecast.sdek.toFixed(2) : '';
@@ -1447,6 +1452,11 @@ window.Screens.orderNew = {
         // выше; setThresholds сама пересчитывает подсказку по уже
         // подставленному % (программные .value= выше не диспатчат 'input').
         commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent });
+        commissionGate.setBreakeven({
+          breakevenCommissionPercent: forecast.breakevenCommissionPercent,
+          breakevenIsDefaultChannelPolicy: forecast.breakevenIsDefaultChannelPolicy,
+          breakevenUnavailableReason: forecast.breakevenUnavailableReason
+        });
       } catch (error) {
         // Прогноз — необязательное удобство, сбой не должен мешать оформлению заказа.
       }
@@ -1465,6 +1475,11 @@ window.Screens.orderNew = {
     });
 
     amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); fetchForecast(); });
+    // Э6, чек-лист п.7 — точка безубыточности зависит от валюты/канала,
+    // остальной прогноз (вес/доставка/комиссия) — нет, но дешевле
+    // переиспользовать один и тот же debounced запрос, чем заводить второй.
+    document.getElementById('currency-select').addEventListener('change', fetchForecast);
+    document.querySelector('select[data-dict="purchaseChannel"]').addEventListener('change', fetchForecast);
     feePercentInput.addEventListener('input', () => { feePercentEdited = true; updateFeeRub(); recalcAllBulkRows(); });
     feeRubInput.addEventListener('input', updateFeePercent);
     // Э6, D-10/F-24 — регистрируется ПОСЛЕ триугольника выше: тот же

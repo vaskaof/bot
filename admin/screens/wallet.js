@@ -164,6 +164,22 @@ window.Screens.wallet = {
             <div id="margin-closed-without-purchase-note" class="hidden text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2"></div>
           </div>
         </section>
+
+        <section>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Мотивы занижения комиссии</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4">
+            <p class="text-xs text-gray-500">Список для ручного просмотра — причина занижения свободным текстом, без автоматической кластеризации. Клик по строке — заказ.</p>
+            <div>
+              <div class="text-[11px] font-medium text-gray-400 mb-1.5">С указанной причиной (гейт сработал на сохранении)</div>
+              <div id="commission-reasons-with-body" class="text-sm text-gray-400">Загрузка...</div>
+            </div>
+            <div class="pt-3 border-t border-gray-100">
+              <div class="text-[11px] font-medium text-gray-400 mb-1.5">Без причины — комиссия ниже порога сейчас, гейт по этому заказу ни разу не срабатывал</div>
+              <p class="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">Заказы, сохранённые до внедрения гейта (26.08.2026) либо ни разу не пересохранённые с изменением комиссии с тех пор — причина никогда не запрашивалась, хотя комиссия объективно ниже действующего порога сейчас.</p>
+              <div id="commission-reasons-without-body" class="text-sm text-gray-400">Загрузка...</div>
+            </div>
+          </div>
+        </section>
       </main>
     `;
 
@@ -174,6 +190,7 @@ window.Screens.wallet = {
     wireFxRecomputeForm();
     loadOwnPurchases();
     loadMarginReport();
+    loadCommissionLowReasonReport();
     if (window.lucide) window.lucide.createIcons();
 
     // Э5, D-06 (26.08.2026). Реальный ₸-остаток, не рублёвый эквивалент.
@@ -571,6 +588,64 @@ window.Screens.wallet = {
       } catch (error) {
         summaryBody.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
         channelBody.innerHTML = '';
+      }
+    }
+
+    /**
+     * Отчёт "мотивы занижения комиссии" (Э6, чек-лист п.6, 26.08.2026) — два
+     * раздела, см. JSDoc financeService.getCommissionLowReasonReport для
+     * итемизированного видения (пробел "до гейта" — согласовано с VASY).
+     */
+    async function loadCommissionLowReasonReport() {
+      const withBody = document.getElementById('commission-reasons-with-body');
+      const withoutBody = document.getElementById('commission-reasons-without-body');
+
+      function sectionHtml(section, { showReason }) {
+        if (section.count === 0) return `<div class="text-gray-400">Пусто.</div>`;
+        return `
+          <div class="text-[11px] text-gray-500 mb-2">Всего: ${section.count}, средняя комиссия: ${section.avgPct !== null ? section.avgPct.toFixed(1) + '%' : '—'}${section.byChannel.length > 0 ? ' · ' + section.byChannel.map((c) => `${escapeHtmlClient(c.channel || '(без канала)')}: ${c.count}`).join(', ') : ''}</div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left text-gray-400">
+                  <th class="pb-2 pr-2">Заказ</th>
+                  <th class="pb-2 pr-2">Канал</th>
+                  <th class="pb-2 pr-2">Клиент</th>
+                  <th class="pb-2 pr-2 text-right">Комиссия</th>
+                  ${showReason ? '<th class="pb-2">Причина</th>' : ''}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                ${section.rows.map((r) => `
+                  <tr class="text-gray-700 cursor-pointer hover:bg-gray-50" data-order-id="${escapeHtmlClient(r.orderId)}">
+                    <td class="py-2 pr-2 font-medium">${escapeHtmlClient(r.orderId)}</td>
+                    <td class="py-2 pr-2">${escapeHtmlClient(r.purchaseChannel || '—')}</td>
+                    <td class="py-2 pr-2">${escapeHtmlClient(r.clientName || r.telegramId || '—')}</td>
+                    <td class="py-2 pr-2 text-right">${Number(r.commissionPct).toFixed(1)}%</td>
+                    ${showReason ? `<td class="py-2 max-w-[180px] truncate" title="${escapeHtmlClient(r.reason || '')}">${escapeHtmlClient(r.reason || '')}</td>` : ''}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      function wireRowClicks(container) {
+        container.querySelectorAll('tr[data-order-id]').forEach((row) => {
+          row.addEventListener('click', () => navigateTo(`orders/${encodeURIComponent(row.dataset.orderId)}/edit`));
+        });
+      }
+
+      try {
+        const report = await callServer('getCommissionLowReasonReport');
+        withBody.innerHTML = sectionHtml(report.withReason, { showReason: true });
+        withoutBody.innerHTML = sectionHtml(report.withoutReason, { showReason: false });
+        wireRowClicks(withBody);
+        wireRowClicks(withoutBody);
+      } catch (error) {
+        withBody.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+        withoutBody.innerHTML = '';
       }
     }
   }

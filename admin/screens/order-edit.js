@@ -1071,6 +1071,26 @@ window.Screens.orderEdit = {
     commissionGate = FormHelpers.wireCommissionGate({
       isDirty: () => Math.abs((parseFloat(feeRubInput.value) || 0) - originalBookingSum) > 0.005
     });
+    // Э6, чек-лист п.7 (точка безубыточности, 26.08.2026) — валюта/канал
+    // РЕДАКТИРУЕМЫ на этом экране (в отличие от order-new.js, где это
+    // единственный путь получить точку безубыточности вообще) — перечитать
+    // при их смене, тот же вызов, что loadOrder делает один раз при заходе.
+    function refreshBreakevenAndThresholds() {
+      const currency = document.getElementById('currency-select').value;
+      const channel = document.querySelector('select[data-dict="purchaseChannel"]').value;
+      callServer('getOrderForecast', amountInput.value, currency, channel)
+        .then((forecast) => {
+          commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent });
+          commissionGate.setBreakeven({
+            breakevenCommissionPercent: forecast.breakevenCommissionPercent,
+            breakevenIsDefaultChannelPolicy: forecast.breakevenIsDefaultChannelPolicy,
+            breakevenUnavailableReason: forecast.breakevenUnavailableReason
+          });
+        })
+        .catch(() => {});
+    }
+    document.getElementById('currency-select').addEventListener('change', refreshBreakevenAndThresholds);
+    document.querySelector('select[data-dict="purchaseChannel"]').addEventListener('change', refreshBreakevenAndThresholds);
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
 
@@ -1216,8 +1236,17 @@ window.Screens.orderEdit = {
       // order-new.js's fetchForecast, здесь без прогноза (поля уже
       // заполнены) — только пороги. Best-effort, тот же принцип, что
       // остальные необязательные подсказки формы.
-      callServer('getOrderForecast', amountInput.value)
-        .then((forecast) => commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent }))
+      // Э6, чек-лист п.7 (точка безубыточности, 26.08.2026) — валюта/канал
+      // уже проставлены в форму на этом этапе loadOrder (строки выше).
+      callServer('getOrderForecast', amountInput.value, details.currency || 'Доллар', details.purchaseChannel || '')
+        .then((forecast) => {
+          commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent });
+          commissionGate.setBreakeven({
+            breakevenCommissionPercent: forecast.breakevenCommissionPercent,
+            breakevenIsDefaultChannelPolicy: forecast.breakevenIsDefaultChannelPolicy,
+            breakevenUnavailableReason: forecast.breakevenUnavailableReason
+          });
+        })
         .catch(() => {});
 
       FormHelpers.setTagToggle('booking-paid-toggle', details.payments.booking.paid === 'Да' || details.payments.booking.paid === 'да' ? 'Да' : 'Нет');
