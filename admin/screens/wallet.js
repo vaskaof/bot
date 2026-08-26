@@ -180,6 +180,11 @@ window.Screens.wallet = {
             </div>
           </div>
         </section>
+
+        <section>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Билеты / Конкурсы</div>
+          <div id="contest-dashboard-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
+        </section>
       </main>
     `;
 
@@ -191,6 +196,7 @@ window.Screens.wallet = {
     loadOwnPurchases();
     loadMarginReport();
     loadCommissionLowReasonReport();
+    loadContestDashboard();
     if (window.lucide) window.lucide.createIcons();
 
     // Э5, D-06 (26.08.2026). Реальный ₸-остаток, не рублёвый эквивалент.
@@ -646,6 +652,53 @@ window.Screens.wallet = {
       } catch (error) {
         withBody.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
         withoutBody.innerHTML = '';
+      }
+    }
+
+    /**
+     * Дашборд "Билеты/Конкурсы" (Э7, 26.08.2026) — бюджет vs потрачено,
+     * текущее обязательство по билетам, сигнал "пора делать конкурс" и
+     * сырые числа последнего розыгрыша БЕЗ вывода об окупаемости (см.
+     * ticketEconomyService.js JSDoc — на таком объёме клиентов честную
+     * атрибуцию посчитать нельзя, показываем факты, оценку делает VASY сам).
+     */
+    async function loadContestDashboard() {
+      const body = document.getElementById('contest-dashboard-body');
+      try {
+        const d = await callServer('getContestDashboard');
+        const rub = (n) => `${Number(n).toLocaleString('ru-RU')} ₽`;
+
+        const budgetHtml = d.budgetConfigured ? `
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div><div class="text-[10px] text-gray-400">Бюджет</div><div class="text-sm font-semibold text-gray-900">${rub(d.budgetRub)}</div></div>
+            <div><div class="text-[10px] text-gray-400">Потрачено</div><div class="text-sm font-semibold text-gray-900">${rub(d.spentRub)}</div></div>
+            <div><div class="text-[10px] text-gray-400">Осталось</div><div class="text-sm font-semibold ${d.remainingRub >= 0 ? 'text-emerald-700' : 'text-red-600'}">${rub(d.remainingRub)}</div></div>
+          </div>
+        ` : `<div class="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">Бюджет на конкурсы не задан (0 ₽) — настройка "Бюджет_Маркетинг_Конкурсы" в "Настройках" → "Экономика".</div>`;
+
+        const faceValueHtml = d.faceValueRub > 0
+          ? `<div class="text-[11px] text-gray-500">Оценка билета: ${rub(d.faceValueRub)}</div>`
+          : `<div class="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">Билет не оценён (0 ₽) — проводки по обязательству не пишутся, пока не задана настройка "Билет_Оценка_Руб". Вводится ПОСЛЕ лотереи-погашения накопленных сов.</div>`;
+
+        const signalHtml = d.timeToRunContest
+          ? `<div class="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2 font-medium">Пора делать конкурс — обязательство уже ${d.liabilityPctOfBudget}% бюджета (порог ${d.signalThresholdPct}%).</div>`
+          : (d.liabilityPctOfBudget !== null ? `<div class="text-[11px] text-gray-500">Обязательство: ${rub(d.liabilityRub)} (${d.liabilityPctOfBudget}% бюджета, порог сигнала ${d.signalThresholdPct}%)</div>` : `<div class="text-[11px] text-gray-500">Обязательство: ${rub(d.liabilityRub)}</div>`);
+
+        const lastContestHtml = d.lastContest ? `
+          <div class="pt-3 border-t border-gray-100">
+            <div class="text-[11px] font-medium text-gray-400 mb-1.5">Последний завершённый розыгрыш: «${escapeHtmlClient(d.lastContest.title)}» (${new Date(d.lastContest.finishedAt).toLocaleDateString('ru-RU')})</div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div><div class="text-[10px] text-gray-400">Билетов потрачено</div><div class="text-sm font-semibold text-gray-900">${d.lastContest.ticketsSpent}</div></div>
+              <div><div class="text-[10px] text-gray-400">Участников</div><div class="text-sm font-semibold text-gray-900">${d.lastContest.participants}</div></div>
+              <div><div class="text-[10px] text-gray-400">Заказали снова за 14 дн.</div><div class="text-sm font-semibold text-gray-900">${d.lastContest.reorderedWithin14Days}</div></div>
+            </div>
+            <div class="text-[10px] text-gray-400 mt-1.5">Сырые числа, без вывода об окупаемости — оцените сами.</div>
+          </div>
+        ` : `<div class="pt-3 border-t border-gray-100 text-gray-400">Ещё ни один розыгрыш не завершён.</div>`;
+
+        body.innerHTML = `<div class="space-y-3">${budgetHtml}${faceValueHtml}${signalHtml}${lastContestHtml}</div>`;
+      } catch (error) {
+        body.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
       }
     }
   }

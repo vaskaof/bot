@@ -352,6 +352,10 @@ window.Screens.clients = {
           </div>
           ${blocked && currentClient.blockReason ? `<div class="text-xs text-gray-500 mt-2">Причина: ${escapeHtmlClient(currentClient.blockReason)}</div>` : ''}
           ${blocked && currentClient.blockedUntil ? `<div class="text-xs text-gray-500 mt-1">До: ${new Date(currentClient.blockedUntil).toLocaleString('ru-RU')}</div>` : ''}
+          <div class="mt-3 flex items-center justify-between gap-2 py-2 px-3 rounded-xl bg-gray-50 border border-gray-100">
+            <div class="text-xs text-gray-500">Тип клиента: <span class="font-medium text-gray-800">${escapeHtmlClient(currentClient.clientType || 'Клиент')}</span></div>
+            <button type="button" id="toggle-client-type-btn" class="text-xs font-medium text-indigo-600 shrink-0">Изменить</button>
+          </div>
           <button type="button" id="toggle-block-btn" class="mt-3 w-full py-2.5 rounded-xl text-sm font-medium ${blocked ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'}">
             ${blocked ? 'Разблокировать' : 'Заблокировать'}
           </button>
@@ -490,6 +494,27 @@ window.Screens.clients = {
           return;
         }
         openBlockClientModal();
+      });
+
+      document.getElementById('toggle-client-type-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        if (btn.disabled) return;
+        const current = currentClient.clientType || 'Клиент';
+        const next = current === 'Посредник' ? 'Клиент' : 'Посредник';
+        const warning = next === 'Клиент'
+          ? 'Клиент перестанет быть исключением из начисления сов за заказ.'
+          : 'Клиент будет исключён из начисления сов за заказ (посредники не получают совы за свои заказы).';
+        if (!(await showConfirmModal(`Сменить тип клиента на «${next}»? ${warning}`, { confirmLabel: 'Сменить' }))) return;
+        btn.disabled = true;
+        try {
+          await callServer('setClientType', currentClient.telegramId, next);
+          currentClient.clientType = next;
+          showSaveToast(true, `Тип клиента изменён на «${next}»`);
+          loadClientDetail();
+        } catch (error) {
+          btn.disabled = false;
+          showSaveToast(false, `Не удалось изменить тип: ${error.message}`);
+        }
       });
 
       if (window.lucide) window.lucide.createIcons();

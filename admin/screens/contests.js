@@ -101,10 +101,10 @@ window.Screens.contests = {
             </div>
             <div id="task-repeatable-block" class="flex items-center gap-2">
               <input type="checkbox" id="task-repeatable-input" class="w-4 h-4 rounded border-gray-300 text-indigo-600">
-              <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Для РУЧНЫХ заданий: клиент может присылать сколько угодно заявок — в том числе несколько сразу, не дожидаясь проверки предыдущей. Подходит для баг-репортов и подобного. Каждая заявка всё равно проходит модерацию — это и есть throttle.</p><p>Для АВТО-заданий: без модерации, поэтому здесь другая защита — сова начисляется заново только если награда уже была отозвана (например, клиент удалил и снова добавил позицию в вишлист) И сигнал снова истинен, максимум столько раз, сколько указано в поле «Макс. количество начислений» ниже (обязательно для этой комбинации).</p><p>Для одноразовых заданий оставьте выключенным.</p>')}</label>
+              <label for="task-repeatable-input" class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Повторяемое${helpIcon('Повторяемое задание', '<p>Для РУЧНЫХ заданий: клиент может присылать сколько угодно заявок — в том числе несколько сразу, не дожидаясь проверки предыдущей. Подходит для баг-репортов и подобного. Каждая заявка всё равно проходит модерацию, а после достижения «Макс. количества начислений» ниже — новую заявку подать больше нельзя.</p><p>Для АВТО-заданий: без модерации, поэтому здесь другая защита — сова начисляется заново только если награда уже была отозвана (например, клиент удалил и снова добавил позицию в вишлист) И сигнал снова истинен, максимум столько раз, сколько указано в поле «Макс. количество начислений» ниже (обязательно для этой комбинации).</p><p>Для одноразовых заданий оставьте выключенным.</p>')}</label>
             </div>
             <div id="task-max-accruals-block">
-              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Макс. количество начислений *${helpIcon('Максимум начислений', '<p>Сколько раз это задание может ВСЕГО начислить сову одному клиенту за всё время (считая самое первое начисление, не только повторы).</p><p>Обязательно для повторяемых авто-заданий — без потолка клиент мог бы фармить сову бесконечным удалением/добавлением позиции в вишлисте (или отпиской/подпиской на новости). После достижения лимита задание блокируется для клиента навсегда, так же, как и неповторяемое после отзыва.</p>')}</label>
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Макс. количество начислений *${helpIcon('Максимум начислений', '<p>Сколько раз это задание может ВСЕГО начислить сову одному клиенту за всё время (считая самое первое начисление, не только повторы). Обязательно для ЛЮБОГО повторяемого задания — Авто или Ручное.</p><p>Для авто-заданий: без потолка клиент мог бы фармить сову бесконечным удалением/добавлением позиции в вишлисте (или отпиской/подпиской на новости). Для ручных: без потолка подать заявку можно неограниченно (единственной защитой был глаз админа на модерации).</p><p>После достижения лимита задание блокируется для клиента навсегда, так же, как и неповторяемое после отзыва.</p>')}</label>
               <input type="number" id="task-max-accruals-input" min="1" step="1"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Например: 5">
@@ -706,11 +706,12 @@ window.Screens.contests = {
       if (typeInput.value !== 'Ручное') answerHintInput.value = '';
       // "Повторяемое" (20.08.2026, VASY) теперь доступно ОБОИМ типам —
       // семантика разная (см. helpIcon выше), но чекбокс один и тот же.
-      // "Макс. количество начислений" — только для связки Авто+Повторяемое.
+      // "Макс. количество начислений" (Э7, F-18) — теперь для ЛЮБОГО
+      // повторяемого задания, не только Авто+Повторяемое.
       updateMaxAccrualsVisibility();
     }
     function updateMaxAccrualsVisibility() {
-      const show = typeInput.value === 'Авто' && repeatableInput.checked;
+      const show = repeatableInput.checked;
       maxAccrualsBlock.classList.toggle('hidden', !show);
       if (!show) maxAccrualsInput.value = '';
     }
@@ -771,7 +772,7 @@ window.Screens.contests = {
       const signal = type === 'Авто' ? signalInput.value : '';
       const reward = rewardInput.value;
       const repeatable = repeatableInput.checked;
-      const maxAccruals = (type === 'Авто' && repeatable) ? maxAccrualsInput.value : null;
+      const maxAccruals = repeatable ? maxAccrualsInput.value : null;
       const answerHint = type === 'Ручное' ? answerHintInput.value.trim() : '';
 
       if (title === '') {
@@ -784,7 +785,7 @@ window.Screens.contests = {
         errorText.classList.remove('hidden');
         return;
       }
-      if (type === 'Авто' && repeatable && (maxAccruals === '' || Number(maxAccruals) < 1 || !Number.isInteger(Number(maxAccruals)))) {
+      if (repeatable && (maxAccruals === '' || Number(maxAccruals) < 1 || !Number.isInteger(Number(maxAccruals)))) {
         errorText.textContent = 'Укажите максимальное количество начислений (целое число ≥ 1).';
         errorText.classList.remove('hidden');
         return;
