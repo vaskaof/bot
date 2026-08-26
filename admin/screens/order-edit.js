@@ -23,6 +23,12 @@
 // не передаётся (updateOrder его не принимает и не нуждается в нём).
 const ORDER_EDIT_DRAFT_KEY = 'pendingOrderEditDraft';
 
+// Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — 4 статуса-причины, реальные
+// литералы orders.status_order (проверены против живой БД, НЕ придуманы —
+// см. память project_bot_knopka_economy_refactor_e7/backend миграции M8.1
+// за ту же проверку и найденное расхождение с исходным черновиком DDL).
+const WRITEOFF_REASON_STATUSES = new Set(['Не найдено', 'Заказ отменён магазином', 'Отказ клиента', 'Потеряно']);
+
 window.Screens = window.Screens || {};
 window.Screens.orderEdit = {
   render(root, dictionaries, params, signal) {
@@ -173,6 +179,15 @@ window.Screens.orderEdit = {
             <div class="flex-1 w-full">
               <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800" data-dict="statusOrder"></select>
             </div>
+          </div>
+
+          <!-- Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — видно только при
+               одном из 4 статусов-причин, см. WRITEOFF_REASON_STATUSES ниже. -->
+          <div id="writeoff-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-red-50/50">
+            <div id="writeoff-existing-list" class="hidden text-xs text-gray-600 space-y-1"></div>
+            <button type="button" id="open-writeoff-modal-btn" class="self-start px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">
+              Зафиксировать списание
+            </button>
           </div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -519,6 +534,7 @@ window.Screens.orderEdit = {
       ${ManualClientModal.html()}
       ${DeleteOrderModal.html()}
       ${PurchaseEventModal.html()}
+      ${WriteoffModal.html()}
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
@@ -535,6 +551,7 @@ window.Screens.orderEdit = {
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
     let commissionGate; // Э6, D-10/F-24 — FormHelpers.wireCommissionGate(), пороги приходят в loadOrder()
+    let refreshExistingWriteoffs = async () => {}; // Э8, M8.1 — переопределяется внутри loadOrder(), нужна снаружи для onRecorded/кнопки
     let originalBookingSum = 0; // снимок "Бронь/комиссия" на момент загрузки — для isDirty() ниже, тот же критерий, что на сервере
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput;
@@ -1195,6 +1212,39 @@ window.Screens.orderEdit = {
         deliveryLadderEl.innerHTML = buildDeliveryLadder(ladder, statusDeliverySelect.value, {});
       });
       document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;
+
+      // Списание (Э8, M8.1) — тот же приём, что delivery-ladder выше:
+      // снимок с сервера на загрузке + пересчёт на 'change', не дублируем
+      // статус отдельным состоянием. refreshExistingWriteoffs — best-effort,
+      // сбой чтения истории не должен мешать открыть форму заказа.
+      const statusOrderSelect = document.querySelector('select[data-dict="statusOrder"]');
+      const writeoffBanner = document.getElementById('writeoff-banner');
+      const writeoffExistingList = document.getElementById('writeoff-existing-list');
+
+      // Переопределяет hoisted-заглушку выше — доступна снаружи loadOrder()
+      // (кнопка "Зафиксировать списание"/её onRecorded живут в внешней
+      // области render(), не здесь, тот же приём, что commissionGate).
+      refreshExistingWriteoffs = async function() {
+        writeoffExistingList.classList.add('hidden');
+        writeoffExistingList.innerHTML = '';
+        try {
+          const rows = await callServer('getOrderWriteoffs', currentOrderId);
+          if (rows.length === 0) return;
+          writeoffExistingList.innerHTML = `<div class="font-medium text-gray-500">Уже зафиксировано:</div>` + rows.map((r) =>
+            `<div>${r.reason_kind}, ${parseFloat(r.total_loss_rub).toFixed(2)} ₽ (${new Date(r.occurred_at).toLocaleDateString('ru-RU')})</div>`
+          ).join('');
+          writeoffExistingList.classList.remove('hidden');
+        } catch { /* best-effort, не блокирует форму */ }
+      };
+
+      function updateWriteoffBanner() {
+        const isWriteoffReason = WRITEOFF_REASON_STATUSES.has(statusOrderSelect.value);
+        writeoffBanner.classList.toggle('hidden', !isWriteoffReason);
+        if (isWriteoffReason) refreshExistingWriteoffs();
+      }
+      updateWriteoffBanner();
+      statusOrderSelect.addEventListener('change', updateWriteoffBanner);
+
       document.querySelector('select[data-dict="purchaseChannel"]').value = details.purchaseChannel;
       document.querySelector('select[data-dict="purchaseAccount"]').value = details.purchaseAccount;
       document.querySelector('select[data-dict="cargo"]').value = details.cargo;
@@ -1516,6 +1566,19 @@ window.Screens.orderEdit = {
     document.getElementById('purchase-event-btn').addEventListener('click', () => {
       if (!currentOrderId || !loadedDetails) return;
       purchaseEventModal.open(currentOrderId, loadedDetails.currency);
+    });
+
+    // "Зафиксировать списание" (Э8, M8.1, D-11/F-27, 27.08.2026) — кнопка
+    // видна только когда "Статус заказа" — одна из 4 причин списания (см.
+    // WRITEOFF_REASON_STATUSES/updateWriteoffBanner выше). onRecorded
+    // обновляет список уже зафиксированных списаний тем же best-effort
+    // запросом, что и при смене статуса — не задваивает логику.
+    const writeoffModal = WriteoffModal.init({
+      onRecorded: () => refreshExistingWriteoffs()
+    });
+    document.getElementById('open-writeoff-modal-btn').addEventListener('click', () => {
+      if (!currentOrderId) return;
+      writeoffModal.open(currentOrderId, document.querySelector('select[data-dict="statusOrder"]').value);
     });
 
     const deleteOrderBtn = document.getElementById('delete-order-btn');
