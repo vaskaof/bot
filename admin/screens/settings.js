@@ -21,6 +21,14 @@
  * (%/₽/$, VASY явно попросил); остальные 4 — только ₽, без выбора.
  * "Доставка КЗ→РФ" на заказе больше НЕ настраивается напрямую здесь —
  * складывается из "Такси КЗ"/"СДЭК"/"Такси РФ" на самом заказе.
+ *
+ * Э6, D-04 (26.08.2026, project_bot_knopka_economy_refactor) — "Налоговый
+ * резерв" получил второй параметр, `Налог_База` (`type='enum'`), рядом с
+ * уже существующим процентом, в той же секции. Единственный ключ типа
+ * 'enum' сегодня, рендерится select'ом вместо числового поля (см.
+ * enumRowHtml/TAX_BASE_KEY ниже) — общий `plainSectionHtml`/`rowHtml`/
+ * `wirePlainSection` цикл остался один на все категории, не заведён
+ * отдельный особый блок ради одной строки.
  */
 window.Screens = window.Screens || {};
 
@@ -127,6 +135,23 @@ function slugKey(label) {
   return label.trim().replace(/\s+/g, '_');
 }
 
+// Э6, D-04 (26.08.2026, project_bot_knopka_economy_refactor) — «Налог
+// считается от», единственный сегодня `type='enum'` параметр (category
+// 'tax_reserve', та же секция, что "Резерв_Налог_Процент" — рядом стоящий
+// процент применяется к выбранной здесь базе). VASY, старт Э6: «режим пока
+// определяем, заложи обе возможности» — переключение остаётся ручным
+// действием на будущее, форма ничего не выбирает сама. Не удаляется через
+// общую кнопку "Удалить" (см. rowHtml/wirePlainSection ниже) — тот же
+// принцип, что у FORECAST_FIELD_DEFS/ECONOMY_SETTINGS_DEFS: системный ключ
+// с известным значением по умолчанию на backend (getTextValue fallback),
+// случайное удаление не опасно, но и не имеет смысла как самостоятельное
+// действие (в отличие от произвольных позиций "Добавить позицию").
+const TAX_BASE_KEY = 'Налог_База';
+const TAX_BASE_OPTIONS = [
+  { value: 'комиссия', label: 'От комиссии' },
+  { value: 'оборот', label: 'От оборота' }
+];
+
 window.Screens.settings = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
@@ -205,6 +230,7 @@ window.Screens.settings = {
     }
 
     function rowHtml(s) {
+      if (s.type === 'enum') return enumRowHtml(s);
       return `
         <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}">
           <div class="flex-1 min-w-0">
@@ -223,6 +249,26 @@ window.Screens.settings = {
       `;
     }
 
+    // Э6, D-04 — строка типа 'enum' (сегодня только TAX_BASE_KEY): выбор
+    // из фиксированного набора вместо числового поля, без кнопки "Удалить"
+    // (см. обоснование у TAX_BASE_KEY выше).
+    function enumRowHtml(s) {
+      return `
+        <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}" data-row-type="enum">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(s.label)}</div>
+            <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
+          </div>
+          <select class="value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
+            ${TAX_BASE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === s.valueText ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+          <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
     function wirePlainSection(category) {
       const container = document.querySelector(`[data-category="${category}"]`);
       if (!container) return;
@@ -230,18 +276,26 @@ window.Screens.settings = {
       container.querySelectorAll('[data-row-key]').forEach(row => {
         const key = row.dataset.rowKey;
         const setting = (allSettingsCache || []).find(s => s.key === key);
+        const isEnum = row.dataset.rowType === 'enum';
         row.querySelector('.save-row-btn').addEventListener('click', async () => {
-          const input = row.querySelector('.value-input');
-          const value = parseFloat(input.value);
-          if (isNaN(value)) { showSaveToast(false, 'Значение должно быть числом.'); return; }
+          const payload = { key, label: setting.label, type: setting.type, category: setting.category };
+          if (isEnum) {
+            payload.valueText = row.querySelector('.value-select').value;
+            payload.value = 0;
+          } else {
+            const value = parseFloat(row.querySelector('.value-input').value);
+            if (isNaN(value)) { showSaveToast(false, 'Значение должно быть числом.'); return; }
+            payload.value = value;
+          }
           try {
-            await callServer('upsertFinancialSetting', { key, label: setting.label, value, type: setting.type, category: setting.category });
+            await callServer('upsertFinancialSetting', payload);
             showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);
           }
         });
-        row.querySelector('.delete-row-btn').addEventListener('click', async () => {
+        const deleteBtn = row.querySelector('.delete-row-btn');
+        if (deleteBtn) deleteBtn.addEventListener('click', async () => {
           if (!(await showConfirmModal(`Удалить параметр «${setting.label}»?`, { confirmLabel: 'Удалить', danger: true }))) return;
           try {
             await callServer('deleteFinancialSetting', key);
