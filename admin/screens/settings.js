@@ -29,6 +29,15 @@
  * enumRowHtml/TAX_BASE_KEY ниже) — общий `plainSectionHtml`/`rowHtml`/
  * `wirePlainSection` цикл остался один на все категории, не заведён
  * отдельный особый блок ради одной строки.
+ *
+ * Э6, D-05 (26.08.2026) — недобор суммы долей выплат (`< 100%`) больше не
+ * ошибка (кнопка "Сохранить доли" была неактивна ровно при `≠ 100%`, теперь
+ * только при `> 100%` или `= 0`) — остаток уходит в "Фонд оборотных средств"
+ * на леджер-стороне (уже книгуется независимо от этого экрана, см.
+ * `financeService.syncOrderFinancialsLedger`). Секция "Налоговый резерв"
+ * получила read-only строку с текущим остатком этого фонда
+ * (`getWorkingCapitalFundBalance`) — чисто информационная, не редактируется
+ * отсюда.
  */
 window.Screens = window.Screens || {};
 
@@ -171,6 +180,7 @@ window.Screens.settings = {
 
     let sharesDraft = null; // {key,label,value}[] — черновик долей выплат, до "Сохранить доли"
     let allSettingsCache = []; // плоский список всех настроек (не-payout_share) — нужен save-row-btn'у для label/type
+    let workingCapitalFundBalance = null; // Э6/D-05 — null, пока не загружен/если запрос упал (строка тогда не рендерится)
 
     load();
 
@@ -180,6 +190,13 @@ window.Screens.settings = {
         const settings = await callServer('getFinancialSettings');
         allSettingsCache = settings;
         sharesDraft = settings.filter(s => s.category === 'payout_share').map(s => ({ ...s }));
+        // Остаток фонда — необязательная строка-подсказка, её сбой не должен
+        // ронять весь экран настроек (тот же принцип, что прогноз расходов).
+        try {
+          workingCapitalFundBalance = await callServer('getWorkingCapitalFundBalance');
+        } catch (error) {
+          workingCapitalFundBalance = null;
+        }
         renderBody(settings);
       } catch (error) {
         body.innerHTML = `<div class="text-center text-sm text-red-500 py-10">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
@@ -225,7 +242,18 @@ window.Screens.settings = {
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="${category}">
             ${rows.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : rows.map(rowHtml).join('')}
           </div>
+          ${category === 'tax_reserve' ? workingCapitalFundBalanceHtml() : ''}
         </section>
+      `;
+    }
+
+    // Э6, D-05 — read-only остаток "Фонда оборотных средств" (счёт 2400),
+    // рядом с настройками налогового резерва (та же секция, соседняя тема —
+    // куда уходит остаток после долей выплат). Ничего не редактирует.
+    function workingCapitalFundBalanceHtml() {
+      if (workingCapitalFundBalance === null) return '';
+      return `
+        <div class="text-[11px] text-gray-400 px-1 mt-2">Остаток фонда оборотных средств: <span class="font-medium text-gray-500">${Number(workingCapitalFundBalance).toLocaleString('ru-RU')} ₽</span></div>
       `;
     }
 
@@ -532,9 +560,27 @@ window.Screens.settings = {
       });
     }
 
+    // Э6, D-05 (26.08.2026) — сумма долей больше не обязана быть РОВНО 100%:
+    // допустим недобор (остаток книгуется в "Фонд оборотных средств" на
+    // леджер-стороне, готово с Э5, этому экрану ничего для этого делать не
+    // нужно), но не перебор (> 100%) и не 0 (нужна хотя бы одна реальная
+    // доля) — те же границы, что серверная валидация в
+    // financialSettingsRepository.replacePayoutShares. Общая на оба места
+    // рендера (первичный и live-пересчёт при вводе), чтобы не разойтись.
+    function shareSumStatus(sum) {
+      const ok = sum > 0 && sum <= 100 + SHARE_SUM_TOLERANCE;
+      const full = sum >= 100 - SHARE_SUM_TOLERANCE; // ровно 100%, в допуске округления
+      let label;
+      if (sum <= 0) label = `Сумма: ${sum}% — нужна хотя бы одна доля больше 0%`;
+      else if (sum > 100 + SHARE_SUM_TOLERANCE) label = `Сумма: ${sum}% — не может быть больше 100%`;
+      else if (!full) label = `Сумма: ${sum}% — остаток пойдёт в фонд оборотных средств`;
+      else label = `Сумма: ${sum}%`;
+      return { ok, full, label };
+    }
+
     function sharesSectionHtml() {
       const sum = sharesDraft.reduce((total, s) => total + (parseFloat(s.value) || 0), 0);
-      const sumOk = Math.abs(sum - 100) <= SHARE_SUM_TOLERANCE;
+      const { ok: sumOk, full: sumFull, label: sumLabel } = shareSumStatus(sum);
       return `
         <section class="mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.payout_share}</div>
@@ -542,7 +588,7 @@ window.Screens.settings = {
             ${sharesDraft.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : sharesDraft.map((s, i) => shareRowHtml(s, i)).join('')}
           </div>
           <div class="flex items-center justify-between mt-2 px-1">
-            <span id="shares-sum" class="text-sm font-medium ${sumOk ? 'text-green-600' : 'text-red-500'}">Сумма: ${sum}%${sumOk ? '' : ' — должно быть 100%'}</span>
+            <span id="shares-sum" class="text-sm font-medium ${!sumOk ? 'text-red-500' : sumFull ? 'text-green-600' : 'text-gray-500'}">${sumLabel}</span>
             <button type="button" id="add-share-btn" class="text-xs font-medium text-indigo-600">+ Добавить долю</button>
           </div>
           <button type="button" id="save-shares-btn" ${sumOk ? '' : 'disabled'}
@@ -609,12 +655,12 @@ window.Screens.settings = {
 
     function refreshSharesSum() {
       const sum = sharesDraft.reduce((total, s) => total + (parseFloat(s.value) || 0), 0);
-      const sumOk = Math.abs(sum - 100) <= SHARE_SUM_TOLERANCE;
+      const { ok: sumOk, full: sumFull, label } = shareSumStatus(sum);
       const sumLabel = document.getElementById('shares-sum');
       const saveBtn = document.getElementById('save-shares-btn');
       if (sumLabel) {
-        sumLabel.textContent = `Сумма: ${sum}%${sumOk ? '' : ' — должно быть 100%'}`;
-        sumLabel.className = `text-sm font-medium ${sumOk ? 'text-green-600' : 'text-red-500'}`;
+        sumLabel.textContent = label;
+        sumLabel.className = `text-sm font-medium ${!sumOk ? 'text-red-500' : sumFull ? 'text-green-600' : 'text-gray-500'}`;
       }
       if (saveBtn) {
         saveBtn.disabled = !sumOk;
