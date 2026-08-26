@@ -367,6 +367,7 @@ window.Screens.orderEdit = {
               </div>
             </div>
           </div>
+          ${FormHelpers.commissionGateHtml()}
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
@@ -533,6 +534,8 @@ window.Screens.orderEdit = {
     let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
+    let commissionGate; // Э6, D-10/F-24 — FormHelpers.wireCommissionGate(), пороги приходят в loadOrder()
+    let originalBookingSum = 0; // снимок "Бронь/комиссия" на момент загрузки — для isDirty() ниже, тот же критерий, что на сервере
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput;
     let weightUsdInput, weightUsdRateDisplay;
@@ -656,7 +659,8 @@ window.Screens.orderEdit = {
         taxiRfReceiveSum: taxiRfReceiveSumInput.value,
         deliveryRfPaid: document.getElementById('delivery-rf-paid-toggle').dataset.value,
         notifyClient: document.getElementById('notify-client-checkbox').checked,
-        purchaseLink: purchaseLinkInput.value.trim()
+        purchaseLink: purchaseLinkInput.value.trim(),
+        commissionLowReason: commissionGate.getReason() // Э6, D-10/F-24 — сервер сам решает, нужна ли она (только если "Бронь/комиссия" реально менялась)
       };
       // Гейт долга (Q7, см. блок выше save-order-btn) — подтверждение уже
       // получено ДО вызова saveOrder, здесь только прокидывается на сервер,
@@ -1056,6 +1060,17 @@ window.Screens.orderEdit = {
 
     feePercentInput.addEventListener('input', updateFeeRub);
     feeRubInput.addEventListener('input', updateFeePercent);
+    // Э6, D-10/F-24 — регистрируется ПОСЛЕ триугольника выше (тот же
+    // 'input' на #fee-percent/#fee-rub, слушатели одного элемента срабатывают
+    // в порядке регистрации — наш обязан читать feePercentInput.value УЖЕ
+    // ПОСЛЕ updateFeeRub/updateFeePercent). isDirty сравнивает ТЕКУЩЕЕ
+    // значение ₽-поля с загруженным снимком (originalBookingSum, см.
+    // loadOrder()) — тот же критерий и допуск (0.005 ₽), что
+    // ordersService.updateOrder на сервере: гейт не должен всплывать на
+    // несвязанной правке заказа с исторически низкой комиссией.
+    commissionGate = FormHelpers.wireCommissionGate({
+      isDirty: () => Math.abs((parseFloat(feeRubInput.value) || 0) - originalBookingSum) > 0.005
+    });
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
 
@@ -1194,8 +1209,16 @@ window.Screens.orderEdit = {
       if (amountRubBase < 0) amountRubBase = 0;
 
       feeRubInput.value = bookingSum > 0 ? bookingSum.toFixed(2) : '';
+      originalBookingSum = bookingSum; // Э6, D-10/F-24 — снимок для isDirty() гейта комиссии
       totalPaymentInput.value = mainSum > 0 ? mainSum.toFixed(2) : '';
       updateFeePercent();
+      // Э6, D-10/F-24 (26.08.2026) — та же карточка настроек, что
+      // order-new.js's fetchForecast, здесь без прогноза (поля уже
+      // заполнены) — только пороги. Best-effort, тот же принцип, что
+      // остальные необязательные подсказки формы.
+      callServer('getOrderForecast', amountInput.value)
+        .then((forecast) => commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent }))
+        .catch(() => {});
 
       FormHelpers.setTagToggle('booking-paid-toggle', details.payments.booking.paid === 'Да' || details.payments.booking.paid === 'да' ? 'Да' : 'Нет');
       FormHelpers.setTagToggle('main-paid-toggle', details.payments.main.paid === 'Да' || details.payments.main.paid === 'да' ? 'Да' : 'Нет');
@@ -1321,6 +1344,13 @@ window.Screens.orderEdit = {
       if (saveOrderBtn.disabled) return;
       if (!releaseSearch.value.trim()) {
         showSaveToast(false, 'Не получилось сохранить: не заполнено поле «Выпуск»');
+        return;
+      }
+      // Э6, D-10/F-24 — та же клиентская проверка, что сервер сделает жёстко
+      // (isDirty внутри commissionGate сама решает, применим ли гейт вообще —
+      // см. её JSDoc); здесь только чтобы не тратить round-trip.
+      if (!commissionGate.validate()) {
+        showSaveToast(false, 'Комиссия ниже порога — укажите причину занижения');
         return;
       }
 

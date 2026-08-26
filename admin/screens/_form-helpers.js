@@ -154,6 +154,116 @@ window.FormHelpers = {
     return null;
   },
 
+  /**
+   * Разметка блока подсказки/обязательной причины при заниженной комиссии
+   * (Э6, D-10/F-24, 26.08.2026) — общая для order-new.js/order-edit.js,
+   * вставляется сразу под полем "Комиссия" (`#fee-percent`/`#fee-rub`).
+   * Скрыта по умолчанию — `wireCommissionGate` управляет видимостью.
+   */
+  commissionGateHtml() {
+    return `
+      <div id="commission-hint-row" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2">
+        <div id="commission-hint-text" class="text-[12px] leading-tight"></div>
+        <div id="commission-reason-block" class="hidden flex flex-col gap-1">
+          <label for="commission-reason-input" class="text-[11px] text-gray-500">Причина занижения комиссии (обязательно для сохранения)</label>
+          <textarea id="commission-reason-input" rows="2" class="w-full rounded-lg border border-red-200 px-3 py-2 text-sm" placeholder="Например: постоянный клиент, скидка по договорённости"></textarea>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Живая подсказка + обязательное поле причины при заниженной комиссии
+   * (Э6, D-10/F-24, 26.08.2026) — договорённость с VASY 26.08.2026: мягкая
+   * подсказка ниже `warnPercent`, ОБЯЗАТЕЛЬНОЕ поле причины ниже
+   * `reasonPercent` (не блокирует сам заказ — только формально пустую
+   * причину, `validate()` вызывается ТОЛЬКО когда сервер реально будет
+   * гейтить это сохранение — см. вызывающий код в order-new.js/
+   * order-edit.js: гейт на бэкенде срабатывает лишь когда "Бронь/комиссия"
+   * реально введена/изменена в этом сохранении, тот же принцип здесь на
+   * фронте не дублируется — `validate()` просто сверяет ТЕКУЩЕЕ состояние
+   * поля % в момент клика "Сохранить", вызывающая сторона сама решает,
+   * когда его звать).
+   *
+   * Пороги приходят НЕ через отдельный вызов — `getOrderForecast` уже
+   * возвращает `commissionWarnPercent`/`commissionReasonPercent` в той же
+   * карточке, что `commissionPercent` (целевая комиссия).
+   *
+   * `feePercentInput.value` меняется из ТРЁХ разных путей на этих экранах
+   * (ввод в сам % напрямую, пересчёт из ₽-поля через `updateFeePercent`,
+   * автоподстановка прогноза) — ни один из них не гарантированно диспатчит
+   * `'input'` на самом `#fee-percent` (программное `.value =` не диспатчит
+   * событие). Поэтому `update()` слушает `'input'` НА ОБОИХ полях
+   * (`#fee-percent`/`#fee-rub`) — к моменту, когда наш слушатель
+   * срабатывает, `updateFeePercent`/`updateFeeRub` (уже навешанные раньше в
+   * самом экране) успевают отработать синхронно первыми.
+   * `isDirty()` (по умолчанию — всегда `true`, order-new.js: заказ целиком
+   * новый, "заниженность" всегда актуальна) — order-edit.js передаёт
+   * реальную проверку "Бронь/комиссия отличается от загруженной", тот же
+   * критерий, что и на сервере (`ordersService.updateOrder`). Пока
+   * `isDirty()` false — ни подсказка, ни обязательное поле НЕ показываются
+   * вообще, даже если % уже исторически ниже порога: несвязанная правка
+   * старого заказа не должна упираться в причину, которую менеджер не
+   * вводил и не обязан знать (R-03).
+   * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean}} [options]
+   * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, refresh():void, getReason():string, validate():boolean}}
+   */
+  wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true } = {}) {
+    const feePercentInput = document.querySelector(feePercentSelector);
+    const feeRubInput = document.querySelector(feeRubSelector);
+    const hintRow = document.getElementById('commission-hint-row');
+    const hintText = document.getElementById('commission-hint-text');
+    const reasonBlock = document.getElementById('commission-reason-block');
+    const reasonInput = document.getElementById('commission-reason-input');
+    const noop = { setThresholds() {}, refresh() {}, getReason: () => '', validate: () => true };
+    if (!feePercentInput || !hintRow || !hintText || !reasonBlock || !reasonInput) return noop;
+
+    let thresholds = { warnPercent: null, reasonPercent: null };
+
+    function update() {
+      const pct = parseFloat(feePercentInput.value);
+      if (isNaN(pct) || thresholds.reasonPercent === null || thresholds.warnPercent === null || !isDirty()) {
+        hintRow.classList.add('hidden');
+        reasonBlock.classList.add('hidden');
+        return;
+      }
+      if (pct < thresholds.reasonPercent) {
+        hintRow.classList.remove('hidden');
+        hintText.className = 'text-[12px] leading-tight text-red-600';
+        hintText.textContent = `Комиссия ${pct.toFixed(2)}% ниже порога ${thresholds.reasonPercent}% — без указанной причины заказ не сохранится.`;
+        reasonBlock.classList.remove('hidden');
+      } else if (pct < thresholds.warnPercent) {
+        hintRow.classList.remove('hidden');
+        hintText.className = 'text-[12px] leading-tight text-amber-600';
+        hintText.textContent = `Комиссия ${pct.toFixed(2)}% ниже целевых ${thresholds.warnPercent}%.`;
+        reasonBlock.classList.add('hidden');
+      } else {
+        hintRow.classList.add('hidden');
+        reasonBlock.classList.add('hidden');
+      }
+    }
+
+    feePercentInput.addEventListener('input', update);
+    if (feeRubInput) feeRubInput.addEventListener('input', update);
+
+    return {
+      setThresholds(t) { thresholds = t || { warnPercent: null, reasonPercent: null }; update(); },
+      refresh: update,
+      getReason() { return reasonInput.value.trim(); },
+      validate() {
+        if (!isDirty()) return true;
+        const pct = parseFloat(feePercentInput.value);
+        if (!isNaN(pct) && thresholds.reasonPercent !== null && pct < thresholds.reasonPercent && reasonInput.value.trim() === '') {
+          reasonBlock.classList.remove('hidden');
+          hintRow.classList.remove('hidden');
+          reasonInput.focus();
+          return false;
+        }
+        return true;
+      }
+    };
+  },
+
   /** Общий рендер выпадающего списка автокомплита (release/client search). */
   renderDropdown(container, items, templateFn, onSelect) {
     container.innerHTML = '';

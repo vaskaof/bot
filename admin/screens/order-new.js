@@ -267,6 +267,7 @@ window.Screens.orderNew = {
               </div>
             </div>
           </div>
+          ${FormHelpers.commissionGateHtml()}
 
           <!-- "Клиенты и суммы" перемещено сюда, НИЖЕ курса/комиссии
                (13.08.2026, по фидбеку VASY — раньше стояло выше "Количество",
@@ -450,6 +451,7 @@ window.Screens.orderNew = {
     let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput, mainAmountReceivedInput, calculatedRub, rateDisplay, refreshRateBtn, dateInput;
+    let commissionGate; // Э6, D-10/F-24 — FormHelpers.wireCommissionGate(), см. ниже
     // Прогноз расходов (13.08.2026, Фаза 2) — редактируемые, предзаполняются
     // из getOrderForecast() при смене "Количество" (debounced, см. ниже).
     let weightSumInput, weightUsdInput, weightUsdRateDisplay;
@@ -670,7 +672,8 @@ window.Screens.orderNew = {
         shippingRfSum: shippingRfSumInput.value,
         taxiRfReceiveSum: taxiRfReceiveSumInput.value,
         wishlistId: prefillWishlistId || '',
-        requestId: newOrderRequestId
+        requestId: newOrderRequestId,
+        commissionLowReason: commissionGate.getReason() // Э6, D-10/F-24 — пусто, если гейт не сработал/не тронут
       };
       // Черновик пишется ДО отправки, не после — если Telegram зависнет прямо
       // на этом fetch()/ответ потеряется, данные уже лежат в localStorage
@@ -1440,6 +1443,10 @@ window.Screens.orderNew = {
           feePercentInput.value = forecast.commissionPercent.toFixed(2);
           updateFeeRub();
         }
+        // Э6, D-10/F-24 — та же карточка настроек, что commissionPercent
+        // выше; setThresholds сама пересчитывает подсказку по уже
+        // подставленному % (программные .value= выше не диспатчат 'input').
+        commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent });
       } catch (error) {
         // Прогноз — необязательное удобство, сбой не должен мешать оформлению заказа.
       }
@@ -1460,6 +1467,11 @@ window.Screens.orderNew = {
     amountInput.addEventListener('input', () => { updateCalc(); updateFeeRub(); recalcAllBulkRows(); fetchForecast(); });
     feePercentInput.addEventListener('input', () => { feePercentEdited = true; updateFeeRub(); recalcAllBulkRows(); });
     feeRubInput.addEventListener('input', updateFeePercent);
+    // Э6, D-10/F-24 — регистрируется ПОСЛЕ триугольника выше: тот же
+    // 'input'-событие на #fee-percent/#fee-rub, слушатели одного события на
+    // одном элементе срабатывают в порядке регистрации — наш обязан читать
+    // feePercentInput.value УЖЕ ПОСЛЕ updateFeeRub/updateFeePercent, не до.
+    commissionGate = FormHelpers.wireCommissionGate();
     totalPaymentInput.addEventListener('input', updateFromTotalPayment);
     totalPaymentInput.addEventListener('blur', clampTotalPaymentOnBlur);
 
@@ -1542,6 +1554,15 @@ window.Screens.orderNew = {
 
       if (!releaseSearch.value.trim()) {
         showSaveToast(false, 'Не получилось сохранить заказ: не заполнено поле «Выпуск»');
+        return;
+      }
+      // Э6, D-10/F-24 — та же клиентская проверка, что сервер сделает
+      // жёстко; здесь только чтобы не тратить round-trip и сразу подсветить
+      // поле причины. bulkMode/"Несколько сразу" — прогноз/гейт на эту форму
+      // не распространяется (см. fetchForecast выше), validate() там всегда
+      // true (thresholds не выставлены).
+      if (!bulkMode && !commissionGate.validate()) {
+        showSaveToast(false, 'Комиссия ниже порога — укажите причину занижения');
         return;
       }
 

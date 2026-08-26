@@ -48,9 +48,14 @@ const CATEGORY_LABELS = {
   payout_share: 'Доли выплат',
   delivery_position_threshold: 'Пороги для "Доход Руб"',
   economy: 'Экономика (совы/билеты)',
-  currency_margin: 'Наценка на конвертацию (курсы валют)'
+  currency_margin: 'Наценка на конвертацию (курсы валют)',
+  // Э6, D-10/F-24 (26.08.2026) — 2 generic percent-строки, тот же построчный
+  // UI, что "Комиссия"/"Налоговый резерв" (не отдельный блок, ключи фиксированы
+  // на backend — financeService.FINANCE_PARAM_COMMISSION_WARN_PERCENT/
+  // _REASON_PERCENT, но форма их не знает как особые, просто рендерит).
+  commission_floor: 'Комиссия — пороги занижения'
 };
-const CATEGORY_ORDER = ['commission', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
