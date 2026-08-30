@@ -155,7 +155,7 @@ window.Screens.collectiveDetail = {
       <div id="bulk-actions-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-40 px-4 py-3">
         <div class="max-w-2xl mx-auto">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Выбрано: <span id="bulk-selected-count">0</span>${helpIcon('Массовые действия', '<p><b>Убрать из коллективки</b> — заказы остаются как есть, просто больше не входят в эту коллективку и не участвуют в раскладке логистики. Уже записанная сверка пересчитается сама.</p><p><b>Перенести в другую</b> — то же самое, но заказы сразу попадают в выбранную коллективку.</p><p><b>Сменить статус доставки</b> — один статус сразу всем выбранным заказам. Если по заказу остался непогашенный долг, система предупредит и попросит подтвердить отдельно.</p>')}</span>
+            <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Выбрано: <span id="bulk-selected-count">0</span>${helpIcon('Массовые действия', '<p><b>Убрать из коллективки</b> — заказы остаются как есть, просто больше не входят в эту коллективку и не участвуют в раскладке логистики. Уже записанная сверка пересчитается сама.</p><p><b>Перенести в другую</b> — то же самое, но заказы сразу попадают в выбранную коллективку.</p><p><b>Сменить статус доставки</b> — один статус сразу всем выбранным заказам. Если по заказу остался непогашенный долг, система предупредит и попросит подтвердить отдельно.</p><p><b>Продолжить как «По РФ»</b> — только для этапа «КЗ→РФ»: выбранные заказы (можно часть, не обязательно все — посылка могла разделиться) добавляются ВТОРЫМ плечом в коллективку этапа «По РФ» (новую или уже существующую), первое плечо остаётся как есть.</p>')}</span>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -163,6 +163,9 @@ window.Screens.collectiveDetail = {
             <button type="button" id="bulk-transfer-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Перенести в другую</button>
             <!-- Э5, REFACTOR-COLLECTIVES.md §3 -->
             <button type="button" id="bulk-status-btn" class="col-span-2 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Сменить статус доставки</button>
+            <!-- Аудит коллективок, п.6Б, 27.08.2026 — только для этапа "КЗ→РФ"
+                 (см. renderDetailsCard), допускает ЧАСТИЧНЫЙ выбор заказов. -->
+            <button type="button" id="bulk-continue-rf-btn" class="hidden col-span-2 py-2.5 rounded-xl border border-emerald-200 text-emerald-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Продолжить как «По РФ»</button>
           </div>
         </div>
       </div>
@@ -175,6 +178,22 @@ window.Screens.collectiveDetail = {
     let orders = []; // единый массив карточек — объединяет getCollectiveDetails.orders + alreadyEstimated/units из getCollectiveLogisticsContext
     let actualCosts = { sdekCost: 0, taxiKzCost: 0, taxiRfCost: 0 };
     const unitDebounceTimers = new Map(); // orderId -> timer, отдельный дебаунс на каждый ползунок
+
+    // Снимок последних СОХРАНЁННЫХ на сервере факт.-полей — для dirty-проверки
+    // (репорт VASY 27.08.2026, см. `guardUnsavedBeforeReload` ниже).
+    // key -> {currency, original}, заполняется в renderCostFields().
+    let lastLoadedCostSnapshot = {};
+
+    // Аудит коллективок, п.6А (27.08.2026, репорт VASY) — "статус доставки
+    // менять не через выделение, а через статус коллективки". Конфигурация
+    // (таблица соответствия + признак "уведомлять") — ленивая, один запрос
+    // на экран, см. ensureAutomationConfig/maybeTriggerStatusAutomation ниже.
+    let automationConfig = null; // {statusMap, autoNotify}
+    async function ensureAutomationConfig() {
+      if (automationConfig) return automationConfig;
+      automationConfig = await callServer('getCollectiveAutomationConfig');
+      return automationConfig;
+    }
 
     // Режим "Выбрать" (Э3) — module-scope этого render(), сбрасывается при
     // каждом новом заходе на экран (тот же принцип, что orders.js).
@@ -201,7 +220,7 @@ window.Screens.collectiveDetail = {
 
         document.getElementById('header-title').textContent = details.name || details.collectiveId;
         renderDetailsCard();
-        renderCostFields();
+        await renderCostFields();
         renderOrderList();
         loadErrorEl.classList.add('hidden');
         bodyEl.classList.remove('hidden');
@@ -221,6 +240,9 @@ window.Screens.collectiveDetail = {
       document.getElementById('stage-chip').textContent = details.stage;
       renderStatusOptions(details.status);
       renderSummary();
+      // Аудит коллективок, п.6Б — "продолжить как По РФ" осмысленно только
+      // с самого первого этапа (у "По РФ" уже нет следующего).
+      document.getElementById('bulk-continue-rf-btn').classList.toggle('hidden', details.stage !== 'КЗ→РФ');
     }
 
     // Статусы по этапу (Э4, §2.1/§5 Q3) — тот же список, что backend
@@ -246,13 +268,48 @@ window.Screens.collectiveDetail = {
 
     const detailSaveBtn = document.getElementById('detail-save-btn');
     const detailErrorText = document.getElementById('detail-error-text');
-    detailSaveBtn.addEventListener('click', async () => {
-      if (detailSaveBtn.disabled) return;
-      detailErrorText.classList.add('hidden');
 
+    // --- Защита от потери несохранённых правок (репорт VASY 27.08.2026) ---
+    //
+    // Баг: правка Названия/Трека/Статуса коллективки НЕ уходит на сервер сама
+    // по себе — только по нажатию отдельной кнопки "Сохранить" в этом блоке.
+    // Если следующим действием менеджер трогал факт.-поля расхода и жал
+    // "Сохранить сверку" (другая кнопка, другой запрос), тот обработчик по
+    // успеху звал loadAll() — она перезагружает `details` с сервера и
+    // renderDetailsCard() затирает несохранённые правки инпутов свежими
+    // серверными значениями. То же самое верно для ЛЮБОГО другого действия
+    // экрана, которое зовёт loadAll() (перенос/убрать заказ, добавить заказ,
+    // массовая смена статуса) — не только "Сохранить сверку".
+    //
+    // Фикс — ровно то, что предложил VASY ("сохранение одновременно"):
+    // `guardUnsavedBeforeReload()` вызывается в начале КАЖДОГО обработчика,
+    // который в итоге дойдёт до loadAll(). Название/Трек/Статус — не денежные
+    // данные, поэтому тихо досохраняются автоматически (`flushDetailFieldsIfDirty`).
+    // Факт.-поля расхода логистики — денежные (сверка пишет проводки в леджер),
+    // поэтому НЕ сохраняются молча за пределами явного "Сохранить сверку" —
+    // вместо этого явное предупреждение с возможностью отменить действие
+    // (`warnIfCostFieldsDirty`), тот же принцип, что уже используется в этом
+    // файле для любого другого денежного побочного эффекта.
+
+    function isDetailDirty() {
+      return document.getElementById('detail-name').value.trim() !== (details.name || '')
+        || document.getElementById('detail-track').value.trim() !== (details.trackNumber || '')
+        || document.getElementById('detail-status').value !== details.status;
+    }
+
+    // Возвращает true (сохранено), false (реальная ошибка сервера) или null
+    // (пользователь сам отменил на подтверждении "Завершено без сверки").
+    // `triggerAutomation` (п.6А) — включать автоматическую смену статуса
+    // доставки ТОЛЬКО по явному клику "Сохранить" самим менеджером, НЕ по
+    // тихому авто-досохранению перед другим действием
+    // (`flushDetailFieldsIfDirty`) — иначе перевод статуса всплыл бы как
+    // неожиданный побочный эффект действия "Убрать заказ"/"Добавить заказ".
+    async function saveDetailFields({ triggerAutomation = false } = {}) {
+      detailErrorText.classList.add('hidden');
       const name = document.getElementById('detail-name').value.trim();
       const trackNumber = document.getElementById('detail-track').value.trim();
       const status = document.getElementById('detail-status').value;
+      const previousStatus = details.status;
 
       // Предупреждение при переводе в терминальный статус этапа без сверки
       // (Э2, п.8) — "терминальный" здесь буквально последний пункт списка
@@ -265,21 +322,99 @@ window.Screens.collectiveDetail = {
           'Сверка логистики ещё не проведена (факт. расход = 0) — перевести коллективку в статус «Завершено» всё равно?',
           { confirmLabel: 'Всё равно завершить', danger: false }
         );
-        if (!confirmed) return;
+        if (!confirmed) return null;
       }
 
-      detailSaveBtn.disabled = true;
       try {
         await callServer('updateCollective', collectiveId, { name, trackNumber, status });
         details.name = name;
         details.trackNumber = trackNumber;
         details.status = status;
         document.getElementById('header-title').textContent = name || collectiveId;
-        showSaveToast(true, 'Коллективка обновлена');
+        if (triggerAutomation && status !== previousStatus) await maybeTriggerStatusAutomation(status);
+        return true;
       } catch (error) {
         detailErrorText.textContent = error.message;
         detailErrorText.classList.remove('hidden');
-        showSaveToast(false, 'Не удалось сохранить: ' + error.message);
+        return false;
+      }
+    }
+
+    // Аудит коллективок, п.6А — после РЕАЛЬНОГО перехода статуса коллективки
+    // (не пересохранения того же значения), если для (этап, новый статус)
+    // настроено соответствие (не "не менять") — открывает ТУ ЖЕ модалку
+    // смены статуса доставки, что и ручная массовая смена (Э5), уже с
+    // выбранным статусом и той же защитой (гейт долга, previewDeliveryStatusChange).
+    // Best-effort: сбой автоматизации НЕ откатывает уже сохранённый статус
+    // коллективки, только предупреждает — тот же принцип, что
+    // recalculateCollectiveReconciliation на backend.
+    async function maybeTriggerStatusAutomation(newStatus) {
+      try {
+        const config = await ensureAutomationConfig();
+        const rule = config.statusMap.find((r) => r.stage === details.stage && r.collectiveStatus === newStatus);
+        const mappedDeliveryStatus = rule ? rule.deliveryStatus : null;
+        if (!mappedDeliveryStatus) return; // не настроено — "не менять"
+
+        const liveOrderIds = orders.map((o) => o.orderId);
+        if (liveOrderIds.length === 0) return;
+
+        deliveryStatusModal.open(liveOrderIds, {
+          presetStatus: mappedDeliveryStatus,
+          presetNotify: config.autoNotify,
+          autoNote: `По правилу автоматизации коллективки статус доставки для ${liveOrderIds.length} заказ(ов) меняется на «${mappedDeliveryStatus}».`
+        });
+      } catch (error) {
+        showSaveToast(false, 'Коллективка сохранена, но не удалось запустить автоматическую смену статуса доставки: ' + error.message);
+      }
+    }
+
+    // Авто-досохранение перед действием, которое перезагрузит экран — не
+    // трогает факт.-поля (см. warnIfCostFieldsDirty), только неденежные детали.
+    async function flushDetailFieldsIfDirty() {
+      if (!isDetailDirty()) return true;
+      const result = await saveDetailFields();
+      if (result === false) {
+        showSaveToast(false, 'Действие отменено: не удалось сохранить Название/Трек/Статус — ' + detailErrorText.textContent);
+      }
+      return result === true;
+    }
+
+    function isCostFieldsDirty() {
+      const fields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
+      return fields.some((f) => {
+        const el = document.getElementById(f.id);
+        if (!el) return false;
+        const snap = lastLoadedCostSnapshot[f.key] || { currency: 'RUB', original: '' };
+        const curOriginal = parseFloat(el.value) || 0;
+        const snapOriginal = parseFloat(snap.original) || 0;
+        return (costFieldCurrency[f.key] || 'RUB') !== snap.currency || curOriginal !== snapOriginal;
+      });
+    }
+
+    // Факт.-расход — денежные данные (сверка пишет проводки), поэтому не
+    // авто-сохраняются как деталь: явное предупреждение + возможность отмены.
+    async function warnIfCostFieldsDirty() {
+      if (!isCostFieldsDirty()) return true;
+      return showConfirmModal(
+        'Несохранённые изменения факт. расхода логистики будут потеряны этим действием. Нажмите «Отмена» и сначала «Сохранить сверку», если хотите их сохранить.',
+        { confirmLabel: 'Продолжить без сохранения', danger: true }
+      );
+    }
+
+    // Общий guard для ЛЮБОГО обработчика, который дойдёт до loadAll().
+    async function guardUnsavedBeforeReload() {
+      if (!(await flushDetailFieldsIfDirty())) return false;
+      if (!(await warnIfCostFieldsDirty())) return false;
+      return true;
+    }
+
+    detailSaveBtn.addEventListener('click', async () => {
+      if (detailSaveBtn.disabled) return;
+      detailSaveBtn.disabled = true;
+      try {
+        const result = await saveDetailFields({ triggerAutomation: true });
+        if (result === true) showSaveToast(true, 'Коллективка обновлена');
+        else if (result === false) showSaveToast(false, 'Не удалось сохранить: ' + detailErrorText.textContent);
       } finally {
         detailSaveBtn.disabled = false;
       }
@@ -313,31 +448,56 @@ window.Screens.collectiveDetail = {
     // — переключатель НЕЗАВИСИМ на каждом из трёх полей, не общий на всю
     // коллективку (в отличие от блока "Доставка КЗ→РФ" в форме заказа, здесь
     // валюта — не подпись слота, а то, в чём менеджер реально платил).
-    // Курс — БЕЗ клиентской наценки (currencyService.getRawKztToRubRate,
-    // см. её JSDoc за обоснованием) — тот же принцип, что $→₽ калькулятор
-    // веса в форме заказа: клиент конвертирует сам, отправляет уже готовую
-    // ₽-сумму, тенге-ввод никогда не уходит на сервер как источник истины.
-    let rawKztToRubRate = null; // кэш на время экрана, обновляется явной кнопкой
+    // Курс — ТОТ ЖЕ механизм, что $→₽-калькулятор веса в форме заказа
+    // (currencyService.getCalculatorKztToRubRate, см. её JSDoc). ИСПРАВЛЕНО
+    // 27.08.2026 (репорт VASY, аудит коллективок) — до этого среза здесь был
+    // сырой курс ЦБ РФ без наценки (`getRawKztToRubRate`), обоснование "своя
+    // наценка исказит прибыль" (Э4, 24.08.2026) VASY поправил: реальная
+    // конвертация валюты всегда несёт банковский спред/комиссию, сырой курс
+    // ЦБ систематически занижал факт. расход коллективки в рублях. Клиент
+    // по-прежнему конвертирует сам и отправляет уже готовую ₽-сумму (тенге-
+    // ввод никогда не уходит на сервер как источник истины) — поменялась
+    // только формула курса, не сам принцип "конвертация на клиенте".
+    let kztToRubRate = null; // кэш на время экрана, обновляется явной кнопкой
     const costFieldCurrency = {}; // key -> 'RUB'|'KZT'
     const costFieldOriginal = {}; // key -> введённая сумма В ТЕКУЩЕЙ валюте поля (для KZT — тенге)
 
-    async function ensureRawRate() {
-      if (rawKztToRubRate !== null) return rawKztToRubRate;
-      const { kztToRub } = await callServer('getRawKztToRubRate');
-      rawKztToRubRate = kztToRub;
-      return rawKztToRubRate;
+    async function ensureKztRate() {
+      if (kztToRubRate !== null) return kztToRubRate;
+      const { kztToRub } = await callServer('getCalculatorKztToRubRate');
+      kztToRubRate = kztToRub;
+      return kztToRubRate;
     }
 
-    function renderCostFields() {
+    // РЕАЛЬНЫЙ БАГ (репорты VASY 27.08.2026, п.3 "карточки не показывают
+    // расход" + п.5 "рубль с тенге в памяти не связаны") — оба были одним и
+    // тем же корнем: курс КЗТ→РУБ запрашивался с сервера ТОЛЬКО по клику
+    // на кнопку-переключатель ₽/₸ (см. её обработчик ниже), не при открытии
+    // экрана. Если поле было СОХРАНЕНО в ₸ на предыдущем заходе, при
+    // повторном открытии `renderCostFields()` подставляла ₸-число в инпут
+    // (корректно), но `updateCostsPreview()` → `readCostFields()` считала
+    // `kztToRubRate` ещё null → `costs[f.key] = null` → `updateCostsPreview`
+    // коалесит `null` в 0 (`costs.sdekCost ?? 0`) — рублёвый компонент этого
+    // поля молча схлопывался в 0 при каждом открытии, "Итого" занижалось (или
+    // обнулялось целиком), а `diffLabel` на карточках заказов гасился своим
+    // же guard'ом (`totalCost <= 0 → return ''`) — отсюда пустые карточки.
+    // Теперь курс запрашивается ЗАРАНЕЕ, если хоть одно поле уже в ₸.
+    async function renderCostFields() {
       const fields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
       const currencyKeyOf = { sdekCost: 'sdekCostCurrency', taxiKzCost: 'taxiKzCostCurrency', taxiRfCost: 'taxiRfCostCurrency' };
       const originalKeyOf = { sdekCost: 'sdekCostOriginal', taxiKzCost: 'taxiKzCostOriginal', taxiRfCost: 'taxiRfCostOriginal' };
+      lastLoadedCostSnapshot = {};
       fields.forEach((f) => {
         const currency = actualCosts[currencyKeyOf[f.key]] || 'RUB';
         costFieldCurrency[f.key] = currency;
         const original = actualCosts[originalKeyOf[f.key]];
         costFieldOriginal[f.key] = currency === 'KZT' && original !== null && original !== undefined ? original : (actualCosts[f.key] || '');
+        lastLoadedCostSnapshot[f.key] = { currency, original: costFieldOriginal[f.key] };
       });
+
+      if (fields.some((f) => costFieldCurrency[f.key] === 'KZT')) {
+        try { await ensureKztRate(); } catch (e) { /* сеть недоступна — hint ниже и так сообщит, сохранение заблокировано readCostFields'ом */ }
+      }
 
       const grid = document.getElementById('cost-fields-grid');
       grid.innerHTML = fields.map((f) => `
@@ -361,7 +521,7 @@ window.Screens.collectiveDetail = {
           btn.textContent = costFieldCurrency[key] === 'KZT' ? '₸' : '₽';
           const hint = document.getElementById(`${fields.find((x) => x.key === key).id}-kzt-hint`);
           hint.classList.toggle('hidden', costFieldCurrency[key] !== 'KZT');
-          if (costFieldCurrency[key] === 'KZT') { try { await ensureRawRate(); } catch (e) { /* сеть недоступна — hint покажет "курс недоступен" ниже */ } }
+          if (costFieldCurrency[key] === 'KZT') { try { await ensureKztRate(); } catch (e) { /* сеть недоступна — hint покажет "курс недоступен" ниже */ } }
           updateCostsPreview();
         });
       });
@@ -370,7 +530,7 @@ window.Screens.collectiveDetail = {
     }
 
     // Читает поля формы в {sdekCost,taxiKzCost,taxiRfCost} УЖЕ В РУБЛЯХ
-    // (конвертирует KZT-поля по rawKztToRubRate) + `*Currency`/`*Original`
+    // (конвертирует KZT-поля по kztToRubRate) + `*Currency`/`*Original`
     // для аудируемости — ровно контракт setCollectiveActualLogisticsCosts (§2.6).
     // `result[f.key] = null` — поле в ₸, но курс ещё не загружен: НЕ
     // подставляем тенге-число как рубли (реальный риск молчаливого 5-кратного
@@ -386,7 +546,7 @@ window.Screens.collectiveDetail = {
         const rawValue = parseFloat(document.getElementById(f.id).value) || 0;
         const currency = costFieldCurrency[f.key] || 'RUB';
         if (currency === 'KZT') {
-          result[f.key] = rawKztToRubRate ? round2(rawValue * rawKztToRubRate) : null;
+          result[f.key] = kztToRubRate ? round2(rawValue * kztToRubRate) : null;
           result[currencyKeyOf[f.key]] = 'KZT';
           result[originalKeyOf[f.key]] = rawValue;
         } else {
@@ -412,9 +572,18 @@ window.Screens.collectiveDetail = {
         if (costFieldCurrency[f.key] !== 'KZT') return;
         const hint = document.getElementById(`${f.id}-kzt-hint`);
         if (!hint) return;
-        hint.textContent = rawKztToRubRate
-          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу ${rawKztToRubRate.toFixed(4)} ₽/₸`
-          : 'Курс ЦБ РФ недоступен — переключите на ₽ или дождитесь курса, сохранение пока заблокировано';
+        // ИСПРАВЛЕНО 27.08.2026 (репорт VASY, п.2 — "расчёт по факт. расходу
+        // не бьётся с калькулятором") — раньше здесь стоял сырой курс ЦБ РФ
+        // без наценки, обоснование "своя наценка исказит прибыль" (Э4,
+        // 24.08.2026), и подсказка честно предупреждала, что это ДРУГОЙ курс,
+        // чем в калькуляторе. VASY поправил саму экономику: реальная
+        // конвертация валюты всегда несёт банковский спред, сырой курс ЦБ
+        // занижал факт. расход — теперь здесь ТОТ ЖЕ механизм расчёта, что и
+        // в $→₽-калькуляторе формы заказа (`currencyService.
+        // getCalculatorKztToRubRate`, та же наценка `Маржа_RUB_KZT`).
+        hint.textContent = kztToRubRate
+          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу ${kztToRubRate.toFixed(4)} ₽/₸ (тот же курс, что в калькуляторе формы заказа)`
+          : 'Курс недоступен — переключите на ₽ или дождитесь курса, сохранение пока заблокировано';
       });
       const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
       document.getElementById('logistics-total').textContent = total.toLocaleString('ru-RU');
@@ -458,6 +627,7 @@ window.Screens.collectiveDetail = {
     const bulkUnassignBtn = document.getElementById('bulk-unassign-btn');
     const bulkTransferBtn = document.getElementById('bulk-transfer-btn');
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
+    const bulkContinueRfBtn = document.getElementById('bulk-continue-rf-btn');
 
     function setSelectMode(on) {
       selectMode = on;
@@ -476,6 +646,7 @@ window.Screens.collectiveDetail = {
       bulkUnassignBtn.disabled = disabled;
       bulkTransferBtn.disabled = disabled;
       bulkStatusBtn.disabled = disabled;
+      bulkContinueRfBtn.disabled = disabled;
     }
 
     function toggleSelected(orderId) {
@@ -494,6 +665,7 @@ window.Screens.collectiveDetail = {
 
     bulkUnassignBtn.addEventListener('click', async () => {
       if (selectedIds.size === 0) return;
+      if (!(await guardUnsavedBeforeReload())) return;
       const remaining = Math.max(0, orders.length - selectedIds.size);
       const recalcNote = currentTotalCost() > 0 ? ` Сверка коллективки будет пересчитана на оставшиеся ${remaining}.` : '';
       const confirmed = await showConfirmModal(`Убрать ${selectedIds.size} заказ(ов) из коллективки?${recalcNote}`, { confirmLabel: 'Убрать', danger: true });
@@ -512,34 +684,60 @@ window.Screens.collectiveDetail = {
       }
     });
 
+    // Один и тот же picker/onPicked обслуживает ДВЕ кнопки ("Перенести в
+    // другую" и "Продолжить как «По РФ»", п.6Б) — CollectivePickerModal.html()
+    // вставлен в разметку ОДИН раз, повторный .init() задвоил бы обработчики
+    // на общих DOM-элементах модалки. `transferPurpose` — что именно нажали,
+    // выставляется прямо перед `.open()`, читается внутри onPicked.
+    let transferPurpose = 'transfer'; // 'transfer' | 'continueRf'
+
     const bulkTransferPicker = CollectivePickerModal.init({
       onPicked: async (targetCollective) => {
         const toMove = selectedOrders();
         if (toMove.length === 0) return;
+        if (!(await guardUnsavedBeforeReload())) return;
         const remaining = Math.max(0, orders.length - toMove.length);
+        const isContinueRf = transferPurpose === 'continueRf';
         const recalcNote = currentTotalCost() > 0 ? ` Сверка «${details.name || details.collectiveId}» будет пересчитана на оставшиеся ${remaining}.` : '';
-        const confirmed = await showConfirmModal(
-          `Перенести ${toMove.length} заказ(ов) в «${targetCollective.name || targetCollective.collectiveId}»?${recalcNote}`,
-          { confirmLabel: 'Перенести' }
-        );
+        // "Продолжить как По РФ" технически тот же assignOrdersToCollective,
+        // что "Перенести в другую" — целевой этап другой ('По РФ' vs этап
+        // ИСТОЧНИКА), поэтому сервер сам трактует это как ДОБАВЛЕНИЕ второго
+        // плеча, а не перенос (§3 Э3: связь уникальна на (заказ, этап)) —
+        // заказ остаётся и в этой коллективке. Текст подтверждения называет
+        // это прямо, чтобы не создавалось впечатление "заказ пропадёт отсюда".
+        const confirmText = isContinueRf
+          ? `Добавить ${toMove.length} заказ(ов) вторым плечом («По РФ») в «${targetCollective.name || targetCollective.collectiveId}»? Заказы останутся и здесь (плечо «КЗ→РФ» не меняется).`
+          : `Перенести ${toMove.length} заказ(ов) в «${targetCollective.name || targetCollective.collectiveId}»?${recalcNote}`;
+        const confirmed = await showConfirmModal(confirmText, { confirmLabel: isContinueRf ? 'Добавить' : 'Перенести' });
         if (!confirmed) return;
 
         try {
           const result = await callServer('assignOrdersToCollective', toMove.map((o) => o.orderId), targetCollective.collectiveId);
           const okCount = result.moved.length + result.added.length;
-          if (result.failed.length > 0) showSaveToast(false, `Перенесено ${okCount}, ${result.failed.length} не удалось.`);
-          else showSaveToast(true, `Перенесено: ${okCount}.`);
+          const verb = isContinueRf ? 'Добавлено вторым плечом' : 'Перенесено';
+          if (result.failed.length > 0) showSaveToast(false, `${verb}: ${okCount}, ${result.failed.length} не удалось.`);
+          else showSaveToast(true, `${verb}: ${okCount}.`);
           setSelectMode(false);
           await loadAll();
         } catch (error) {
-          showSaveToast(false, 'Не удалось перенести: ' + error.message);
+          showSaveToast(false, 'Не удалось выполнить: ' + error.message);
         }
       }
     });
 
     bulkTransferBtn.addEventListener('click', () => {
       if (selectedIds.size === 0) return;
+      transferPurpose = 'transfer';
       bulkTransferPicker.open({ excludeCollectiveId: collectiveId });
+    });
+
+    bulkContinueRfBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      transferPurpose = 'continueRf';
+      // Сужаем список ТОЛЬКО до коллективок этапа "По РФ" + предлагаем
+      // создать новую прямо отсюда (п.6Б) — не нужно уходить на экран
+      // "Коллективки" и возвращаться за выбранными заказами.
+      bulkTransferPicker.open({ stageFilter: 'По РФ', allowCreate: true });
     });
 
     // --- "Сменить статус доставки" (Э5, REFACTOR-COLLECTIVES.md §3 "Э5") ---
@@ -558,8 +756,9 @@ window.Screens.collectiveDetail = {
       }
     });
 
-    bulkStatusBtn.addEventListener('click', () => {
+    bulkStatusBtn.addEventListener('click', async () => {
       if (selectedIds.size === 0) return;
+      if (!(await guardUnsavedBeforeReload())) return;
       deliveryStatusModal.open([...selectedIds]);
     });
 
@@ -795,6 +994,7 @@ window.Screens.collectiveDetail = {
     }
 
     async function unassignOrder(orderId) {
+      if (!(await guardUnsavedBeforeReload())) return;
       // Подтверждение (Э3) — раньше срабатывало без единого вопроса, но с
       // авто-пересчётом сверки (`financeService.recalculateCollectiveReconciliation`)
       // это уже не "бесплатное" действие, если сверка коллективки уже
@@ -828,6 +1028,14 @@ window.Screens.collectiveDetail = {
       logisticsErrorText.classList.add('hidden');
       banner.classList.add('hidden');
 
+      // Реальный баг (репорт VASY 27.08.2026, п.1) — эта кнопка вызывает
+      // loadAll() по успеху, который затирал НЕсохранённые правки
+      // Названия/Трека/Статуса свежими данными с сервера. Досохраняем их
+      // здесь же ("сохранение одновременно", как и предложил VASY) — НЕ
+      // предупреждаем про факт.-поля, т.к. именно их сохранение и есть
+      // текущее действие.
+      if (!(await flushDetailFieldsIfDirty())) return;
+
       if (orders.length === 0) {
         logisticsErrorText.textContent = 'В коллективке нет заказов для сверки.';
         logisticsErrorText.classList.remove('hidden');
@@ -841,7 +1049,7 @@ window.Screens.collectiveDetail = {
       const stageFields = COST_FIELD_LABELS[details.stage] || COST_FIELD_LABELS['КЗ→РФ'];
       const unresolvedKzt = stageFields.filter((f) => costs[f.key] === null).map((f) => f.label.replace(', ₽', ''));
       if (unresolvedKzt.length > 0) {
-        logisticsErrorText.textContent = `Курс ЦБ РФ недоступен для поля(ей) в ₸: ${unresolvedKzt.join(', ')}. Переключите на ₽ или дождитесь курса.`;
+        logisticsErrorText.textContent = `Курс недоступен для поля(ей) в ₸: ${unresolvedKzt.join(', ')}. Переключите на ₽ или дождитесь курса.`;
         logisticsErrorText.classList.remove('hidden');
         return;
       }
@@ -908,6 +1116,7 @@ window.Screens.collectiveDetail = {
           li.addEventListener('click', async () => {
             detailOrderDropdown.classList.remove('active');
             detailOrderSearch.value = '';
+            if (!(await guardUnsavedBeforeReload())) return;
 
             // Перенос из ДРУГОЙ коллективки того же этапа (Э3) — раньше
             // это происходило молча; теперь тянет авто-пересчёт сверки той

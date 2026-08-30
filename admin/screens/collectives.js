@@ -13,6 +13,35 @@
  * навигация остаётся видимой (showNav:true, navKey:null в маршруте — см.
  * router.js).
  */
+/**
+ * Сортировка списка коллективок (репорт VASY 27.08.2026, п.7) — чистая
+ * функция (без DOM), вынесена из render() ради юнит-теста
+ * (collectives-sort.test.js). Не мутирует `list` — возвращает новый массив.
+ * `'default'` — как пришло с сервера (`collectivesRepository.getAll`,
+ * `ORDER BY id`, т.е. по возрастанию — старые сначала); `'newest'` — тот же
+ * порядок в обратную сторону (id растёт монотонно с созданием, поэтому
+ * reverse() эквивалентен сортировке по дате без парсинга отображаемой
+ * dd.MM.yyyy строки, которая сама по себе не лексикографически сортируема).
+ * @param {Object[]} list
+ * @param {string} sortKey 'default'|'newest'|'orderCount'|'name'|'status'
+ * @returns {Object[]}
+ */
+function sortCollectives(list, sortKey) {
+  const arr = list.slice();
+  switch (sortKey) {
+    case 'newest':
+      return arr.reverse();
+    case 'orderCount':
+      return arr.sort((a, b) => (b.orderCount || 0) - (a.orderCount || 0));
+    case 'name':
+      return arr.sort((a, b) => (a.name || a.collectiveId).localeCompare(b.name || b.collectiveId, 'ru'));
+    case 'status':
+      return arr.sort((a, b) => (a.status || '').localeCompare(b.status || '', 'ru'));
+    default:
+      return arr;
+  }
+}
+
 window.Screens = window.Screens || {};
 window.Screens.collectives = {
   render(root, dictionaries, params, signal) {
@@ -44,7 +73,21 @@ window.Screens.collectives = {
           <button type="button" data-stage="По РФ" class="stage-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border">По РФ</button>
         </div>
 
-        <div class="text-[11px] text-gray-400 px-1 mb-2" id="collective-count"></div>
+        <!-- Сортировка (репорт VASY 27.08.2026, п.7) — чисто клиентская, без
+             похода на сервер: сервер уже отдаёт список в порядке создания
+             (id по возрастанию, см. collectivesRepository.getAll), поэтому
+             "Сначала новые" — просто reverse(), без парсинга отображаемой
+             даты dd.MM.yyyy (не лексикографически сортируема саму по себе). -->
+        <div class="flex items-center justify-between px-1 mb-2">
+          <div class="text-[11px] text-gray-400" id="collective-count"></div>
+          <select id="collective-sort-select" class="text-[11px] text-gray-500 bg-transparent border border-gray-200 rounded-full px-2 py-1 outline-none">
+            <option value="default">Сначала старые</option>
+            <option value="newest">Сначала новые</option>
+            <option value="orderCount">По кол-ву заказов</option>
+            <option value="name">По названию</option>
+            <option value="status">По статусу</option>
+          </select>
+        </div>
 
         <div id="collective-list"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Коллективок не найдено</div>
@@ -91,6 +134,8 @@ window.Screens.collectives = {
     const emptyMessage = document.getElementById('empty-message');
     const searchInput = document.getElementById('collective-list-search');
     const countLabel = document.getElementById('collective-count');
+    const sortSelect = document.getElementById('collective-sort-select');
+    sortSelect.addEventListener('change', () => render());
 
     // Фильтр по этапу (Э4, §3) — тот же принцип, что режим "Выбрать" на
     // других экранах: активная кнопка подсвечена, состояние в замыкании.
@@ -134,6 +179,7 @@ window.Screens.collectives = {
       if (query !== '') {
         filtered = filtered.filter(c => `${c.collectiveId} ${c.trackNumber} ${c.name}`.toLowerCase().includes(query));
       }
+      filtered = sortCollectives(filtered, sortSelect.value);
 
       countLabel.textContent = `Найдено: ${filtered.length}`;
       listContainer.innerHTML = '';

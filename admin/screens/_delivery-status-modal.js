@@ -29,7 +29,8 @@ window.DeliveryStatusModal = {
           </div>
           <div class="p-4 overflow-y-auto space-y-3" id="delivery-status-body">
             <p class="text-xs text-gray-500">Выбрано заказов: <span id="delivery-status-order-count">0</span></p>
-            <div>
+            <div id="delivery-status-auto-note" class="hidden text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2"></div>
+            <div id="delivery-status-select-block">
               <label class="block text-xs font-medium text-gray-500 mb-1">Новый статус</label>
               <select id="delivery-status-select" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></select>
             </div>
@@ -58,6 +59,8 @@ window.DeliveryStatusModal = {
     const modal = document.getElementById('delivery-status-modal');
     const closeBtn = document.getElementById('delivery-status-close');
     const select = document.getElementById('delivery-status-select');
+    const selectBlock = document.getElementById('delivery-status-select-block');
+    const autoNote = document.getElementById('delivery-status-auto-note');
     const orderCountEl = document.getElementById('delivery-status-order-count');
     const notifyCheckbox = document.getElementById('delivery-status-notify-checkbox');
     const debtList = document.getElementById('delivery-status-debt-list');
@@ -166,13 +169,40 @@ window.DeliveryStatusModal = {
       }
     });
 
-    async function open(ids) {
+    /**
+     * @param {string[]} ids
+     * @param {{presetStatus?:string, presetNotify?:boolean, autoNote?:string}} [opts]
+     *   Аудит коллективок, п.6А (27.08.2026) — автоматическая смена статуса
+     *   доставки по правилу коллективки переиспользует ЭТУ ЖЕ модалку (гейт
+     *   долга/подтверждение — тот же код, что и у ручной массовой смены),
+     *   просто статус уже определён правилом, не выбирается руками:
+     *   `presetStatus` — блокирует select на конкретном значении,
+     *   `presetNotify` — стартовое состояние чекбокса "уведомить" (из
+     *   настройки "Коллективки_Автоуведомление", менеджер может переключить
+     *   на месте — это не жёсткий запрет, только дефолт), `autoNote` —
+     *   поясняющий текст над списком ("Статус определён правилом
+     *   коллективки: ...").
+     */
+    async function open(ids, opts = {}) {
       orderIds = ids;
       resetBody();
       orderCountEl.textContent = orderIds.length;
 
       if (!statusesCache) statusesCache = await getStatusDictionary();
       FormHelpers.populateSelect('#delivery-status-select', statusesCache);
+
+      if (opts.presetStatus) {
+        select.value = opts.presetStatus;
+        select.disabled = true;
+        selectBlock.classList.add('hidden');
+        autoNote.textContent = opts.autoNote || `Статус определён правилом коллективки: «${opts.presetStatus}».`;
+        autoNote.classList.remove('hidden');
+      } else {
+        select.disabled = false;
+        selectBlock.classList.remove('hidden');
+        autoNote.classList.add('hidden');
+      }
+      if (opts.presetNotify !== undefined) notifyCheckbox.checked = opts.presetNotify;
 
       modal.classList.remove('hidden');
       modal.classList.add('flex');

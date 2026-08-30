@@ -53,9 +53,14 @@ const CATEGORY_LABELS = {
   // UI, что "Комиссия"/"Налоговый резерв" (не отдельный блок, ключи фиксированы
   // на backend — financeService.FINANCE_PARAM_COMMISSION_WARN_PERCENT/
   // _REASON_PERCENT, но форма их не знает как особые, просто рендерит).
-  commission_floor: 'Комиссия — пороги занижения'
+  commission_floor: 'Комиссия — пороги занижения',
+  // Аудит коллективок, п.6А (27.08.2026) — сегодня один enum-параметр
+  // (COLLECTIVE_AUTO_NOTIFY_KEY); сама таблица соответствий "статус
+  // коллективки → статус доставки" — отдельный блок ниже
+  // (collectiveStatusMapSectionHtml), не generic построчный UI.
+  collective_automation: 'Автоматизация коллективок'
 };
-const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -174,6 +179,24 @@ const TAX_BASE_OPTIONS = [
   { value: 'оборот', label: 'От оборота' }
 ];
 
+// Аудит коллективок, п.6А (27.08.2026, репорт VASY) — второй `type='enum'`
+// параметр: "уведомлять клиентов" при автоматической смене статуса доставки
+// по правилу коллективки (см. collective-detail.js). По умолчанию 'нет' —
+// тот же принцип, что чекбокс "уведомить" в массовой смене статуса (Q6,
+// Э5, 24.08.2026, "по умолчанию выключено").
+const COLLECTIVE_AUTO_NOTIFY_KEY = 'Коллективки_Автоуведомление';
+const COLLECTIVE_AUTO_NOTIFY_OPTIONS = [
+  { value: 'нет', label: 'Не уведомлять' },
+  { value: 'да', label: 'Уведомлять' }
+];
+
+// enumRowHtml ниже был жёстко зашит на TAX_BASE_OPTIONS (единственный enum-
+// ключ на момент Э6) — теперь опции выбираются по `s.key`, не хардкод.
+const ENUM_OPTIONS_BY_KEY = {
+  [TAX_BASE_KEY]: TAX_BASE_OPTIONS,
+  [COLLECTIVE_AUTO_NOTIFY_KEY]: COLLECTIVE_AUTO_NOTIFY_OPTIONS
+};
+
 window.Screens.settings = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
@@ -194,6 +217,11 @@ window.Screens.settings = {
     let sharesDraft = null; // {key,label,value}[] — черновик долей выплат, до "Сохранить доли"
     let allSettingsCache = []; // плоский список всех настроек (не-payout_share) — нужен save-row-btn'у для label/type
     let workingCapitalFundBalance = null; // Э6/D-05 — null, пока не загружен/если запрос упал (строка тогда не рендерится)
+    // Аудит коллективок, п.6А (27.08.2026) — таблица "статус коллективки →
+    // статус доставки", отдельная сущность (не financial_settings), свой
+    // независимый запрос; статусы доставки — тот же справочник, что форма заказа.
+    let collectiveStatusMapRows = [];
+    let statusDeliveryOptions = [];
 
     load();
 
@@ -209,6 +237,19 @@ window.Screens.settings = {
           workingCapitalFundBalance = await callServer('getWorkingCapitalFundBalance');
         } catch (error) {
           workingCapitalFundBalance = null;
+        }
+        // Таблица соответствия — тоже best-effort, свой независимый блок,
+        // сбой не должен ронять остальные (уже загруженные) настройки.
+        try {
+          const [config, dicts] = await Promise.all([
+            callServer('getCollectiveAutomationConfig'),
+            callServer('getDictionaries')
+          ]);
+          collectiveStatusMapRows = config.statusMap;
+          statusDeliveryOptions = dicts.statusDelivery || [];
+        } catch (error) {
+          collectiveStatusMapRows = [];
+          statusDeliveryOptions = [];
         }
         renderBody(settings);
       } catch (error) {
@@ -236,7 +277,7 @@ window.Screens.settings = {
         if (cat === 'economy') return economySectionHtml(economyRows);
         if (cat === 'currency_margin') return currencyMarginSectionHtml(currencyMarginRows);
         return plainSectionHtml(cat, byCategory[cat] || []);
-      }).join('');
+      }).join('') + collectiveStatusMapSectionHtml(collectiveStatusMapRows, statusDeliveryOptions);
 
       CATEGORY_ORDER.filter(c => !specialCategories.includes(c)).forEach(cat => wirePlainSection(cat));
       wireSharesSection();
@@ -244,8 +285,69 @@ window.Screens.settings = {
       wirePositionThresholdSection();
       wireEconomySection();
       wireCurrencyMarginSection();
+      wireCollectiveStatusMapSection();
       wireAddPosition();
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Аудит коллективок, п.6А (27.08.2026) — таблица "статус коллективки →
+    // статус доставки" (см. collectiveAutomationService.js на backend).
+    // НЕ generic-настройка (своя таблица, не financial_settings), поэтому
+    // отдельная от CATEGORY_ORDER секция, дописывается после общего цикла.
+    // Пустой список статусов доставки (справочник ещё не заполнен/сбой
+    // загрузки) — секция просто не рендерится, не блокирует остальной экран.
+    function collectiveStatusMapRowHtml(row, options) {
+      return `
+        <div class="flex items-center gap-2 p-3" data-map-stage="${escapeHtmlClient(row.stage)}" data-map-status="${escapeHtmlClient(row.collectiveStatus)}">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(row.collectiveStatus)}</div>
+            <div class="text-[11px] text-gray-400">${escapeHtmlClient(row.stage)}</div>
+          </div>
+          <select class="map-value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm max-w-[50%]">
+            <option value="">Не менять</option>
+            ${options.map(o => `<option value="${escapeHtmlClient(o)}" ${o === row.deliveryStatus ? 'selected' : ''}>${escapeHtmlClient(o)}</option>`).join('')}
+          </select>
+          <button type="button" class="map-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+            <i data-lucide="check" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function collectiveStatusMapSectionHtml(rows, options) {
+      if (!rows || rows.length === 0 || !options || options.length === 0) return '';
+      return `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Статус коллективки → статус доставки${helpIcon('Как это работает', '<p>Когда менеджер меняет статус коллективки на экране коллективки, статус доставки ВСЕХ живых заказов этой коллективки меняется автоматически на указанный здесь статус (та же защита от закрытия заказа с долгом, что у обычной массовой смены статуса).</p><p>«Не менять» — статус коллективки на это значение можно ставить, автоматика не сработает, придётся менять статус доставки заказов вручную, как раньше.</p>')}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" id="collective-status-map-list">
+            ${rows.map(r => collectiveStatusMapRowHtml(r, options)).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function wireCollectiveStatusMapSection() {
+      const container = document.getElementById('collective-status-map-list');
+      if (!container) return;
+
+      container.querySelectorAll('[data-map-stage]').forEach(row => {
+        const stage = row.dataset.mapStage;
+        const status = row.dataset.mapStatus;
+        const saveBtn = row.querySelector('.map-save-btn');
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return;
+          const deliveryStatus = row.querySelector('.map-value-select').value;
+          saveBtn.disabled = true;
+          try {
+            await callServer('setCollectiveStatusMapping', stage, status, deliveryStatus || null);
+            showSaveToast(true, 'Сохранено.');
+          } catch (error) {
+            showSaveToast(false, error.message);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      });
     }
 
     function plainSectionHtml(category, rows) {
@@ -301,7 +403,7 @@ window.Screens.settings = {
             <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
           </div>
           <select class="value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
-            ${TAX_BASE_OPTIONS.map(o => `<option value="${o.value}" ${o.value === s.valueText ? 'selected' : ''}>${o.label}</option>`).join('')}
+            ${(ENUM_OPTIONS_BY_KEY[s.key] || []).map(o => `<option value="${o.value}" ${o.value === s.valueText ? 'selected' : ''}>${o.label}</option>`).join('')}
           </select>
           <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
