@@ -862,6 +862,33 @@ window.Screens.collectiveDetail = {
       updateBulkBar();
     }
 
+    // Пересчитывает и патчит diff-label ("Доля: N ₽ — …") у ВСЕХ карточек
+    // списка + Σ долей в шапке, БЕЗ пересоздания DOM карточек (см. JSDoc у
+    // вызова в обработчике 'input' ползунка выше — полный renderOrderList()
+    // сорвал бы активный drag). Не трогает `.units-fraction-label`/сам
+    // ползунок ни у одной карточки — только текст/класс `.diff-label`.
+    function patchAllDiffLabels() {
+      const freshTotal = round2((actualCosts.sdekCost || 0) + (actualCosts.taxiKzCost || 0) + (actualCosts.taxiRfCost || 0));
+      const freshUnitsSum = orders.reduce((s, x) => s + x.currentUnits, 0);
+      document.getElementById('summary-units-sum').textContent = round2(freshUnitsSum);
+
+      document.querySelectorAll('#order-list > [data-order-id]').forEach((card) => {
+        const order = orders.find((x) => x.orderId === card.dataset.orderId);
+        if (!order) return;
+        const sliderBlock = card.querySelector('[data-slider-block]');
+        const label = diffLabel(order, freshTotal, freshUnitsSum);
+        const diffEl = card.querySelector('.diff-label');
+        if (label && diffEl) {
+          diffEl.textContent = label.text;
+          diffEl.className = `diff-label text-[11px] mt-1 ${label.cls}`;
+        } else if (label && !diffEl && sliderBlock) {
+          sliderBlock.insertAdjacentHTML('beforeend', `<div class="diff-label text-[11px] mt-1 ${label.cls}">${label.text}</div>`);
+        } else if (!label && diffEl) {
+          diffEl.remove();
+        }
+      });
+    }
+
     function buildOrderCard(o, totalCost, unitsSum) {
       const card = document.createElement('div');
       const isSelected = selectedIds.has(o.orderId);
@@ -1036,23 +1063,20 @@ window.Screens.collectiveDetail = {
         const newUnits = parseFloat(slider.value);
         o.currentUnits = newUnits;
         card.querySelector('.units-fraction-label').textContent = unitsFraction(newUnits);
-        // Пересчёт diff-подписи и Σ долей в шапке — чисто локально, без
-        // похода на сервер (те же данные уже на руках), сохранение самой
-        // доли — отдельным дебаунсом ниже.
-        const freshTotal = round2((actualCosts.sdekCost || 0) + (actualCosts.taxiKzCost || 0) + (actualCosts.taxiRfCost || 0));
-        const freshUnitsSum = orders.reduce((s, x) => s + x.currentUnits, 0);
-        const label = diffLabel(o, freshTotal, freshUnitsSum);
-        const diffEl = card.querySelector('.diff-label');
-        if (label && diffEl) {
-          diffEl.textContent = label.text;
-          diffEl.className = `diff-label text-[11px] mt-1 ${label.cls}`;
-        } else if (label && !diffEl) {
-          sliderBlock.insertAdjacentHTML('beforeend', `<div class="diff-label text-[11px] mt-1 ${label.cls}">${label.text}</div>`);
-        } else if (!label && diffEl) {
-          diffEl.remove();
-        }
-        document.getElementById('summary-units-sum').textContent = round2(freshUnitsSum);
-
+        // ИСПРАВЛЕНО 31.08.2026 (репорт VASY — "доли по коэффициентам не
+        // пересчитываются сразу при изменении коэффициентов") — доля
+        // КАЖДОГО заказа зависит от Σ долей ВСЕХ заказов коллективки
+        // (§2.4, доля_i = units_i/Σunits), значит движение ОДНОГО ползунка
+        // меняет цифру у ВСЕХ карточек, не только у той, что тронули.
+        // Раньше патчилась только СВОЯ карточка — соседние показывали
+        // устаревшую сумму, пока их не пересобирал полный renderOrderList()
+        // (следующая загрузка/сохранение). Полный renderOrderList() здесь
+        // не годится — пересоздал бы DOM всех ползунков, включая ТОТ, что
+        // менеджер сейчас тащит пальцем/мышью, и сорвал бы сам drag-жест;
+        // поэтому patchAllDiffLabels() ниже трогает только текстовые
+        // diff-label каждой карточки, ни одного <input type=range> не
+        // пересоздаёт — сохранение самой доли отдельным дебаунсом ниже.
+        patchAllDiffLabels();
         debouncedSaveUnits(o.orderId, newUnits);
       });
 
