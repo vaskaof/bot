@@ -311,6 +311,21 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
+          <!-- Личный заказ менеджера (31.08.2026, задача "Напоминания 2.0",
+               Р8) — то же поле, что order-new.js добавил на создание, здесь
+               для правки уже существующего (исправить историческую
+               классификацию). Состояние загружается из getOrderDetails.
+               isOwnPurchase (см. loadOrder), fields.isOwnPurchase уходит на
+               сервер ТОЛЬКО если менеджер реально переключил галочку (см.
+               saveOrder) — "не трогать, если не менял" тот же принцип, что
+               остальные необязательные поля этой формы. -->
+          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" id="own-purchase-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+              Личный заказ (без плательщика)
+            </label>
+          </div>
+
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -683,6 +698,17 @@ window.Screens.orderEdit = {
       // получено ДО вызова saveOrder, здесь только прокидывается на сервер,
       // который перепроверяет его сам (страховка от гонки, не второй UX-путь).
       if (confirmedCloseWithDebt) fields.confirmedCloseWithDebt = true;
+
+      // Р8 (31.08.2026) — только если менеджер реально переключил галочку в
+      // ЭТОМ заходе (сравнение с уже загруженным loadedDetails.isOwnPurchase,
+      // не жёстко true/false) — сервер трактует undefined как "не трогать",
+      // отправлять fields.isOwnPurchase на КАЖДОЕ сохранение заставило бы
+      // гейт заниженной комиссии каждый раз заново решать own/system по
+      // этому полю без надобности.
+      const ownPurchaseChecked = document.getElementById('own-purchase-checkbox').checked;
+      if (ownPurchaseChecked !== !!(loadedDetails && loadedDetails.isOwnPurchase)) {
+        fields.isOwnPurchase = ownPurchaseChecked;
+      }
 
       // Черновик — ДО отправки, как у order-new.js, только чисто UX-цель
       // (см. ORDER_EDIT_DRAFT_KEY выше) — updateOrder сам по себе безопасен
@@ -1193,6 +1219,7 @@ window.Screens.orderEdit = {
       selectedReleaseId = details.productOriginal;
       setReleaseThumbnail(details.imageUrl);
       purchaseLinkInput.value = details.purchaseLink || '';
+      document.getElementById('own-purchase-checkbox').checked = !!details.isOwnPurchase;
 
       document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
       // §H (12.08.2026) исходно рисовала только снимок с сервера при загрузке,
@@ -1427,8 +1454,13 @@ window.Screens.orderEdit = {
       }
       // Э6, D-10/F-24 — та же клиентская проверка, что сервер сделает жёстко
       // (isDirty внутри commissionGate сама решает, применим ли гейт вообще —
-      // см. её JSDoc); здесь только чтобы не тратить round-trip.
-      if (!commissionGate.validate()) {
+      // см. её JSDoc); здесь только чтобы не тратить round-trip. "Личный
+      // заказ" (Р8) зеркалит серверное исключение — у заказа без плательщика
+      // заниженная комиссия не имеет смысла как понятие. Проверяем ТЕКУЩЕЕ
+      // состояние галочки, не loadedDetails — если менеджер только что её
+      // включил в этом заходе, гейт не должен сработать для только что
+      // помеченного личным заказа.
+      if (!document.getElementById('own-purchase-checkbox').checked && !commissionGate.validate()) {
         showSaveToast(false, 'Комиссия ниже порога — укажите причину занижения');
         return;
       }

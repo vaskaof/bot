@@ -217,6 +217,23 @@ window.Screens.orderNew = {
             </div>
           </div>
 
+          <!-- Личный заказ менеджера (31.08.2026, задача "Напоминания 2.0",
+               Р8) — реальный найденный баг: is_own_purchase/client_type=
+               Личное раньше проставлялись ТОЛЬКО одноразовым скриптом
+               (F-33), у живой формы этого переключателя не было вообще —
+               каждый новый личный заказ менеджера вёл бы себя как обычный
+               клиентский (гарантированно "висящий" в напоминаниях долг, см.
+               ordersRepository.computeProfitRub, ветка "Личное"). Без
+               выбранного клиента (сам смысл личного выкупа) — скрывает
+               строку "Телеграм" тем же classList.toggle('hidden', ...), что
+               уже применяет setBulkMode к тому же singleClientRow. -->
+          <div id="own-purchase-row" class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" id="own-purchase-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+              Личный заказ (без плательщика)
+            </label>
+          </div>
+
           <div id="amount-section" class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -636,9 +653,15 @@ window.Screens.orderNew = {
     }
 
     async function saveOrder() {
-      const client = manualClientData
-        ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
-        : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
+      // "Личный заказ" — намеренно ИГНОРИРУЕТ уже выбранного/введённого
+      // клиента (клиентский поиск скрыт, пока чекбокс включён, но менеджер
+      // теоретически мог выбрать клиента ДО того, как его включил — не
+      // оставляем такой клиент висеть в заказе без плательщика).
+      const client = ownPurchaseCheckbox.checked
+        ? { telegramId: '', username: '', name: '' }
+        : (manualClientData
+          ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
+          : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName });
 
       const bookingPaid = document.getElementById('booking-paid-toggle').dataset.value;
       const bookingAmount = parseFloat(feeRubInput.value) || 0;
@@ -673,7 +696,8 @@ window.Screens.orderNew = {
         taxiRfReceiveSum: taxiRfReceiveSumInput.value,
         wishlistId: prefillWishlistId || '',
         requestId: newOrderRequestId,
-        commissionLowReason: commissionGate.getReason() // Э6, D-10/F-24 — пусто, если гейт не сработал/не тронут
+        commissionLowReason: commissionGate.getReason(), // Э6, D-10/F-24 — пусто, если гейт не сработал/не тронут
+        isOwnPurchase: ownPurchaseCheckbox.checked
       };
       // Черновик пишется ДО отправки, не после — если Telegram зависнет прямо
       // на этом fetch()/ответ потеряется, данные уже лежат в localStorage
@@ -1069,6 +1093,14 @@ window.Screens.orderNew = {
     const bulkModeToggle = document.getElementById('bulk-mode-toggle');
     const bulkModeBanner = document.getElementById('bulk-mode-banner');
     const singleClientRow = document.getElementById('single-client-row');
+    const ownPurchaseCheckbox = document.getElementById('own-purchase-checkbox');
+    // Скрывает поиск клиента, пока включён "Личный заказ" — у такого заказа
+    // намеренно нет плательщика, искать некого. Не трогает bulkMode's
+    // собственный toggle того же элемента — оба независимо ставят/снимают
+    // 'hidden', порядок событий не важен (класс либо есть, либо нет).
+    ownPurchaseCheckbox.addEventListener('change', () => {
+      singleClientRow.classList.toggle('hidden', ownPurchaseCheckbox.checked);
+    });
     const bulkRowsSection = document.getElementById('bulk-rows-section');
     const bulkRowsList = document.getElementById('bulk-rows-list');
     const amountSectionLabel = document.getElementById('amount-section-label');
@@ -1275,7 +1307,17 @@ window.Screens.orderNew = {
       bulkModeToggle.classList.toggle('bg-gray-200', !enabled);
       bulkModeToggle.querySelector('span').style.transform = enabled ? 'translateX(20px)' : '';
 
-      singleClientRow.classList.toggle('hidden', enabled);
+      // ownPurchaseCheckbox.checked учтён и здесь (не только в его
+      // собственном 'change'-обработчике) — иначе выключение bulk-режима
+      // после включения "Личного заказа" безусловно снимало бы 'hidden' с
+      // singleClientRow, показывая поиск клиента, который на самом деле
+      // должен оставаться скрытым.
+      singleClientRow.classList.toggle('hidden', enabled || ownPurchaseCheckbox.checked);
+      // "Личный заказ" неприменим к "Несколько сразу" (каждая строка bulk —
+      // отдельный клиентский заказ, saveBulkOrders не читает isOwnPurchase
+      // вообще) — прячем сам переключатель, чтобы не выглядело, будто он
+      // на что-то там влияет.
+      document.getElementById('own-purchase-row').classList.toggle('hidden', enabled);
       bulkRowsSection.classList.toggle('hidden', !enabled);
       totalPaymentSection.classList.toggle('hidden', enabled);
       mainAmountReceivedSection.classList.toggle('hidden', enabled);
@@ -1575,8 +1617,10 @@ window.Screens.orderNew = {
       // жёстко; здесь только чтобы не тратить round-trip и сразу подсветить
       // поле причины. bulkMode/"Несколько сразу" — прогноз/гейт на эту форму
       // не распространяется (см. fetchForecast выше), validate() там всегда
-      // true (thresholds не выставлены).
-      if (!bulkMode && !commissionGate.validate()) {
+      // true (thresholds не выставлены). "Личный заказ" — зеркалит серверное
+      // исключение F-33/F-35 (ordersService.createOrder): у заказа без
+      // плательщика "заниженная комиссия" не имеет смысла как понятие.
+      if (!bulkMode && !ownPurchaseCheckbox.checked && !commissionGate.validate()) {
         showSaveToast(false, 'Комиссия ниже порога — укажите причину занижения');
         return;
       }

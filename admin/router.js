@@ -229,6 +229,13 @@ async function refreshNavBadges() {
     const claims = await callServer('getPendingPaymentClaims');
     _setNavBadge('payments', claims.length);
   } catch (error) { /* см. выше */ }
+  try {
+    // Р7.2 (31.08.2026) — только critical среди клиентских заказов (не
+    // личных), не общее число пунктов — см. JSDoc reminderService.
+    // getRemindersSummary за обоснованием.
+    const summary = await callServer('getRemindersSummary');
+    _setNavBadge('reminders', summary.criticalCount);
+  } catch (error) { /* см. выше */ }
 }
 
 let _currentScreenController = null;
@@ -279,10 +286,46 @@ function renderRoute(dictionaries) {
 }
 
 /**
+ * Переносит `?deeplink=...` из query-строки в `location.hash` (31.08.2026,
+ * задача «Напоминания 2.0», Р2.3) — deep-link кнопки в Telegram-сообщениях
+ * (бэкенд, `config.adminDeepLink`) кладут путь именно в query, НЕ в хэш:
+ * Telegram сам дописывает свой `tgWebAppData=...` в фрагмент документа при
+ * открытии Mini App, и якорёные регексами `matchRoute` (`orders/([^/]+)/edit$`
+ * и т.п.) после этого перестают матчить переданный маршрут, молча падая на
+ * `home` — та же причина, по которой deep-link из кнопок раньше никогда не
+ * работал. Query-строку Telegram не трогает, поэтому путь передаётся так.
+ *
+ * `history.replaceState`, НЕ `location.replace(url)` — это статический SPA
+ * без сервера роутинга: полная навигация браузера перезагрузила бы документ
+ * (заново скачала CDN-скрипты, сбросила уже идущий `initAccessCheck`),
+ * `replaceState` меняет адресную строку без перезагрузки. Не оставляет шаг
+ * в history — "Назад" с открытого по deep-link экрана не возвращает на тот
+ * же `?deeplink=...` по кругу.
+ *
+ * Значение `deeplink` — уже полный `matchRoute`-путь как есть (например
+ * "orders/123/edit" или "clients?telegramId=456"), ровно то, что
+ * `adminDeepLink` на бэкенде закодировало ЦЕЛИКОМ одним `encodeURIComponent`
+ * — здесь достаточно один раз декодировать через `parseQueryString`
+ * (внутренние "/", "?", "=" возвращаются буквально, `matchRoute` сам
+ * разберёт их как обычный хэш).
+ */
+function _resolveIncomingDeepLink() {
+  const search = window.location.search || '';
+  if (search.indexOf('deeplink=') === -1) return;
+
+  const params = parseQueryString(search.replace(/^\?/, ''));
+  if (!params.deeplink) return;
+
+  history.replaceState(null, '', window.location.pathname + '#/' + params.deeplink);
+}
+
+/**
  * Запускает SPA-шелл админки: initAccessCheck() ОДИН раз за открытие
  * приложения (не на каждый переход между экранами, как было раньше).
  */
 function startAdminRouter() {
+  _resolveIncomingDeepLink();
+
   const nav = document.getElementById('bottom-nav');
   if (nav) {
     nav.addEventListener('click', (e) => {

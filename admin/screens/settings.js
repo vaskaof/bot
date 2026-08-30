@@ -58,9 +58,14 @@ const CATEGORY_LABELS = {
   // (COLLECTIVE_AUTO_NOTIFY_KEY); сама таблица соответствий "статус
   // коллективки → статус доставки" — отдельный блок ниже
   // (collectiveStatusMapSectionHtml), не generic построчный UI.
-  collective_automation: 'Автоматизация коллективок'
+  collective_automation: 'Автоматизация коллективок',
+  // 31.08.2026, задача «Напоминания 2.0», Р1.3 (репорт VASY «уведомления
+  // приходят не в 9 утра, а посреди ночи») — час дайджеста напоминаний +
+  // границы окна автоматических уведомлений клиентам, оба редактируемые без
+  // деплоя (server/src/reminders/reminderDigestJob.js / notificationWindow.js).
+  notifications: 'Уведомления и тихие часы'
 };
-const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'notifications', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -367,8 +372,19 @@ window.Screens.settings = {
             ${rows.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : rows.map(rowHtml).join('')}
           </div>
           ${category === 'tax_reserve' ? workingCapitalFundBalanceHtml() : ''}
+          ${category === 'notifications' ? notificationsMoscowClockHtml() : ''}
         </section>
       `;
+    }
+
+    // Часы указываются по Europe/Moscow (server/src/config.js's `timezone`) —
+    // машина сервера физически стоит в другом поясе (проверено 31.08.2026,
+    // GMT+5), и без живой подсказки "9" в поле легко прочитать как местное
+    // время. Считается один раз на рендер секции, не тикает — этого
+    // достаточно, чтобы снять двусмысленность, отдельный live-таймер избыточен.
+    function notificationsMoscowClockHtml() {
+      const nowMsk = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+      return `<div class="text-[11px] text-gray-400 px-1 mt-2">Время указывается по Europe/Moscow — сейчас там ${nowMsk}.</div>`;
     }
 
     // Э6, D-05 — read-only остаток "Фонда оборотных средств" (счёт 2400),
@@ -381,16 +397,23 @@ window.Screens.settings = {
       `;
     }
 
+    // Категория 'notifications' (31.08.2026, задача «Напоминания 2.0», Р1.3)
+    // — три значения "час 0-23", не деньги и не проценты. Generic-путь
+    // (тот же, что commission_floor/collective_automation) переиспользован
+    // как есть, кроме двух мелочей ниже: суффикс единицы и шаг/границы
+    // числового инпута — иначе часовое значение показывалось бы с "₽" и
+    // допускало дробные/отрицательные часы.
     function rowHtml(s) {
       if (s.type === 'enum') return enumRowHtml(s);
+      const isHour = s.category === 'notifications';
       return `
         <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}">
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(s.label)}</div>
             <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
           </div>
-          <input type="number" step="0.01" class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
-          <span class="text-sm text-gray-400 w-4">${s.type === 'percent' ? '%' : '₽'}</span>
+          <input type="number" ${isHour ? 'step="1" min="0" max="23"' : 'step="0.01"'} class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
+          <span class="text-sm text-gray-400 w-4">${isHour ? 'ч' : (s.type === 'percent' ? '%' : '₽')}</span>
           <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
           </button>
