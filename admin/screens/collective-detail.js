@@ -100,6 +100,15 @@ window.Screens.collectiveDetail = {
             <div class="mt-2">
               <label class="text-xs font-medium text-gray-500">Статус коллективки</label>
               <select id="detail-status" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"></select>
+              <!-- Доработка 30.08.2026 (запрос VASY) — "отправлено дата" прямо
+                   у статуса. Проставляется автоматически при переходе на
+                   статус, настроенный как "отправлено" ("Настройки" →
+                   "Автоматизация коллективок"), либо руками ниже. -->
+              <div id="detail-sent-caption" class="hidden text-[11px] text-gray-400 mt-1"></div>
+            </div>
+            <div class="mt-2">
+              <label class="text-xs font-medium text-gray-500 flex items-center gap-1">Дата отправки${helpIcon('Дата отправки', '<p>Проставляется автоматически при переходе коллективки на статус «отправлено» (если это настроено в «Настройки» → «Автоматизация коллективок»).</p><p>Здесь можно поправить/задать вручную — например, для коллективки, которая прошла нужный статус ещё до появления этого поля.</p>')}</label>
+              <input type="date" id="detail-sent-at" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
             </div>
             <button id="detail-save-btn" class="w-full mt-3 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
             <div id="detail-error-text" class="text-xs text-red-500 hidden mt-1.5"></div>
@@ -128,6 +137,13 @@ window.Screens.collectiveDetail = {
             <button id="logistics-save-btn" class="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить сверку</button>
             <div id="logistics-error-text" class="text-xs text-red-500 hidden mt-1.5"></div>
             <div id="reconciliation-banner" class="hidden text-xs rounded-lg p-2.5 mt-1.5"></div>
+            <!-- Доработка 30.08.2026 (запрос VASY) — пишет посчитанную долю
+                 ПРЯМО в цель оплаты заказа (не только в леджер, как
+                 "Сохранить сверку" выше), даже для заказов без предварительной
+                 стоимости. Требует уже сохранённой сверки — сервер сам
+                 откажет ("Сначала сохраните сверку"), если факт. расход ещё
+                 не введён. -->
+            <button type="button" id="apply-costs-btn" disabled class="w-full mt-2 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Применить расход в заказы${helpIcon('Что это делает', '<p>Берёт факт. расход, посчитанный по коэффициентам (долям) заказов, и записывает его прямо в поле «Стоимость доставки» каждого заказа — даже там, где предварительной стоимости ещё не было.</p><p>Это МЕНЯЕТ сумму к оплате клиентом за это плечо доставки, даже если поле уже было заполнено раньше — расчёт с клиентом пересматривается по факту.</p>')}</button>
           </div>
 
           <!-- Добавить заказ -->
@@ -172,6 +188,32 @@ window.Screens.collectiveDetail = {
 
       ${CollectivePickerModal.html()}
       ${DeliveryStatusModal.html()}
+
+      <!-- "Применить расход в заказы" (доработка 30.08.2026) — предпросмотр
+           "было → станет" перед записью, раз это меняет сумму к оплате
+           клиента (VASY: "можно добавить модалку"). -->
+      <div id="apply-costs-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Применить расход в заказы</h2>
+            <button type="button" id="apply-costs-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 overflow-y-auto custom-scrollbar" id="apply-costs-list"></div>
+          <div class="p-4 border-t border-gray-100 space-y-2 shrink-0">
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+              <input type="checkbox" id="apply-costs-notify" class="rounded border-gray-300">
+              Уведомить клиентов об изменении суммы
+            </label>
+            <div id="apply-costs-warning" class="text-xs text-red-500 hidden"></div>
+            <div class="flex gap-2">
+              <button type="button" id="apply-costs-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+              <button type="button" id="apply-costs-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить</button>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
     let details = null; // {collectiveId,name,trackNumber,status,stage,summary,...}
@@ -234,9 +276,18 @@ window.Screens.collectiveDetail = {
 
     // --- Детали коллективки ---
 
+    // "yyyy-MM-dd" — формат <input type="date">, из ISO сервера (sentAt).
+    function isoToDateInputValue(iso) {
+      return iso ? iso.slice(0, 10) : '';
+    }
+
     function renderDetailsCard() {
       document.getElementById('detail-name').value = details.name || '';
       document.getElementById('detail-track').value = details.trackNumber || '';
+      document.getElementById('detail-sent-at').value = isoToDateInputValue(details.sentAt);
+      const sentCaption = document.getElementById('detail-sent-caption');
+      sentCaption.textContent = details.sentAtDisplay ? `Отправлено: ${details.sentAtDisplay}` : '';
+      sentCaption.classList.toggle('hidden', !details.sentAtDisplay);
       document.getElementById('stage-chip').textContent = details.stage;
       renderStatusOptions(details.status);
       renderSummary();
@@ -294,7 +345,8 @@ window.Screens.collectiveDetail = {
     function isDetailDirty() {
       return document.getElementById('detail-name').value.trim() !== (details.name || '')
         || document.getElementById('detail-track').value.trim() !== (details.trackNumber || '')
-        || document.getElementById('detail-status').value !== details.status;
+        || document.getElementById('detail-status').value !== details.status
+        || document.getElementById('detail-sent-at').value !== isoToDateInputValue(details.sentAt);
     }
 
     // Возвращает true (сохранено), false (реальная ошибка сервера) или null
@@ -309,6 +361,7 @@ window.Screens.collectiveDetail = {
       const name = document.getElementById('detail-name').value.trim();
       const trackNumber = document.getElementById('detail-track').value.trim();
       const status = document.getElementById('detail-status').value;
+      const sentAtInput = document.getElementById('detail-sent-at').value; // 'yyyy-MM-dd' или ''
       const previousStatus = details.status;
 
       // Предупреждение при переводе в терминальный статус этапа без сверки
@@ -331,6 +384,19 @@ window.Screens.collectiveDetail = {
         details.trackNumber = trackNumber;
         details.status = status;
         document.getElementById('header-title').textContent = name || collectiveId;
+
+        // Дата отправки (доработка 30.08.2026) — отдельный endpoint (не часть
+        // updateCollective), но одна и та же кнопка "Сохранить"/один и тот же
+        // dirty-гейт — менеджер не должен думать о двух разных сохранениях.
+        if (sentAtInput !== isoToDateInputValue(details.sentAt)) {
+          await callServer('setCollectiveSentAt', collectiveId, sentAtInput || null);
+          details.sentAt = sentAtInput ? new Date(sentAtInput).toISOString() : null;
+          details.sentAtDisplay = sentAtInput ? formatDateRu(sentAtInput) : '';
+          const sentCaption = document.getElementById('detail-sent-caption');
+          sentCaption.textContent = details.sentAtDisplay ? `Отправлено: ${details.sentAtDisplay}` : '';
+          sentCaption.classList.toggle('hidden', !details.sentAtDisplay);
+        }
+
         if (triggerAutomation && status !== previousStatus) await maybeTriggerStatusAutomation(status);
         return true;
       } catch (error) {
@@ -338,6 +404,14 @@ window.Screens.collectiveDetail = {
         detailErrorText.classList.remove('hidden');
         return false;
       }
+    }
+
+    // dd.MM.yyyy из 'yyyy-MM-dd' (<input type="date">) — тот же формат
+    // отображения, что уже шлёт сервер (createdAt/sentAtDisplay), без похода
+    // на сервер за пересчётом ради одной локальной правки поля.
+    function formatDateRu(isoDateOnly) {
+      const [y, m, d] = isoDateOnly.split('-');
+      return `${d}.${m}.${y}`;
     }
 
     // Аудит коллективок, п.6А — после РЕАЛЬНОГО перехода статуса коллективки
@@ -587,6 +661,11 @@ window.Screens.collectiveDetail = {
       });
       const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
       document.getElementById('logistics-total').textContent = total.toLocaleString('ru-RU');
+      // "Применить в заказы" читает СОХРАНЁННУЮ сверку на сервере — гейтим
+      // кнопку тем же ориентиром (total > 0), финальную проверку "сверка
+      // реально сохранена" всё равно делает сервер при клике.
+      const applyBtn = document.getElementById('apply-costs-btn');
+      if (applyBtn) applyBtn.disabled = total <= 0;
       renderOrderList(); // доля в ₽/разница видны только когда total > 0 (п.3) — пересчитать видимость
     }
 
@@ -1095,6 +1174,85 @@ window.Screens.collectiveDetail = {
       banner.className = 'text-xs rounded-lg p-2.5 mt-1.5 bg-amber-50 text-amber-700 border border-amber-200';
       banner.classList.remove('hidden');
     }
+
+    // --- Применить расход в заказы (доработка 30.08.2026, запрос VASY) ---
+    //
+    // ОТДЕЛЬНО от "Сохранить сверку" выше (та пишет только денежные проводки
+    // в леджер) — эта кнопка ЗАПИСЫВАЕТ посчитанную долю прямо в поле-цель
+    // заказа ("Стоимость доставки КЗ→РФ"/"…по РФ"), даже для заказов, где
+    // предварительной стоимости ещё не было. Требует уже СОХРАНЁННОЙ сверки —
+    // предпросмотр/применение читают `actualLogisticsCosts` с сервера, не
+    // текущие незасейвленные значения полей формы.
+
+    const applyCostsBtn = document.getElementById('apply-costs-btn');
+    const applyCostsModal = document.getElementById('apply-costs-modal');
+    const applyCostsList = document.getElementById('apply-costs-list');
+    const applyCostsNotify = document.getElementById('apply-costs-notify');
+    const applyCostsWarning = document.getElementById('apply-costs-warning');
+    const applyCostsConfirmBtn = document.getElementById('apply-costs-confirm');
+
+    function closeApplyCostsModal() {
+      applyCostsModal.classList.add('hidden');
+      applyCostsModal.classList.remove('flex');
+    }
+    document.getElementById('apply-costs-close').addEventListener('click', closeApplyCostsModal);
+    document.getElementById('apply-costs-cancel').addEventListener('click', closeApplyCostsModal);
+
+    function orderLabelFor(orderId) {
+      const o = orders.find((x) => x.orderId === orderId);
+      return o ? `${o.productDisplay} (${o.orderId})` : orderId;
+    }
+
+    function openApplyCostsModal(preview) {
+      applyCostsNotify.checked = false;
+      applyCostsWarning.classList.add('hidden');
+      applyCostsList.innerHTML = preview.map((p) => {
+        const beforeText = p.before === null ? 'пусто' : `${p.before.toLocaleString('ru-RU')} ₽`;
+        return `
+          <div class="flex items-center justify-between gap-2 py-2 border-b border-gray-50 last:border-0 text-sm">
+            <span class="text-gray-600 truncate">${escapeHtmlClient(orderLabelFor(p.orderId))}</span>
+            <span class="shrink-0 font-medium text-gray-900">${beforeText} → ${p.after.toLocaleString('ru-RU')} ₽</span>
+          </div>
+        `;
+      }).join('');
+      applyCostsModal.classList.remove('hidden');
+      applyCostsModal.classList.add('flex');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    applyCostsBtn.addEventListener('click', async () => {
+      if (applyCostsBtn.disabled) return;
+      // Незасейвленные факт.-поля — предупредить, тот же гейт, что у любого
+      // другого действия, читающего СОХРАНЁННУЮ сверку (см. warnIfCostFieldsDirty).
+      if (!(await warnIfCostFieldsDirty())) return;
+
+      applyCostsBtn.disabled = true;
+      try {
+        const preview = await callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId);
+        openApplyCostsModal(preview);
+      } catch (error) {
+        showSaveToast(false, 'Не удалось построить предпросмотр: ' + error.message);
+      } finally {
+        applyCostsBtn.disabled = false;
+      }
+    });
+
+    applyCostsConfirmBtn.addEventListener('click', async () => {
+      if (applyCostsConfirmBtn.disabled) return;
+      applyCostsConfirmBtn.disabled = true;
+      applyCostsWarning.classList.add('hidden');
+      try {
+        const result = await callServer('applyCollectiveLogisticsSharesToOrders', collectiveId, { notifyClients: applyCostsNotify.checked });
+        closeApplyCostsModal();
+        if (result.failed.length > 0) showSaveToast(false, `Применено к ${result.applied.length}, не удалось для ${result.failed.length}.`);
+        else showSaveToast(true, `Применено к ${result.applied.length} заказ(ам).`);
+      } catch (error) {
+        applyCostsWarning.textContent = error.message;
+        applyCostsWarning.classList.remove('hidden');
+      } finally {
+        applyCostsConfirmBtn.disabled = false;
+      }
+    });
 
     // --- Добавить заказ ---
 

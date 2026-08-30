@@ -302,8 +302,16 @@ window.Screens.settings = {
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(row.collectiveStatus)}</div>
             <div class="text-[11px] text-gray-400">${escapeHtmlClient(row.stage)}</div>
+            <!-- Доработка 30.08.2026 (запрос VASY) — "достижение этого статуса
+                 = коллективка отправлена", проставляет collectives.sent_at
+                 автоматически. Независимо от deliveryStatus ниже (своя
+                 галочка, свой эффект). -->
+            <label class="text-[11px] text-gray-500 inline-flex items-center gap-1 mt-1">
+              <input type="checkbox" class="map-marks-sent-checkbox rounded border-gray-300" ${row.marksSent ? 'checked' : ''}>
+              Считать «отправлено»
+            </label>
           </div>
-          <select class="map-value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm max-w-[50%]">
+          <select class="map-value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm max-w-[40%]">
             <option value="">Не менять</option>
             ${options.map(o => `<option value="${escapeHtmlClient(o)}" ${o === row.deliveryStatus ? 'selected' : ''}>${escapeHtmlClient(o)}</option>`).join('')}
           </select>
@@ -318,7 +326,7 @@ window.Screens.settings = {
       if (!rows || rows.length === 0 || !options || options.length === 0) return '';
       return `
         <section class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Статус коллективки → статус доставки${helpIcon('Как это работает', '<p>Когда менеджер меняет статус коллективки на экране коллективки, статус доставки ВСЕХ живых заказов этой коллективки меняется автоматически на указанный здесь статус (та же защита от закрытия заказа с долгом, что у обычной массовой смены статуса).</p><p>«Не менять» — статус коллективки на это значение можно ставить, автоматика не сработает, придётся менять статус доставки заказов вручную, как раньше.</p>')}</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Статус коллективки → статус доставки${helpIcon('Как это работает', '<p>Когда менеджер меняет статус коллективки на экране коллективки, статус доставки ВСЕХ живых заказов этой коллективки меняется автоматически на указанный здесь статус (та же защита от закрытия заказа с долгом, что у обычной массовой смены статуса).</p><p>«Не менять» — статус коллективки на это значение можно ставить, автоматика не сработает, придётся менять статус доставки заказов вручную, как раньше.</p><p>«Считать «отправлено»» — независимая галочка: достижение этого статуса проставляет коллективке дату отправки (один раз, повторные переключения статуса её не сдвигают).</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" id="collective-status-map-list">
             ${rows.map(r => collectiveStatusMapRowHtml(r, options)).join('')}
           </div>
@@ -337,9 +345,10 @@ window.Screens.settings = {
         saveBtn.addEventListener('click', async () => {
           if (saveBtn.disabled) return;
           const deliveryStatus = row.querySelector('.map-value-select').value;
+          const marksSent = row.querySelector('.map-marks-sent-checkbox').checked;
           saveBtn.disabled = true;
           try {
-            await callServer('setCollectiveStatusMapping', stage, status, deliveryStatus || null);
+            await callServer('setCollectiveStatusMapping', stage, status, deliveryStatus || null, marksSent);
             showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);

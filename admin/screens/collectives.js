@@ -14,16 +14,21 @@
  * router.js).
  */
 /**
- * Сортировка списка коллективок (репорт VASY 27.08.2026, п.7) — чистая
- * функция (без DOM), вынесена из render() ради юнит-теста
- * (collectives-sort.test.js). Не мутирует `list` — возвращает новый массив.
+ * Сортировка списка коллективок (репорт VASY 27.08.2026, п.7; доработка
+ * 30.08.2026 добавила sentAtAsc/sentAtDesc) — чистая функция (без DOM),
+ * вынесена из render() ради юнит-теста (collectives-sort.test.js). Не
+ * мутирует `list` — возвращает новый массив.
  * `'default'` — как пришло с сервера (`collectivesRepository.getAll`,
  * `ORDER BY id`, т.е. по возрастанию — старые сначала); `'newest'` — тот же
  * порядок в обратную сторону (id растёт монотонно с созданием, поэтому
  * reverse() эквивалентен сортировке по дате без парсинга отображаемой
  * dd.MM.yyyy строки, которая сама по себе не лексикографически сортируема).
+ * `sentAtAsc`/`sentAtDesc` — по ISO `c.sentAt` (сортируема как строка
+ * лексикографически, но парсим через `Date` явно для ясности); коллективки
+ * БЕЗ даты отправки (`sentAt:null`, ещё не отправлены) — ВСЕГДА в конце
+ * списка независимо от направления, не путаются с "самой ранней датой".
  * @param {Object[]} list
- * @param {string} sortKey 'default'|'newest'|'orderCount'|'name'|'status'
+ * @param {string} sortKey 'default'|'newest'|'orderCount'|'name'|'status'|'sentAtAsc'|'sentAtDesc'
  * @returns {Object[]}
  */
 function sortCollectives(list, sortKey) {
@@ -37,6 +42,15 @@ function sortCollectives(list, sortKey) {
       return arr.sort((a, b) => (a.name || a.collectiveId).localeCompare(b.name || b.collectiveId, 'ru'));
     case 'status':
       return arr.sort((a, b) => (a.status || '').localeCompare(b.status || '', 'ru'));
+    case 'sentAtAsc':
+    case 'sentAtDesc':
+      return arr.sort((a, b) => {
+        if (!a.sentAt && !b.sentAt) return 0;
+        if (!a.sentAt) return 1; // без даты — всегда в конец
+        if (!b.sentAt) return -1;
+        const diff = new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime();
+        return sortKey === 'sentAtAsc' ? diff : -diff;
+      });
     default:
       return arr;
   }
@@ -81,12 +95,36 @@ window.Screens.collectives = {
         <div class="flex items-center justify-between px-1 mb-2">
           <div class="text-[11px] text-gray-400" id="collective-count"></div>
           <select id="collective-sort-select" class="text-[11px] text-gray-500 bg-transparent border border-gray-200 rounded-full px-2 py-1 outline-none">
-            <option value="default">Сначала старые</option>
-            <option value="newest">Сначала новые</option>
+            <option value="default">Дата создания: сначала старые</option>
+            <option value="newest">Дата создания: сначала новые</option>
+            <option value="sentAtAsc">Дата отправки: сначала ранние</option>
+            <option value="sentAtDesc">Дата отправки: сначала поздние</option>
             <option value="orderCount">По кол-ву заказов</option>
             <option value="name">По названию</option>
             <option value="status">По статусу</option>
           </select>
+        </div>
+
+        <!-- Поиск/фильтр по дате отправки (доработка 30.08.2026) — необязательный
+             диапазон, свёрнут по умолчанию (репорт "можно даже добавить поиск
+             по дате"), не заменяет текстовый поиск выше, дополняет его. -->
+        <div class="flex items-center justify-between px-1 mb-2">
+          <button type="button" id="date-filter-toggle-btn" class="text-[11px] font-medium text-indigo-600 inline-flex items-center gap-1">
+            <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Фильтр по дате отправки
+          </button>
+        </div>
+        <div id="date-filter-panel" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-2 flex items-center gap-2">
+          <div class="flex-1">
+            <label class="text-[10px] text-gray-400">С</label>
+            <input type="date" id="date-filter-from" class="w-full mt-0.5 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400">
+          </div>
+          <div class="flex-1">
+            <label class="text-[10px] text-gray-400">По</label>
+            <input type="date" id="date-filter-to" class="w-full mt-0.5 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400">
+          </div>
+          <button type="button" id="date-filter-clear-btn" title="Сбросить" class="p-2 text-gray-400 hover:text-gray-600 self-end">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
         </div>
 
         <div id="collective-list"></div>
@@ -155,6 +193,21 @@ window.Screens.collectives = {
     });
     renderStageFilterButtons();
 
+    // Фильтр по дате отправки (доработка 30.08.2026) — свёрнут по умолчанию,
+    // не мешает уже привычному текстовому поиску.
+    const dateFilterToggleBtn = document.getElementById('date-filter-toggle-btn');
+    const dateFilterPanel = document.getElementById('date-filter-panel');
+    const dateFilterFrom = document.getElementById('date-filter-from');
+    const dateFilterTo = document.getElementById('date-filter-to');
+    dateFilterToggleBtn.addEventListener('click', () => dateFilterPanel.classList.toggle('hidden'));
+    dateFilterFrom.addEventListener('change', () => render());
+    dateFilterTo.addEventListener('change', () => render());
+    document.getElementById('date-filter-clear-btn').addEventListener('click', () => {
+      dateFilterFrom.value = '';
+      dateFilterTo.value = '';
+      render();
+    });
+
     loadCollectives();
 
     async function loadCollectives() {
@@ -178,6 +231,21 @@ window.Screens.collectives = {
       }
       if (query !== '') {
         filtered = filtered.filter(c => `${c.collectiveId} ${c.trackNumber} ${c.name}`.toLowerCase().includes(query));
+      }
+      // Диапазон по дате отправки (доработка 30.08.2026) — коллективки БЕЗ
+      // даты отправки (ещё не отправлены) выпадают из результата, как только
+      // задана хотя бы одна граница — так и должно быть, у них нет даты,
+      // которую можно сравнить с диапазоном.
+      const dateFrom = dateFilterFrom.value; // 'yyyy-MM-dd' или ''
+      const dateTo = dateFilterTo.value;
+      if (dateFrom !== '' || dateTo !== '') {
+        filtered = filtered.filter((c) => {
+          if (!c.sentAt) return false;
+          const sentDateOnly = c.sentAt.slice(0, 10);
+          if (dateFrom !== '' && sentDateOnly < dateFrom) return false;
+          if (dateTo !== '' && sentDateOnly > dateTo) return false;
+          return true;
+        });
       }
       filtered = sortCollectives(filtered, sortSelect.value);
 
@@ -203,7 +271,10 @@ window.Screens.collectives = {
             <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(c.name || c.collectiveId)}</div>
             <div class="text-[12px] text-gray-400 mt-0.5">${c.name ? `ID ${escapeHtmlClient(c.collectiveId)}${c.trackNumber ? ' · трек ' + escapeHtmlClient(c.trackNumber) : ''}` : (c.trackNumber ? `Трек: ${escapeHtmlClient(c.trackNumber)}` : 'Трек не указан')}</div>
           </div>
-          <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(c.createdAt)}</div>
+          <div class="text-[11px] text-gray-400 shrink-0 text-right">
+            <div>${escapeHtmlClient(c.createdAt)}</div>
+            ${c.sentAtDisplay ? `<div class="text-emerald-600">отправлено ${escapeHtmlClient(c.sentAtDisplay)}</div>` : ''}
+          </div>
         </div>
         <div class="flex items-center gap-2 mt-2">
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${escapeHtmlClient(c.stage)}</span>
