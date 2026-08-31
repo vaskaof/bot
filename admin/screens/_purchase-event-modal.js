@@ -23,9 +23,12 @@ window.PurchaseEventModal = {
       <div id="purchase-event-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-            <div>
-              <h2 class="text-base font-semibold text-gray-900">Факт выкупа</h2>
-              <span id="purchase-event-order-id" class="text-[11px] text-gray-400"></span>
+            <div class="inline-flex items-center gap-1">
+              <div>
+                <h2 class="text-base font-semibold text-gray-900">Факт выкупа</h2>
+                <span id="purchase-event-order-id" class="text-[11px] text-gray-400"></span>
+              </div>
+              ${helpIcon('Что делает «Факт выкупа»', '<p>Списывает потраченную на этот заказ валюту с тенгового кошелька по текущему курсу WAC (средневзвешенной цене тенге) и записывает реальную себестоимость заказа в рублях — это число потом видно в отчёте «Валовая маржа» на экране «Кошелёк ₸».</p><p>Если система откажет с «сначала внесите конвертацию» или «недостаточно тенге» — значит в кошельке ещё не хватает средств: сначала занесите на экране «Кошелёк ₸» конвертацию ₽→₸ на нужную сумму, потом возвращайтесь сюда.</p>')}
             </div>
             <button id="purchase-event-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>

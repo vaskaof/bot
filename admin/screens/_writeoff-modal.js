@@ -32,9 +32,12 @@ window.WriteoffModal = {
       <div id="writeoff-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-            <div>
-              <h2 class="text-base font-semibold text-gray-900">Зафиксировать списание</h2>
-              <span id="wo-order-id" class="text-[11px] text-gray-400"></span>
+            <div class="inline-flex items-center gap-1">
+              <div>
+                <h2 class="text-base font-semibold text-gray-900">Зафиксировать списание</h2>
+                <span id="wo-order-id" class="text-[11px] text-gray-400"></span>
+              </div>
+              ${helpIcon('Что такое списание', '<p>Списание означает, что заказ признан убытком — потерян, отменён магазином или клиент отказался. Проводка сразу и необратимо записывается в леджер (отменить можно только сторно, не удалением).</p><p>Если убыток частично на посреднике (причина «Потеряно») — компания списывает только «Нашу долю», остальное — отдельная проводка на посредника.</p>')}
             </div>
             <button id="writeoff-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
@@ -52,7 +55,7 @@ window.WriteoffModal = {
             </div>
             <div id="wo-reseller-block" class="hidden space-y-3 border-t border-gray-100 pt-3">
               <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">Доля посредника, ₽ (0 — не делится)</label>
+                <label class="text-xs font-medium text-gray-500 mb-1 block inline-flex items-center gap-1">Доля посредника, ₽ (0 — не делится)${helpIcon('Доля посредника', '<p>Заполняется только при причине «Потеряно» — по остальным причинам (отменено магазином, не найдено, отказ клиента) убыток полностью на компании, посредник не участвует.</p><p>Если указываете долю больше нуля — обязательно укажите Telegram ID посредника ниже, иначе списание с него не запишется.</p>')}</label>
                 <input type="number" id="wo-reseller-share-input" step="0.01" min="0" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="0.00">
               </div>
               <div>
@@ -60,8 +63,8 @@ window.WriteoffModal = {
                 <input type="text" id="wo-reseller-id-input" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Обязательно, если есть доля посредника">
               </div>
             </div>
-            <div class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-              Наша доля (расчётно): <b id="wo-our-share-display">0.00 ₽</b>
+            <div class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 inline-flex items-center gap-1">
+              Наша доля (расчётно): <b id="wo-our-share-display">0.00 ₽</b>${helpIcon('Как считается', '<p>Наша доля = Общий убыток минус Доля посредника. Поле не редактируется вручную — так сумма физически не может разойтись с общим убытком.</p>')}
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500 mb-1 block">Примечание (необязательно)</label>

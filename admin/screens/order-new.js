@@ -270,7 +270,7 @@ window.Screens.orderNew = {
               <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
                 <i data-lucide="percent" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Комиссия</span>
+              <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Комиссия${helpIcon('Комиссия', '<p>Доход магазина с этого заказа сверх себестоимости товара. Если поставить её ниже установленного порога — под полем появится подсказка, а совсем низкая комиссия потребует указать причину, чтобы сохранить заказ.</p><p>«Точка безубыточности», если появится — минимальный % комиссии, при котором компания не уходит в минус на курсовом буфере и налоге по каналу закупки этого заказа.</p>')}</span>
             </div>
             <div class="flex-1 w-full flex items-center gap-4">
               <div class="flex items-baseline gap-1 flex-1 border-b border-dashed border-gray-300 pb-1">

@@ -80,13 +80,24 @@ window.Screens.wallet = {
 
     root.innerHTML = `
       <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl mx-auto space-y-5">
+        <section class="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4 text-xs text-gray-600 leading-relaxed">
+          <div class="font-semibold text-indigo-700 mb-1.5">Как читать этот экран за 30 секунд</div>
+          <ul class="list-disc pl-4 space-y-1">
+            <li><b>Баланс / Конвертация</b> — сколько тенге сейчас в кассе и по какому реальному курсу они куплены.</li>
+            <li><b>Буфер</b> — совпадает ли закладка в цену клиента (план) с тем, что вышло по факту.</li>
+            <li><b>Алерты / Пересчёт</b> — предупреждение, если курс валюты уехал, и ручная подстройка буфера.</li>
+            <li><b>Личные закупки / Маржа / Причины / Билеты</b> — контрольные отчёты: свои закупки отдельно от продаж клиентам, настоящая прибыль по факту, подозрительно низкие комиссии, обязательства по конкурсам.</li>
+          </ul>
+          <div class="mt-1.5 text-gray-400">Рядом с названием каждого блока — своя кнопка "?" с подробностями именно про него.</div>
+        </section>
+
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Баланс кассы ₸</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Баланс кассы ₸${helpIcon('Баланс кассы ₸', '<p>Реальный остаток тенге в кассе — не рублёвый эквивалент по курсу ЦБ.</p><p><b>WAC</b> — средневзвешенная цена одного тенге в рублях по всем прошлым конвертациям. Например, WAC = 5.20 ₽/₸ значит: каждый потраченный сейчас тенге на самом деле обошёлся компании в 5.20 ₽ — это и есть настоящая себестоимость покупки, а не сегодняшний биржевой курс.</p>')}</div>
           <div id="wallet-balance-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Конвертация ₽ → ₸</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Конвертация ₽ → ₸${helpIcon('Конвертация ₽ → ₸', '<p>Заносите сюда каждый раз, когда меняете рубли на тенге в банке — сколько реально отдали рублей и сколько реально получили тенге, по выписке, а не «курс из интернета».</p><p>Так система узнаёт настоящий курс с учётом спреда и комиссии банка. Если банк списал комиссию отдельной строкой — впишите её в третье поле, чтобы «Отдано рублей» точно совпадало с выпиской.</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
             <div>
               <label class="text-xs font-medium text-gray-500 mb-1 block">Отдано рублей</label>
@@ -107,7 +118,7 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Буфер: план и факт по каналам</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Буфер: план и факт по каналам${helpIcon('Буфер: план и факт', '<p>«Буфер» — на сколько % себестоимость товара в валюте оказывается выше «чистой» суммы после конвертации в рубли, из-за курсовых скачков, комиссий обмена и налога.</p><p><b>План</b> — то, что сейчас закладывается в цену клиента при создании нового заказа. <b>Факт</b> — то, что реально получилось по уже занесённым фактам выкупа.</p><p>Если факт заметно выше плана — стоит пересчитать буфер (блок «Пересчёт буфера» ниже), иначе новые заказы будут закладывать в цену меньше, чем реально тратится.</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4">
             <div>
               <div class="text-[11px] font-medium text-gray-400 mb-1.5">План (текущая курсовая политика)</div>
@@ -121,12 +132,12 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Алерты валютного риска</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Алерты валютного риска${helpIcon('Алерты валютного риска', '<p>Раз в час система сравнивает курс, зафиксированный на заказе в момент его создания, с текущим курсом валюты. Если курс вырос больше порога — появится алерт: значит по этому заказу есть риск заплатить за товар больше, чем заложено в цену клиента.</p><p>Алертов долго нет — это нормально: механизм видит только заказы, созданные начиная с 25.08.2026, и проверка идёт раз в час.</p>')}</div>
           <div id="fx-alerts-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Пересчёт буфера</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Пересчёт буфера${helpIcon('Пересчёт буфера', '<p>Нажмите «Посчитать» — система предложит новое значение буфера на основе реальной волатильности курса и накопленных фактов выкупа. Это только предпросмотр, ничего не меняет.</p><p>«Применить» становится доступно только после предпросмотра и требует отдельного подтверждения — так число нельзя случайно поменять, не увидев его сначала.</p><p>Делать это стоит примерно раз в месяц, или сразу, если «Факт» в блоке выше сильно разошёлся с «Планом».</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
             <p class="text-xs text-gray-500">Считает предложенное значение по формуле §4.4, ничего не меняет. Применить — отдельное действие ниже, после того как число видно.</p>
             <div>
@@ -151,12 +162,12 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Личные закупки</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Личные закупки${helpIcon('Личные закупки', '<p>Заказы «для себя» (без реального покупателя-клиента) — у них никогда не будет отметки «оплачено», поэтому они намеренно исключены из остальных дашбордов продаж и маржи, чтобы не искажать цифры.</p><p>Здесь — просто отдельный счётчик, сколько на такие закупки потрачено.</p>')}</div>
           <div id="own-purchases-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Валовая маржа</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Валовая маржа${helpIcon('Валовая маржа', '<p>Настоящая прибыль = цена, которую заплатил клиент, минус то, что товар РЕАЛЬНО стоил — не прогноз при оформлении заказа («Итог Руб»), а факт из «Кошелька ₸».</p><p>Заказ появляется здесь только после того, как по нему занесён «Факт выкупа» (кнопка на экране самого заказа) — до этого его настоящая маржа просто не может быть посчитана.</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4">
             <p class="text-xs text-gray-500">Цена клиенту минус признанная себестоимость (не "Итог Руб" — реальный факт выкупа). Пусто, пока по заказу не записан хотя бы один факт выкупа.</p>
             <div id="margin-summary-body" class="text-sm text-gray-400">Загрузка...</div>
@@ -166,7 +177,7 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Мотивы занижения комиссии</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Мотивы занижения комиссии${helpIcon('Мотивы занижения комиссии', '<p>Если менеджер ставит комиссию ниже установленного порога, форма заказа требует написать причину — здесь список всех таких случаев для проверки: обоснованная скидка постоянному клиенту или нежелательный демпинг.</p><p>Нижний раздел («Без причины») — заказы с комиссией ниже порога СЕЙЧАС, у которых причину никогда не спрашивали: обычно это заказы, оформленные до внедрения проверки (26.08.2026), либо ни разу не пересохранённые с тех пор с изменением комиссии.</p>')}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4">
             <p class="text-xs text-gray-500">Список для ручного просмотра — причина занижения свободным текстом, без автоматической кластеризации. Клик по строке — заказ.</p>
             <div>
@@ -182,7 +193,7 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Билеты / Конкурсы</div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Билеты / Конкурсы${helpIcon('Билеты / Конкурсы', '<p>Клиенты копят «Совы» за задания и обменивают их на «Билеты» участия в розыгрышах. «Обязательство» — сколько рублей компания фактически должна, если ВСЕ билеты на руках у клиентов сейчас будут выиграны (билетов × «Оценка билета» из Настроек).</p><p>Когда обязательство приближается к выделенному бюджету на конкурсы — экран сам подсказывает красным, что пора провести розыгрыш и погасить накопленные билеты.</p><p>Числа последнего розыгрыша — сырые факты (сколько билетов потрачено, сколько участников, сколько заказали снова), без готового вывода об окупаемости — это оценивать вам самим, выборка клиентов пока слишком мала для честной статистики.</p>')}</div>
           <div id="contest-dashboard-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
       </main>
