@@ -649,7 +649,7 @@ window.Screens.orderEdit = {
     // проксировался на старый GAS-индекс (только зашедшие в бота клиенты).
     function searchClientStub(query) { return callServer('searchClients', query); }
 
-    async function saveOrder(confirmedCloseWithDebt) {
+    async function saveOrder(confirmedCloseWithDebt, confirmedProceedWithMissingData) {
       const client = manualClientData
         ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
         : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
@@ -698,6 +698,10 @@ window.Screens.orderEdit = {
       // получено ДО вызова saveOrder, здесь только прокидывается на сервер,
       // который перепроверяет его сам (страховка от гонки, не второй UX-путь).
       if (confirmedCloseWithDebt) fields.confirmedCloseWithDebt = true;
+      // Гейт готовности данных (Р6, «Напоминания 2.0», 31.08.2026) — тот же
+      // принцип: подтверждение уже получено ДО вызова saveOrder, сервер сам
+      // перепроверяет (страховка от гонки).
+      if (confirmedProceedWithMissingData) fields.confirmedProceedWithMissingData = true;
 
       // Р8 (31.08.2026) — только если менеджер реально переключил галочку в
       // ЭТОМ заходе (сравнение с уже загруженным loadedDetails.isOwnPurchase,
@@ -1467,12 +1471,15 @@ window.Screens.orderEdit = {
 
       const nextStatusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
       let confirmedCloseWithDebt = false;
+      let confirmedProceedWithMissingData = false;
 
       // Гейт применяется только на РЕАЛЬНОМ переходе в закрывающий (не на
       // каждом сохранении уже закрытого заказа) — та же проверка, что
       // сервер сделает повторно как страховку (previousStatus известен уже
       // здесь, лишний запрос на no-op-сохранение не нужен).
       const wasAlreadyClosing = loadedDetails && ORDER_CLOSING_STATUSES.includes(loadedDetails.statusDelivery);
+      const statusActuallyChanging = !loadedDetails || loadedDetails.statusDelivery !== nextStatusDelivery;
+
       if (nextStatusDelivery === ORDER_CLOSING_STATUS_WITH_DEBT_GATE && !wasAlreadyClosing) {
         let preview;
         try {
@@ -1482,19 +1489,32 @@ window.Screens.orderEdit = {
           return;
         }
         const debtEntry = (preview.withDebt || [])[0];
-        if (debtEntry) {
-          const proceed = await showConfirmModal(
-            `Заказ переходит в статус «Получено клиентом», но по нему остаётся непогашенный долг ${debtEntry.debt.toFixed(2)} ₽.\n\n` +
-            `После закрытия остаток перестаёт быть целью — деньги, которые клиент занесёт позже, на этот заказ уже не пойдут, а сам долг нигде не будет виден как открытая позиция.\n\n` +
-            `Всё равно закрыть?`,
-            { confirmLabel: 'Закрыть', danger: true }
-          );
+        // Р6 (31.08.2026) — тот же preview теперь заодно возвращает пропуски
+        // данных (не только долг), ОБА гейта показываются в одной модалке,
+        // не конкурируют (заказ может фигурировать в обоих списках сразу).
+        const missingEntry = (preview.missingData || [])[0];
+        if (debtEntry || missingEntry) {
+          let text = `Заказ переходит в статус «Получено клиентом»`;
+          if (debtEntry) {
+            text += `, но по нему остаётся непогашенный долг ${debtEntry.debt.toFixed(2)} ₽.\n\n` +
+              `После закрытия остаток перестаёт быть целью — деньги, которые клиент занесёт позже, на этот заказ уже не пойдут, а сам долг нигде не будет виден как открытая позиция.`;
+          }
+          if (missingEntry) {
+            const itemsText = missingEntry.items.map((i) => `• ${i.label} (${i.hint})`).join('\n');
+            text += (debtEntry ? '\n\nВдобавок' : ', но') + ` не хватает данных:\n${itemsText}`;
+          }
+          text += `\n\nВсё равно закрыть?`;
+          const proceed = await showConfirmModal(text, { confirmLabel: 'Закрыть', danger: true });
           if (!proceed) return;
-          confirmedCloseWithDebt = true;
+          if (debtEntry) confirmedCloseWithDebt = true;
+          if (missingEntry) confirmedProceedWithMissingData = true;
         }
       } else if (ORDER_CLOSING_STATUSES.includes(nextStatusDelivery)) {
         // "возврат средств" (и повторное сохранение уже закрытого статуса) —
         // без гейта, только общее информационное предупреждение, без изменений.
+        // Вне лестницы позиций целиком (deliveryLadder.js) — Р6 сюда не
+        // заходит вообще (previewDeliveryStatusChange не сочтёт это движением
+        // вперёд), эта информационная проверка остаётся единственной здесь.
         const unpaidStages = findUnpaidNewModelStages();
         if (unpaidStages.length > 0) {
           const debtText = unpaidStages.map((s) => `${s.stage}: ${s.remaining.toFixed(2)} ₽`).join(', ');
@@ -1506,6 +1526,30 @@ window.Screens.orderEdit = {
           );
           if (!proceed) return;
         }
+      } else if (statusActuallyChanging) {
+        // Р6 (31.08.2026) — открытый статус, просто движение по лестнице
+        // (не закрывающий, гейт долга здесь неприменим вообще). Backend сам
+        // решает, было ли это движение ВПЕРЁД (см. JSDoc
+        // previewDeliveryStatusChange) — на откате назад/выбор той же
+        // позиции missingData всегда пуст, лишнего запроса на закрытие уже
+        // не избежать (нужно узнать направление), но модалка не появится.
+        let preview;
+        try {
+          preview = await callServer('previewDeliveryStatusChange', [currentOrderId], nextStatusDelivery);
+        } catch (error) {
+          showSaveToast(false, `Не удалось проверить готовность данных: ${error.message}`);
+          return;
+        }
+        const missingEntry = (preview.missingData || [])[0];
+        if (missingEntry) {
+          const itemsText = missingEntry.items.map((i) => `• ${i.label} (${i.hint})`).join('\n');
+          const proceed = await showConfirmModal(
+            `Заказ переходит в статус «${nextStatusDelivery}», но не хватает данных:\n${itemsText}\n\nВсё равно перевести?`,
+            { confirmLabel: 'Перевести', danger: true }
+          );
+          if (!proceed) return;
+          confirmedProceedWithMissingData = true;
+        }
       }
 
       saveOrderBtn.disabled = true;
@@ -1514,7 +1558,7 @@ window.Screens.orderEdit = {
       // Пульсация, не вращение — см. .save-pulse в admin/app.html.
       if (icon) icon.classList.add('save-pulse');
       try {
-        const result = await saveOrder(confirmedCloseWithDebt);
+        const result = await saveOrder(confirmedCloseWithDebt, confirmedProceedWithMissingData);
         showSaveToast(true, 'Изменения сохранены');
         if (result.notifyWarning) {
           setTimeout(() => showSaveToast(false, result.notifyWarning), 4300);

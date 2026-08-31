@@ -15,6 +15,16 @@
  * Гейт применяется ТОЛЬКО к целевому статусу "Получено клиентом" —
  * для остальных статусов `withDebt` всегда пуст, модалка ведёт себя как
  * обычное массовое действие в одно подтверждение.
+ *
+ * **Р6, «Напоминания 2.0» (31.08.2026)** — тот же `previewDeliveryStatusChange`
+ * заодно отдаёт `missingData` (пропуски данных при движении ВПЕРЁД по
+ * лестнице статусов, любой целевой статус, не только "Получено клиентом") —
+ * см. её JSDoc в `ordersService.js`. Заказ может попасть И в `withDebt`,
+ * И в `missingData` одновременно (не конкурируют) — оба показываются в
+ * ОДНОМ объединённом списке "не готовы" (`#delivery-status-debt-list`, id
+ * не переименован — покрыт e2e), с ОДНИМ общим "Всё равно перевести"
+ * (снимает оба гейта разом для заказа, один `forceOrderIds`, то же
+ * подтверждение, что уже было у долга).
  */
 window.DeliveryStatusModal = {
   html() {
@@ -42,7 +52,7 @@ window.DeliveryStatusModal = {
           </div>
           <div class="p-4 border-t border-gray-100 shrink-0 space-y-2">
             <button type="button" id="delivery-status-apply-btn" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Применить</button>
-            <button type="button" id="delivery-status-force-btn" class="hidden w-full py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Всё равно закрыть (с долгом)</button>
+            <button type="button" id="delivery-status-force-btn" class="hidden w-full py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Всё равно перевести</button>
           </div>
         </div>
       </div>
@@ -68,11 +78,11 @@ window.DeliveryStatusModal = {
     const forceBtn = document.getElementById('delivery-status-force-btn');
 
     let orderIds = [];
-    let debtEntries = [];
+    let blockedEntries = []; // [{orderId, clientDisplay, debt:number|null, missingItems:Array|null}]
     let statusesCache = null;
 
     function resetBody() {
-      debtEntries = [];
+      blockedEntries = [];
       debtList.classList.add('hidden');
       debtList.innerHTML = '';
       forceBtn.classList.add('hidden');
@@ -90,14 +100,36 @@ window.DeliveryStatusModal = {
     }
     closeBtn.addEventListener('click', close);
 
-    function renderDebtList() {
+    // Р6 — сводит withDebt/missingData (preview.js) в ОДИН список по
+    // orderId (заказ может фигурировать в обоих сразу, не задваивается).
+    function buildBlockedEntries(preview) {
+      const byOrder = new Map();
+      for (const e of preview.withDebt || []) {
+        byOrder.set(e.orderId, { orderId: e.orderId, clientDisplay: e.clientDisplay, debt: e.debt, missingItems: null });
+      }
+      for (const e of preview.missingData || []) {
+        const existing = byOrder.get(e.orderId);
+        if (existing) existing.missingItems = e.items;
+        else byOrder.set(e.orderId, { orderId: e.orderId, clientDisplay: e.clientDisplay, debt: null, missingItems: e.items });
+      }
+      return [...byOrder.values()];
+    }
+
+    function renderBlockedList() {
       debtList.classList.remove('hidden');
       debtList.innerHTML = `
-        <p class="text-sm text-amber-700 font-medium">С непогашенным долгом (не закрыты): ${debtEntries.length}</p>
-        ${debtEntries.map((e) => `
-          <div class="flex items-center justify-between text-sm bg-amber-50 rounded-lg px-3 py-2">
-            <span class="text-gray-700 truncate pr-2">${e.clientDisplay || ('заказ ' + e.orderId)} · ${e.orderId}</span>
-            <span class="font-medium text-amber-700 whitespace-nowrap">${e.debt.toFixed(2)} ₽</span>
+        <p class="text-sm text-amber-700 font-medium">Не готовы к переходу (без изменений): ${blockedEntries.length}</p>
+        ${blockedEntries.map((e) => `
+          <div class="text-sm bg-amber-50 rounded-lg px-3 py-2 space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-700 truncate pr-2">${e.clientDisplay || ('заказ ' + e.orderId)} · ${e.orderId}</span>
+              ${e.debt !== null ? `<span class="font-medium text-amber-700 whitespace-nowrap">Долг: ${e.debt.toFixed(2)} ₽</span>` : ''}
+            </div>
+            ${e.missingItems && e.missingItems.length > 0 ? `
+              <ul class="text-xs text-amber-800 list-disc list-inside">
+                ${e.missingItems.map((i) => `<li>${i.label} (${i.hint})</li>`).join('')}
+              </ul>
+            ` : ''}
           </div>
         `).join('')}
       `;
@@ -112,31 +144,33 @@ window.DeliveryStatusModal = {
 
       try {
         const preview = await callServer('previewDeliveryStatusChange', orderIds, targetStatus);
-        debtEntries = preview.withDebt || [];
+        blockedEntries = buildBlockedEntries(preview);
+        const blockedIds = new Set(blockedEntries.map((e) => e.orderId));
+        const trulyReady = (preview.readyToClose || []).filter((o) => !blockedIds.has(o.orderId));
 
         let closedCount = 0;
         let failedCount = 0;
 
-        if (preview.readyToClose.length > 0) {
-          let confirmText = `Статус «${targetStatus}» будет установлен для ${preview.readyToClose.length} из ${orderIds.length} заказов.`;
-          if (debtEntries.length > 0) {
-            confirmText += `\n\nЕщё ${debtEntries.length} — с непогашенным долгом, останутся БЕЗ изменений: список появится ниже, закрыть их можно только отдельным подтверждением «Всё равно закрыть».`;
+        if (trulyReady.length > 0) {
+          let confirmText = `Статус «${targetStatus}» будет установлен для ${trulyReady.length} из ${orderIds.length} заказов.`;
+          if (blockedEntries.length > 0) {
+            confirmText += `\n\nЕщё ${blockedEntries.length} — не готовы (долг и/или не хватает данных), останутся БЕЗ изменений: список появится ниже, перевести их можно только отдельным подтверждением «Всё равно перевести».`;
           }
           const proceed = await showConfirmModal(confirmText, { confirmLabel: 'Применить' });
           if (!proceed) { applyBtn.disabled = false; return; }
 
-          const result = await callServer('setOrdersDeliveryStatus', preview.readyToClose.map((o) => o.orderId), targetStatus, { notifyClients: notifyCheckbox.checked });
+          const result = await callServer('setOrdersDeliveryStatus', trulyReady.map((o) => o.orderId), targetStatus, { notifyClients: notifyCheckbox.checked });
           closedCount = result.changed.length;
           failedCount = result.failed.length;
         }
 
-        if (debtEntries.length === 0) {
+        if (blockedEntries.length === 0) {
           close();
           onApplied({ closedCount, forcedCount: 0, failedCount });
           return;
         }
 
-        renderDebtList();
+        renderBlockedList();
         applyBtn.classList.add('hidden');
         onApplied({ closedCount, forcedCount: 0, failedCount });
       } catch (error) {
@@ -147,12 +181,17 @@ window.DeliveryStatusModal = {
 
     forceBtn.addEventListener('click', async () => {
       const targetStatus = select.value;
-      const ids = debtEntries.map((e) => e.orderId);
-      const totalDebt = debtEntries.reduce((sum, e) => sum + e.debt, 0);
+      const ids = blockedEntries.map((e) => e.orderId);
+      const totalDebt = blockedEntries.reduce((sum, e) => sum + (e.debt || 0), 0);
+      const missingCount = blockedEntries.filter((e) => e.missingItems && e.missingItems.length > 0).length;
+      const reasonParts = [];
+      if (totalDebt > 0.01) reasonParts.push(`непогашенный долг (суммарно ${totalDebt.toFixed(2)} ₽)`);
+      if (missingCount > 0) reasonParts.push(`нехватку данных (${missingCount} заказ(ов))`);
+
       const proceed = await showConfirmModal(
-        `Закрыть ${ids.length} заказ(ов) статусом «${targetStatus}» несмотря на непогашенный долг (суммарно ${totalDebt.toFixed(2)} ₽)?\n\n` +
-        `После закрытия остаток перестаёт быть целью — деньги, занесённые клиентами позже, на эти заказы уже не пойдут, а сам долг нигде не будет виден как открытая позиция.`,
-        { confirmLabel: 'Всё равно закрыть', danger: true }
+        `Перевести ${ids.length} заказ(ов) статусом «${targetStatus}» несмотря на ${reasonParts.join(' и ')}?\n\n` +
+        `После этого заказ выходит из платёжного движка (если статус закрывающий) — ни обычное распределение, ни закрепление меткой больше не смогут принять по нему оплату, а сами пропуски данных так и останутся незаполненными.`,
+        { confirmLabel: 'Всё равно перевести', danger: true }
       );
       if (!proceed) return;
 
@@ -165,7 +204,7 @@ window.DeliveryStatusModal = {
         onApplied({ closedCount: 0, forcedCount: result.changed.length, failedCount: result.failed.length });
       } catch (error) {
         forceBtn.disabled = false;
-        showSaveToast(false, `Не удалось закрыть с долгом: ${error.message}`);
+        showSaveToast(false, `Не удалось перевести: ${error.message}`);
       }
     });
 
