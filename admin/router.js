@@ -45,6 +45,12 @@ const ROUTES = [
   // contests/analytics/clients — та же логика сворачивания под "Ещё".
   { path: 'wallet', screen: 'wallet', navKey: 'wallet', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
+  // Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) — тот же
+  // паттерн, что 'collectives'/'orders/new' — список + форма создания,
+  // деталь одного лота адресуется regex-маршрутом ниже (см. lotMatch),
+  // по образцу collectiveMatch.
+  { path: 'lots', screen: 'lots', navKey: null, showNav: true },
+  { path: 'lots/new', screen: 'lotNew', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
@@ -116,6 +122,20 @@ function matchRoute(hash) {
   const collectiveMatch = clean.match(/^collectives\/([^/]+)$/);
   if (collectiveMatch) {
     return { screen: 'collectiveDetail', navKey: null, showNav: true, params: { collectiveId: decodeURIComponent(collectiveMatch[1]) } };
+  }
+
+  // Адресуемый маршрут карточки лота (delegated-spinning-rabbit.md,
+  // 02.09.2026) — тот же паттерн, что collectiveMatch выше. Проверяется
+  // ПОСЛЕ collectiveMatch/ПЕРЕД общим ROUTES.find, но не может
+  // конфликтовать с 'lots'/'lots/new' (те матчат ROUTES напрямую, сюда не
+  // доходят — regex требует непустой сегмент после 'lots/', 'new' тоже под
+  // него подошёл бы, поэтому 'lots/new' обязан стоять в ROUTES выше этой
+  // проверки... фактически неважно: `route` для 'lots/new' находится через
+  // ROUTES.find НИЖЕ, но эта regex-проверка сработает первой и уведёт на
+  // lotDetail с lotId='new' — поэтому явное исключение).
+  const lotMatch = clean !== 'lots/new' && clean.match(/^lots\/([^/]+)$/);
+  if (lotMatch) {
+    return { screen: 'lotDetail', navKey: null, showNav: true, params: { lotId: decodeURIComponent(lotMatch[1]) } };
   }
 
   const route = ROUTES.find((r) => r.path === clean);

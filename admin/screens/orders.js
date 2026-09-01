@@ -59,6 +59,14 @@ window.Screens.orders = {
             <i data-lucide="package-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Коллективки</span>
           </button>
+          <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) —
+               тот же паттерн, что "Коллективки": ведёт на список, создание —
+               внутри lots.js (две кнопки "+ Лот"/"+ Корзина" на самом списке,
+               не здесь — иначе этот ряд разрастается до 7 кнопок). -->
+          <button type="button" id="lots-btn" title="Лоты" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="boxes" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Лоты</span>
+          </button>
           <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="trash-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Удалённые</span>
@@ -171,6 +179,7 @@ window.Screens.orders = {
 
     document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
+    document.getElementById('lots-btn').addEventListener('click', () => navigateTo('lots'));
     // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
     // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
     // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
@@ -335,11 +344,23 @@ window.Screens.orders = {
       return links.map((l) => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${escapeHtmlClient(l.stage)}: ${escapeHtmlClient(l.name || l.collectiveId)}</span>`).join('');
     }
 
+    // Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) — чисто
+    // визуальный бейдж (см. JSDoc collectivesService.getOrdersByCollectiveId
+    // на бэкенде: НЕ влияет ни на что расчётное), клик уводит на карточку
+    // лота, `data-lot-id` — чтобы отличить от клика по остальной карточке
+    // (которая ведёт на редактирование заказа, см. buildCard ниже).
+    function lotChip(lotId) {
+      if (!lotId) return '';
+      return `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 cursor-pointer" data-lot-id="${escapeHtmlClient(lotId)}">Лот #${escapeHtmlClient(lotId)}</span>`;
+    }
+
     function buildCard(o) {
       const card = document.createElement('div');
       const isSelected = selectedIds.has(o.orderId);
       card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        const lotChipEl = e.target.closest('[data-lot-id]');
+        if (lotChipEl) { e.stopPropagation(); navigateTo(`lots/${encodeURIComponent(lotChipEl.dataset.lotId)}`); return; }
         if (selectMode) { toggleSelected(o.orderId); render(); return; }
         navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
       });
@@ -368,6 +389,7 @@ window.Screens.orders = {
                 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">в каталоге</span>`
                 : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">не в каталоге</span>`}
               ${collectiveLinksChips(o.collectiveLinks)}
+              ${lotChip(o.lotId)}
             </div>
             <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>

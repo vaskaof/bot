@@ -937,6 +937,11 @@ window.Screens.collectiveDetail = {
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
               ${o.ownLegPaid ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">плечо оплачено</span>` : ''}
+              <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) —
+                   чисто визуальная связка, VASY явно отклонил вложенность
+                   лота в коллективку как единицы — доля логистики выше
+                   считается независимо, этот бейдж её не трогает. -->
+              ${o.lotId ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 cursor-pointer" data-lot-id="${escapeHtmlClient(o.lotId)}">Лот #${escapeHtmlClient(o.lotId)}</span>` : ''}
             </div>
             <div class="text-[13px] text-gray-500 mt-1.5">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
             ${o.remark ? `
@@ -995,6 +1000,14 @@ window.Screens.collectiveDetail = {
       // Переход на заказ теперь только с фото/названия/ID (см. openOrderTap
       // выше и className-комментарий у card) — не со всей карточки.
       card.querySelectorAll('[data-open-order]').forEach((el) => el.addEventListener('click', openOrderTap));
+
+      const lotChipEl = card.querySelector('[data-lot-id]');
+      if (lotChipEl) {
+        lotChipEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigateTo(`lots/${encodeURIComponent(lotChipEl.dataset.lotId)}`);
+        });
+      }
 
       const unassignBtn = card.querySelector('.unassign-order-btn');
       if (unassignBtn) {
