@@ -86,6 +86,33 @@ window.Screens.lotNew = {
             </div>
           </div>
 
+          <!-- Статус доставки/заказа (репорт VASY, доп. раунд 02.09.2026) —
+               ОБЩИЕ на весь лот, тот же принцип, что Канал/Аккаунт/Карго/Дата
+               ниже (не построчно — свежесозданные заказы одной закупки
+               обычно стартуют с одного и того же статуса, тот же приём, что
+               "Несколько сразу" в order-new.js). -->
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
+                <i data-lucide="truck" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доставка</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
+              <div id="lot-delivery-ladder" class="mt-2"></div>
+            </div>
+          </div>
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Статус заказа</span>
+            </div>
+            <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusOrder"></select></div>
+          </div>
+
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
@@ -176,9 +203,21 @@ window.Screens.lotNew = {
     const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_CONFIG.TIMEZONE });
     dateInput.value = todayFormatter.format(new Date());
 
+    FormHelpers.wireDictionarySelect('select[data-dict="statusDelivery"]', 'statusDelivery', dictionaries.statusDelivery);
+    FormHelpers.wireDictionarySelect('select[data-dict="statusOrder"]', 'statusOrder', dictionaries.statusOrder);
     FormHelpers.wireDictionarySelect('select[data-dict="purchaseChannel"]', 'purchaseChannel', dictionaries.purchaseChannel);
     FormHelpers.wireDictionarySelect('select[data-dict="purchaseAccount"]', 'purchaseAccount', dictionaries.purchaseAccount);
     FormHelpers.wireDictionarySelect('select[data-dict="cargo"]', 'cargo', dictionaries.cargo);
+
+    // Лестница статусов доставки (тот же приём, что order-new.js — лоты ещё
+    // не сохранены, сервер не может её посчитать, чисто клиентский расчёт).
+    function updateDeliveryLadderPreview() {
+      const select = document.querySelector('select[data-dict="statusDelivery"]');
+      const ladder = computeDeliveryLadderPosition(select.value);
+      document.getElementById('lot-delivery-ladder').innerHTML = buildDeliveryLadder(ladder, select.value, { compact: true });
+    }
+    document.querySelector('select[data-dict="statusDelivery"]').addEventListener('change', updateDeliveryLadderPreview);
+    updateDeliveryLadderPreview();
 
     function updateCalc() {
       const amount = parseFloat(amountInput.value) || 0;
@@ -573,6 +612,10 @@ window.Screens.lotNew = {
             ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
             : { telegramId: r.telegramId || '', username: r.username, name: r.name },
           productOriginal: r.productOriginal || r.productSearchEl.value,
+          // Общие на весь лот (репорт VASY, доп. раунд 02.09.2026) — та же
+          // общая шапка, что Канал/Аккаунт/Карго/Дата, не построчно.
+          statusDelivery: document.querySelector('select[data-dict="statusDelivery"]').value,
+          statusOrder: document.querySelector('select[data-dict="statusOrder"]').value,
           costCoefficient: r.costCoefficient,
           knownPriceRub: parseFloat(r.knownPriceInputEl.value) || 0,
           weightCoefficient: r.weightCoefficient,
