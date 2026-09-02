@@ -185,6 +185,30 @@ window.Screens.lotNew = {
       calculatedRub.textContent = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount * currentRate);
     }
 
+    // Символ валюты рядом с полем "Цена товара" на каждой позиции
+    // (репорт VASY, доп. раунд 02.09.2026 — "стоимость должна вводиться в
+    // разных вариантах валют, а не только в рублях"). Валюта позиции —
+    // ТА ЖЕ, что у лота целиком (шапка формы уже даёт выбор Доллар/Юань/
+    // Евро/Фунт) — тот же принцип, что $→₽ калькулятор "Веса" в order-new.js
+    // (сама валюта нигде не отправляется/не хранится, только конвертирует
+    // на клиенте ДО отправки RUB-суммы).
+    const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£' };
+    function updateAllCurrencySymbolLabels() {
+      const symbol = CURRENCY_SYMBOLS[currentCurrency] || '';
+      rows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = symbol; });
+    }
+    // Курс сменился (выбор валюты/обновление курса) — цена, уже введённая в
+    // валюте на какой-то позиции, была посчитана по СТАРОМУ курсу, её ₽-поле
+    // нужно пересчитать заново (тот же принцип, что applyCurrentCurrencyRate
+    // делает для "Общая стоимость" самого лота выше).
+    function recalcAllKnownPricesFromCurrency() {
+      rows.forEach((r) => {
+        if (!r.knownPriceCurrencyInputEl) return;
+        const val = parseFloat(r.knownPriceCurrencyInputEl.value) || 0;
+        if (val > 0) r.knownPriceInputEl.value = (val * currentRate).toFixed(2);
+      });
+    }
+
     function applyCurrentCurrencyRate() {
       const rawRate = currentRates[currentCurrency];
       if (rawRate === undefined || rawRate === '') return;
@@ -192,6 +216,8 @@ window.Screens.lotNew = {
       if (isNaN(currentRate)) return;
       rateDisplay.textContent = currentRate.toFixed(2);
       updateCalc();
+      updateAllCurrencySymbolLabels();
+      recalcAllKnownPricesFromCurrency();
       patchAllCostShares();
     }
 
@@ -340,6 +366,11 @@ window.Screens.lotNew = {
         <div class="mb-1.5">
           <label class="text-[11px] text-gray-500">Цена товара, ₽ (если известна заранее)</label>
           <input type="number" class="known-price-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00 — оставьте пустым, если не знаете" step="0.01">
+          <div class="flex items-center gap-1 mt-1">
+            <span class="text-[11px] text-gray-400">или в валюте:</span>
+            <input type="number" class="known-price-currency-input w-20 bg-white rounded-lg px-2 py-1 text-xs outline-none border border-gray-200" placeholder="0.00" step="0.01">
+            <span class="known-price-currency-symbol text-xs text-gray-400"></span>
+          </div>
         </div>
         <div class="flex items-center justify-between text-[11px] text-gray-500">
           <span class="inline-flex items-center gap-0.5">Доля в общих тратах${helpIcon('Доля в общих тратах', '<p>Разница между общей суммой лота и суммой известных цен товаров (доставка/упаковка и т.п.) делится между позициями по этой доле. По умолчанию 1 у всех — поровну. 0 — позиция не участвует в разнице, получает ровно свою известную цену.</p>')}</span>
@@ -380,6 +411,8 @@ window.Screens.lotNew = {
         productOriginal: '',
         costCoefficient: 1,
         knownPriceInputEl: rowEl.querySelector('.known-price-input'),
+        knownPriceCurrencyInputEl: rowEl.querySelector('.known-price-currency-input'),
+        knownPriceCurrencySymbolEl: rowEl.querySelector('.known-price-currency-symbol'),
         costSliderEl: rowEl.querySelector('.cost-slider'),
         costFractionLabelEl: rowEl.querySelector('.coef-fraction-label'),
         costShareDisplayEl: rowEl.querySelector('.cost-share-display'),
@@ -476,7 +509,13 @@ window.Screens.lotNew = {
       row.productSearchEl.addEventListener('focus', () => { if (row.productSearchEl.value.trim().length >= 2) row.productDropdownEl.classList.add('active'); });
 
       // --- цена товара + доля в общих тратах ---
+      if (row.knownPriceCurrencySymbolEl) row.knownPriceCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || '';
       row.knownPriceInputEl.addEventListener('input', patchAllCostShares);
+      row.knownPriceCurrencyInputEl.addEventListener('input', () => {
+        const val = parseFloat(row.knownPriceCurrencyInputEl.value) || 0;
+        row.knownPriceInputEl.value = val > 0 ? (val * currentRate).toFixed(2) : '';
+        patchAllCostShares();
+      });
 
       row.costSliderEl.addEventListener('input', () => {
         row.costCoefficient = parseFloat(row.costSliderEl.value);
