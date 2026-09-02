@@ -12,14 +12,22 @@
  * слайдер-механики `collective-detail.js` (живой пересчёт долей без
  * пересоздания DOM активного ползунка).
  *
- * Два НЕЗАВИСИМЫХ коэффициента на позицию — доля СТОИМОСТИ товара и доля
- * ВЕСА/логистики (явное решение VASY: стоимость в лоте не равна весу,
- * второе не выводится из первого). Округление суммы позиции + перенос
- * остатка на позицию с наибольшей долей — согласованное решение,
- * см. splitProportionallyClient ниже (дублирует backend `splitProportionally`,
- * см. её JSDoc про намеренное дублирование между Node backend и SPA без
- * сборки — сервер пересчитывает сам при сохранении, эта копия только для
- * мгновенного визуального фидбека при перетаскивании ползунка).
+ * Стоимость позиции = "Цена товара" (опционально, если менеджер её знает
+ * заранее — реальный кейс VASY, доп. раунд 02.09.2026: в корзине цена
+ * каждого товара известна, но есть общие траты типа доставки/упаковки
+ * площадки) + её доля от РАЗНИЦЫ между общей суммой лота и суммой всех
+ * известных цен (коэффициент 0…2, дефолт 1 = поровну — обязательно
+ * заполнено на КАЖДОЙ позиции, не переключатель режима). Это строгое
+ * обобщение прежней "коэффициент XOR вручную" модели — цена=0 у всех даёт
+ * ровно старое чисто-коэффициентное поведение. Доля ВЕСА/логистики —
+ * ВТОРОЙ, полностью независимый коэффициент (явное решение VASY: стоимость
+ * в лоте не равна весу, одно не выводится из другого). Округление суммы
+ * позиции + перенос остатка на позицию с наибольшей долей разницы —
+ * согласованное решение, см. splitProportionallyClient ниже (дублирует
+ * backend `splitProportionally`, см. её JSDoc про намеренное дублирование
+ * между Node backend и SPA без сборки — сервер пересчитывает сам при
+ * сохранении, эта копия только для мгновенного визуального фидбека при
+ * перетаскивании ползунка).
  */
 const LOT_DRAFT_KEY_PREFIX = 'pendingLotDraft:';
 
@@ -223,29 +231,33 @@ window.Screens.lotNew = {
     roundingSelect.addEventListener('change', patchAllCostShares);
 
     // --- Клиентская копия splitProportionally (backend — источник истины,
-    // см. её JSDoc; здесь только для живого фидбека при перетаскивании) ---
+    // см. её JSDoc; здесь только для живого фидбека при перетаскивании).
+    // Доп. раунд 02.09.2026: каждая строка = известная цена (basePrice,
+    // по умолчанию 0) + доля УЧАСТИЯ В РАЗНИЦЕ между pool и суммой всех
+    // известных цен (weight, по умолчанию 1 = поровну; 0 = не участвует в
+    // разнице, получает ровно свою цену) — строгое обобщение прежней
+    // "коэффициент XOR вручную" модели, не отдельный режим. ---
     function splitProportionallyClient(pool, rows, roundingStep) {
       const step = roundingStep && roundingStep > 0 ? roundingStep : 0.01;
       const result = new Map();
-      const manualRows = rows.filter((r) => r.manualAmount !== null && r.manualAmount !== undefined);
-      const weightedRows = rows.filter((r) => r.manualAmount === null || r.manualAmount === undefined);
-      let manualSum = 0;
-      manualRows.forEach((r) => { const a = Number(r.manualAmount) || 0; result.set(r.id, a); manualSum += a; });
-      if (weightedRows.length === 0) return result;
-      const remainingPool = pool - manualSum;
-      const weights = weightedRows.map((r) => (r.weight === null || r.weight === undefined ? 1 : Number(r.weight) || 0));
+      if (rows.length === 0) return result;
+      const basePrices = rows.map((r) => Number(r.basePrice) || 0);
+      const basesSum = basePrices.reduce((s, v) => s + v, 0);
+      const remainder = pool - basesSum;
+      const weights = rows.map((r) => (r.weight === null || r.weight === undefined ? 1 : Number(r.weight) || 0));
       const totalWeight = weights.reduce((s, w) => s + w, 0);
-      const rawShares = weightedRows.map((r, i) => (totalWeight > 0 ? (remainingPool * weights[i]) / totalWeight : 0));
+      const rawShares = rows.map((r, i) => (totalWeight > 0 ? (remainder * weights[i]) / totalWeight : 0));
+      const rawFinals = rows.map((r, i) => basePrices[i] + rawShares[i]);
       let roundedSum = 0, largestIndex = 0;
-      weightedRows.forEach((r, i) => {
-        const rounded = Math.round(rawShares[i] / step) * step;
+      rows.forEach((r, i) => {
+        const rounded = Math.round(rawFinals[i] / step) * step;
         result.set(r.id, rounded);
         roundedSum += rounded;
         if (rawShares[i] > rawShares[largestIndex]) largestIndex = i;
       });
-      const remainder = remainingPool - roundedSum;
-      const targetId = weightedRows[largestIndex].id;
-      result.set(targetId, (result.get(targetId) || 0) + remainder);
+      const roundingRemainder = pool - roundedSum;
+      const targetId = rows[largestIndex].id;
+      result.set(targetId, (result.get(targetId) || 0) + roundingRemainder);
       return result;
     }
 
@@ -264,8 +276,8 @@ window.Screens.lotNew = {
       const roundingStep = parseFloat(roundingSelect.value) || 1;
       const costRows = rows.map((r) => ({
         id: r.id,
-        weight: r.costMode === 'manual' ? null : r.costCoefficient,
-        manualAmount: r.costMode === 'manual' ? (parseFloat(r.costManualInputEl.value) || 0) : null
+        weight: r.costCoefficient,
+        basePrice: parseFloat(r.knownPriceInputEl.value) || 0
       }));
       const shares = splitProportionallyClient(pool, costRows, roundingStep);
       rows.forEach((r) => {
@@ -325,21 +337,15 @@ window.Screens.lotNew = {
           <ul class="product-dropdown dropdown-menu custom-scrollbar"></ul>
         </div>
 
-        <div class="flex items-center gap-1 mb-1.5">
-          <button type="button" class="cost-mode-btn cost-mode-coef flex-1 py-1 rounded-lg text-[11px] font-medium border border-indigo-500 bg-indigo-50 text-indigo-600">По коэффициенту</button>
-          <button type="button" class="cost-mode-btn cost-mode-manual flex-1 py-1 rounded-lg text-[11px] font-medium border border-gray-200 text-gray-500">Вручную</button>
+        <div class="mb-1.5">
+          <label class="text-[11px] text-gray-500">Цена товара, ₽ (если известна заранее)</label>
+          <input type="number" class="known-price-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00 — оставьте пустым, если не знаете" step="0.01">
         </div>
-        <div class="cost-coef-block">
-          <div class="flex items-center justify-between text-[11px] text-gray-500">
-            <span>Доля стоимости</span>
-            <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
-          </div>
-          <input type="range" min="0" max="2" step="0.25" value="1" class="cost-slider w-full">
+        <div class="flex items-center justify-between text-[11px] text-gray-500">
+          <span class="inline-flex items-center gap-0.5">Доля в общих тратах${helpIcon('Доля в общих тратах', '<p>Разница между общей суммой лота и суммой известных цен товаров (доставка/упаковка и т.п.) делится между позициями по этой доле. По умолчанию 1 у всех — поровну. 0 — позиция не участвует в разнице, получает ровно свою известную цену.</p>')}</span>
+          <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
         </div>
-        <div class="cost-manual-block hidden">
-          <label class="text-[11px] text-gray-500">Сумма позиции (₽, вручную)</label>
-          <input type="number" class="cost-manual-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
-        </div>
+        <input type="range" min="0" max="2" step="0.25" value="1" class="cost-slider w-full">
         <div class="text-right text-sm font-semibold text-gray-800 cost-share-display mt-1">0.00 ₽</div>
 
         <div class="mt-2 pt-2 border-t border-gray-100">
@@ -372,9 +378,8 @@ window.Screens.lotNew = {
         productSearchEl: rowEl.querySelector('.product-search'),
         productDropdownEl: rowEl.querySelector('.product-dropdown'),
         productOriginal: '',
-        costMode: 'coefficient',
         costCoefficient: 1,
-        costManualInputEl: rowEl.querySelector('.cost-manual-input'),
+        knownPriceInputEl: rowEl.querySelector('.known-price-input'),
         costSliderEl: rowEl.querySelector('.cost-slider'),
         costFractionLabelEl: rowEl.querySelector('.coef-fraction-label'),
         costShareDisplayEl: rowEl.querySelector('.cost-share-display'),
@@ -470,30 +475,8 @@ window.Screens.lotNew = {
       row.productSearchEl.addEventListener('input', () => { row.productOriginal = row.productSearchEl.value; });
       row.productSearchEl.addEventListener('focus', () => { if (row.productSearchEl.value.trim().length >= 2) row.productDropdownEl.classList.add('active'); });
 
-      // --- режим стоимости ---
-      const coefBtn = rowEl.querySelector('.cost-mode-coef');
-      const manualBtn = rowEl.querySelector('.cost-mode-manual');
-      const coefBlock = rowEl.querySelector('.cost-coef-block');
-      const manualBlock = rowEl.querySelector('.cost-manual-block');
-      function setCostMode(mode) {
-        row.costMode = mode;
-        coefBtn.classList.toggle('border-indigo-500', mode === 'coefficient');
-        coefBtn.classList.toggle('bg-indigo-50', mode === 'coefficient');
-        coefBtn.classList.toggle('text-indigo-600', mode === 'coefficient');
-        coefBtn.classList.toggle('border-gray-200', mode !== 'coefficient');
-        coefBtn.classList.toggle('text-gray-500', mode !== 'coefficient');
-        manualBtn.classList.toggle('border-indigo-500', mode === 'manual');
-        manualBtn.classList.toggle('bg-indigo-50', mode === 'manual');
-        manualBtn.classList.toggle('text-indigo-600', mode === 'manual');
-        manualBtn.classList.toggle('border-gray-200', mode !== 'manual');
-        manualBtn.classList.toggle('text-gray-500', mode !== 'manual');
-        coefBlock.classList.toggle('hidden', mode !== 'coefficient');
-        manualBlock.classList.toggle('hidden', mode !== 'manual');
-        patchAllCostShares();
-      }
-      coefBtn.addEventListener('click', () => setCostMode('coefficient'));
-      manualBtn.addEventListener('click', () => setCostMode('manual'));
-      row.costManualInputEl.addEventListener('input', patchAllCostShares);
+      // --- цена товара + доля в общих тратах ---
+      row.knownPriceInputEl.addEventListener('input', patchAllCostShares);
 
       row.costSliderEl.addEventListener('input', () => {
         row.costCoefficient = parseFloat(row.costSliderEl.value);
@@ -551,8 +534,8 @@ window.Screens.lotNew = {
             ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
             : { telegramId: r.telegramId || '', username: r.username, name: r.name },
           productOriginal: r.productOriginal || r.productSearchEl.value,
-          costCoefficient: r.costMode === 'coefficient' ? r.costCoefficient : undefined,
-          manualCostRub: r.costMode === 'manual' ? (parseFloat(r.costManualInputEl.value) || 0) : undefined,
+          costCoefficient: r.costCoefficient,
+          knownPriceRub: parseFloat(r.knownPriceInputEl.value) || 0,
           weightCoefficient: r.weightCoefficient,
           commissionRub: parseFloat(r.feeRubEl.value) || 0,
           requestId: generateRequestId()

@@ -80,7 +80,11 @@ window.Screens.lotDetail = {
             <div class="flex flex-wrap gap-1.5 mt-2">
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
-              ${o.lotCostWeight !== null ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">доля стоимости ${o.lotCostWeight}</span>` : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">вручную</span>`}
+              <!-- Доп. раунд 02.09.2026 — lotCostWeight теперь ВСЕГДА заполнен
+                   (доля участия в разнице между общей суммой лота и
+                   известными ценами товаров, не "доля стоимости" в старом
+                   смысле). -->
+              ${o.lotCostWeight !== null ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">доля в общих тратах ${o.lotCostWeight}</span>` : ''}
               ${o.lotWeightCoefficient !== null ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">доля веса ${o.lotWeightCoefficient}</span>` : ''}
             </div>
           `;
