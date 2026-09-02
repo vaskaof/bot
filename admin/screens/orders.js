@@ -55,6 +55,14 @@ window.Screens.orders = {
             <i data-lucide="plus" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Новый</span>
           </button>
+          <!-- Рефакторинг «Корзина», фаза 3 (REFACTOR-CART.md §4, 03.09.2026) —
+               отдельная кнопка рядом с "Новый" (решение VASY, переходный
+               период — старые order-new.js/lot-new.js не убираются, см.
+               cart-new.js JSDoc). -->
+          <button type="button" id="new-cart-btn" title="Новая корзина" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Корзина</span>
+          </button>
           <button type="button" id="collectives-btn" title="Коллективки" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="package-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Коллективки</span>
@@ -178,6 +186,7 @@ window.Screens.orders = {
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
 
     document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
+    document.getElementById('new-cart-btn').addEventListener('click', () => navigateTo('carts/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
     document.getElementById('lots-btn').addEventListener('click', () => navigateTo('lots'));
     // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":

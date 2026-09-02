@@ -52,6 +52,11 @@ const ROUTES = [
   { path: 'lots', screen: 'lots', navKey: null, showNav: true },
   { path: 'lots/new', screen: 'lotNew', navKey: null, showNav: true },
   { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
+  // Рефакторинг «Корзина», фаза 3 (REFACTOR-CART.md §4, 03.09.2026) —
+  // отдельная точка входа РЯДОМ с 'orders/new' (решение VASY: отдельная
+  // кнопка "+ Корзина", не feature-флаг и не замена "+ Новый заказ" —
+  // переходный период, старое не убирается, см. cart-new.js JSDoc).
+  { path: 'carts/new', screen: 'cartNew', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
