@@ -1523,7 +1523,16 @@ window.Screens.orderNew = {
     document.getElementById('currency-select').addEventListener('change', fetchForecast);
     document.querySelector('select[data-dict="purchaseChannel"]').addEventListener('change', fetchForecast);
     feePercentInput.addEventListener('input', () => { feePercentEdited = true; updateFeeRub(); recalcAllBulkRows(); });
-    feeRubInput.addEventListener('input', updateFeePercent);
+    // ИСПРАВЛЕНО 03.09.2026 (известная гонка, зафиксированная как принятый
+    // долг в commission-reason-gate.spec.js и frontend-nav.md) — раньше
+    // feePercentEdited взводился ТОЛЬКО на 'input' самого #fee-percent, не
+    // #fee-rub. Ввод суммы комиссии в ₽ пересчитывает % программно
+    // (updateFeePercent, .value= не диспатчит 'input' на #fee-percent) — флаг
+    // не взводился, и debounced fetchForecast (400мс) мог тихо перезаписать
+    // только что введённую менеджером сумму автоподстановкой целевой
+    // комиссии, если менеджер печатал быстрее задержки. Теперь оба поля
+    // треугольника одинаково взводят флаг.
+    feeRubInput.addEventListener('input', () => { feePercentEdited = true; updateFeePercent(); });
     // Э6, D-10/F-24 — регистрируется ПОСЛЕ триугольника выше: тот же
     // 'input'-событие на #fee-percent/#fee-rub, слушатели одного события на
     // одном элементе срабатывают в порядке регистрации — наш обязан читать
