@@ -27,6 +27,7 @@ window.Screens.clients = {
     let currentClient = null; // {telegramId, name, username, blocked, blockReason}
     let query = '';
     let blockedOnly = false;
+    let managerFilter = ''; // Фаза 2 (roles/RBAC, M2.6) — admin-выбор через manager-filter-select
     let sortBy = 'registeredAt';
     let periodPreset = 'all'; // 'all' | 'thisMonth' | 'lastMonth' | 'custom'
     let customFrom = '';
@@ -64,14 +65,20 @@ window.Screens.clients = {
             <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
             <input type="text" id="clients-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по имени/username/ID..." autocomplete="off">
           </div>
-          <div class="flex items-center gap-2 mb-3">
+          <div class="flex items-center gap-2 mb-3 flex-wrap">
             <button type="button" id="blocked-filter-btn" class="text-xs px-3 py-1.5 rounded-full font-medium border border-gray-200 text-gray-500">Только заблокированные</button>
+            <!-- Фаза 2 (roles/RBAC, M2.6) — только для admin, менеджер видит
+                 только свои клиенты жёстко, без выбора (см. loadList). -->
+            <select id="manager-filter-select" class="hidden text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:border-indigo-400">
+              <option value="">Все менеджеры</option>
+            </select>
             <select id="sort-select" class="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:border-indigo-400 ml-auto">
               <option value="registeredAt">По дате регистрации</option>
               <option value="name">По имени</option>
               <option value="revenue">По сумме заказов</option>
             </select>
           </div>
+          <div id="mine-only-badge" class="hidden text-[11px] text-gray-400 mb-2">Показаны только ваши клиенты</div>
           <div id="top5-block" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3"></div>
           <div id="clients-count" class="text-[11px] text-gray-400 mb-2"></div>
           <div id="clients-list"></div>
@@ -136,6 +143,8 @@ window.Screens.clients = {
 
     const searchInput = document.getElementById('clients-search');
     const blockedFilterBtn = document.getElementById('blocked-filter-btn');
+    const managerFilterSelect = document.getElementById('manager-filter-select');
+    const mineOnlyBadge = document.getElementById('mine-only-badge');
     const sortSelect = document.getElementById('sort-select');
     const listContainer = document.getElementById('clients-list');
     const countLabel = document.getElementById('clients-count');
@@ -155,12 +164,27 @@ window.Screens.clients = {
       loadList();
     });
 
+    // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — "мои клиенты". Менеджер:
+    // жёсткий фильтр по своему telegramId, без переключателя (та же логика,
+    // что orders.js). Админ: дропдаун по конкретному сотруднику, дефолт "Все".
+    if (window.CURRENT_ACCESS_ROLE === 'manager') {
+      mineOnlyBadge.classList.remove('hidden');
+    } else if (window.CURRENT_ACCESS_ROLE === 'admin') {
+      callServer('getStaffList').then((staffList) => {
+        managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
+          staffList.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
+        managerFilterSelect.classList.remove('hidden');
+      }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+    }
+    managerFilterSelect.addEventListener('change', () => { managerFilter = managerFilterSelect.value; loadList(); });
+
     sortSelect.addEventListener('change', () => { sortBy = sortSelect.value; loadList(); });
 
     async function loadList() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const { items, total } = await callServer('getClientsList', { query, blockedOnly, sortBy, limit: 100, offset: 0 });
+        const effectiveManagerId = window.CURRENT_ACCESS_ROLE === 'manager' ? window.CURRENT_STAFF_TELEGRAM_ID : managerFilter;
+        const { items, total } = await callServer('getClientsList', { query, blockedOnly, managerId: effectiveManagerId, sortBy, limit: 100, offset: 0 });
         countLabel.textContent = `Найдено: ${total}`;
         renderList(items);
         loadTop5();
@@ -310,13 +334,17 @@ window.Screens.clients = {
     async function loadClientDetail() {
       detailView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const [report, questions, wishlist, blockLog] = await Promise.all([
+        // Роли выплат (Фаза 2, roles/RBAC, M2.5) — только для посредников,
+        // у обычного клиента запрос не нужен.
+        const isReseller = currentClient.clientType === 'Посредник';
+        const [report, questions, wishlist, blockLog, payoutRoles] = await Promise.all([
           callServer('getClientReport', currentClient.telegramId, currentRange()),
           callServer('getQuestionsForClientAdmin', currentClient.telegramId),
           callServer('getWishlistForClientAdmin', currentClient.telegramId),
-          callServer('getClientBlockLog', currentClient.telegramId)
+          callServer('getClientBlockLog', currentClient.telegramId),
+          isReseller ? callServer('getClientPayoutRoles', currentClient.telegramId) : Promise.resolve(null)
         ]);
-        renderClientDetail(report, questions, wishlist, blockLog);
+        renderClientDetail(report, questions, wishlist, blockLog, payoutRoles);
       } catch (error) {
         detailView.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
@@ -334,8 +362,9 @@ window.Screens.clients = {
     };
     const help = (key) => helpIcon(REPORT_HELP[key][0], REPORT_HELP[key][1]);
 
-    function renderClientDetail(report, questions, wishlist, blockLog) {
+    function renderClientDetail(report, questions, wishlist, blockLog, payoutRoles) {
       const blocked = !!currentClient.blocked;
+      const isReseller = currentClient.clientType === 'Посредник';
 
       detailView.innerHTML = `
         <button type="button" id="detail-back-btn" class="text-xs text-indigo-600 font-medium mb-3 flex items-center gap-1">
@@ -360,6 +389,12 @@ window.Screens.clients = {
             ${blocked ? 'Разблокировать' : 'Заблокировать'}
           </button>
         </div>
+
+        ${isReseller ? `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="text-sm font-semibold text-gray-900 mb-2">Роли выплат</div>
+          <div id="payout-roles-chips" class="flex flex-wrap gap-2"></div>
+        </div>` : ''}
 
         ${blockLog.length > 0 ? `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
@@ -517,6 +552,44 @@ window.Screens.clients = {
         }
       });
 
+      if (isReseller) renderPayoutRolesChips(payoutRoles);
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    /**
+     * Роли выплат "РФ"/"КЗ" (Фаза 2, roles/RBAC, M2.5) — отчётность/
+     * классификация посредника, клиент может держать обе одновременно.
+     * Перерисовывает ТОЛЬКО этот блок после assign/revoke (не весь detail).
+     */
+    const PAYOUT_ROLE_CODES_CLIENT = ['РФ', 'КЗ'];
+    function renderPayoutRolesChips(roles) {
+      const container = document.getElementById('payout-roles-chips');
+      if (!container) return;
+      const active = new Set(roles ? roles.active : []);
+      container.innerHTML = PAYOUT_ROLE_CODES_CLIENT.map((code) => `
+        <button type="button" class="payout-role-chip text-xs px-3 py-1.5 rounded-full font-medium border ${active.has(code) ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-200 text-gray-500'}" data-code="${code}">
+          ${escapeHtmlClient(code)}
+        </button>
+      `).join('');
+      container.querySelectorAll('.payout-role-chip').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (btn.disabled) return;
+          const code = btn.dataset.code;
+          const isActive = active.has(code);
+          const ok = await showConfirmModal(isActive ? `Снять роль «${code}» у клиента?` : `Присвоить роль «${code}» клиенту?`);
+          if (!ok) return;
+          btn.disabled = true;
+          try {
+            await callServer(isActive ? 'revokeClientPayoutRole' : 'assignClientPayoutRole', currentClient.telegramId, code);
+            showSaveToast(true, isActive ? 'Роль снята.' : 'Роль присвоена.');
+            const fresh = await callServer('getClientPayoutRoles', currentClient.telegramId);
+            renderPayoutRolesChips(fresh);
+          } catch (error) {
+            btn.disabled = false;
+            showSaveToast(false, error.message || 'Не удалось изменить роль.');
+          }
+        });
+      });
       if (window.lucide) window.lucide.createIcons();
     }
 

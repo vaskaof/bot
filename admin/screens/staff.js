@@ -13,6 +13,9 @@ window.Screens.staff = {
   render(root, dictionaries, params, signal) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Персонал</h1>';
     document.getElementById('header-actions').innerHTML = `
+      <button type="button" id="staff-report-toggle-btn" title="Отчёт по менеджерам" class="p-2 text-indigo-600">
+        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+      </button>
       <button type="button" id="staff-add-toggle-btn" class="p-2 -mr-2 text-indigo-600">
         <i data-lucide="user-plus" class="w-5 h-5"></i>
       </button>
@@ -32,6 +35,18 @@ window.Screens.staff = {
           </select>
           <button type="button" id="staff-add-save-btn" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Добавить</button>
         </div>
+
+        <!-- Отчёт по менеджерам (Фаза 2, roles/RBAC, M2.6) -->
+        <div id="staff-report-panel" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="text-sm font-semibold text-gray-900 mb-2">Отчёт по менеджерам</div>
+          <div class="flex gap-1.5 mb-3">
+            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="7">7 дней</button>
+            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="30">30 дней</button>
+            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="90">90 дней</button>
+          </div>
+          <div id="staff-report-body" class="space-y-2"></div>
+        </div>
+
         <div id="staff-list" class="space-y-2"></div>
         <div id="staff-empty" class="hidden text-center text-sm text-gray-400 py-10">Пока нет ни одного сотрудника.</div>
       </main>
@@ -40,6 +55,64 @@ window.Screens.staff = {
     document.getElementById('staff-add-toggle-btn').addEventListener('click', () => {
       document.getElementById('staff-add-form').classList.toggle('hidden');
     }, { signal });
+
+    let reportDays = 30;
+    document.getElementById('staff-report-toggle-btn').addEventListener('click', () => {
+      const panel = document.getElementById('staff-report-panel');
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) loadReport(reportDays);
+    }, { signal });
+
+    document.querySelectorAll('.report-period-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        reportDays = parseInt(btn.dataset.days, 10);
+        loadReport(reportDays);
+      }, { signal });
+    });
+
+    function renderPeriodButtons() {
+      document.querySelectorAll('.report-period-btn').forEach((btn) => {
+        const active = parseInt(btn.dataset.days, 10) === reportDays;
+        btn.className = `report-period-btn text-xs px-3 py-1.5 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`;
+      });
+    }
+    renderPeriodButtons();
+
+    function money(n) {
+      return (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    async function loadReport(days) {
+      renderPeriodButtons();
+      const body = document.getElementById('staff-report-body');
+      body.innerHTML = '<div class="text-center text-sm text-gray-400 py-4">Загрузка...</div>';
+      let rows;
+      try {
+        rows = await callServer('getManagerPerformanceReport', days);
+      } catch (error) {
+        body.innerHTML = `<div class="text-center text-sm text-red-500 py-4">${escapeHtmlClient(error.message || 'Не удалось загрузить отчёт.')}</div>`;
+        return;
+      }
+      if (rows.length === 0) {
+        body.innerHTML = '<div class="text-center text-sm text-gray-400 py-4">За этот период заказов нет.</div>';
+        return;
+      }
+      body.innerHTML = rows.map((r) => `
+        <div class="flex items-center justify-between gap-2 py-2 border-t border-gray-100 first:border-0 first:pt-0">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-gray-900 truncate">
+              ${escapeHtmlClient(r.name)}
+              ${r.isActive === false ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 ml-1">отключён</span>' : ''}
+            </div>
+            <div class="text-[11px] text-gray-400">Заказов: ${r.ordersCount}</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-sm font-medium text-gray-900">${money(r.totalRevenueRub)} ₽</div>
+            <div class="text-[11px] text-gray-400">доход ${money(r.totalProfitRub)} ₽</div>
+          </div>
+        </div>
+      `).join('');
+    }
 
     document.getElementById('staff-add-save-btn').addEventListener('click', async () => {
       const telegramId = document.getElementById('staff-add-telegram-id').value.trim();

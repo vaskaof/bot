@@ -27,7 +27,7 @@ window.Screens = window.Screens || {};
 // только "туда-обратно" внутри одного захода в приложение). Режим "Выбрать"
 // НЕ входит сюда намеренно — сбрасывается при каждом новом заходе на экран
 // (см. render() ниже), выбор заказов не должен переживать уход и возврат.
-const ordersListState = { query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0 };
+const ordersListState = { query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0, managerFilter: '' };
 
 window.Screens.orders = {
   render(root, dictionaries, params, signal) {
@@ -109,6 +109,13 @@ window.Screens.orders = {
           </button>
         </div>
 
+        <!-- Фаза 2 (roles/RBAC, M2.6) — только для admin, менеджер видит
+             только свои заказы жёстко, без выбора (см. render()). -->
+        <select id="manager-filter-select" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 text-[14px] outline-none focus:border-indigo-400">
+          <option value="">Все менеджеры</option>
+        </select>
+        <div id="mine-only-badge" class="hidden text-[11px] text-gray-400 px-1 mb-2">Показаны только ваши заказы</div>
+
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="orders-count"></div>
 
         <div id="orders-list"></div>
@@ -163,6 +170,7 @@ window.Screens.orders = {
     // комментарий у ordersListState выше.
     let displayCount = ordersListState.displayCount;
     let sortDirection = ordersListState.sortDirection;
+    let managerFilter = ordersListState.managerFilter; // Фаза 2 (roles/RBAC, M2.6) — admin-выбор, менеджеру не используется (жёсткий фильтр ниже)
 
     // Режим "Выбрать" (Э3) — module-scope этого render(), НЕ ordersListState
     // (см. её комментарий выше).
@@ -175,6 +183,8 @@ window.Screens.orders = {
     const searchInput = document.getElementById('order-search');
     const sortField = document.getElementById('sort-field');
     const sortDirBtn = document.getElementById('sort-direction');
+    const managerFilterSelect = document.getElementById('manager-filter-select');
+    const mineOnlyBadge = document.getElementById('mine-only-badge');
     const refreshBtn = document.getElementById('refresh-orders');
     const countLabel = document.getElementById('orders-count');
     const selectModeBtn = document.getElementById('select-mode-btn');
@@ -209,6 +219,21 @@ window.Screens.orders = {
     searchInput.value = ordersListState.query;
     sortField.value = ordersListState.sortFieldValue;
     renderSortDirButton();
+
+    // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — "мои заказы". Менеджер: жёсткий
+    // фильтр по своему telegramId, без переключателя. Админ: дропдаун по
+    // конкретному сотруднику, дефолт "Все", восстанавливается из ordersListState.
+    if (window.CURRENT_ACCESS_ROLE === 'manager') {
+      mineOnlyBadge.classList.remove('hidden');
+    } else if (window.CURRENT_ACCESS_ROLE === 'admin') {
+      callServer('getStaffList').then((staffList) => {
+        managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
+          staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
+        managerFilterSelect.value = managerFilter;
+        managerFilterSelect.classList.remove('hidden');
+      }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+    }
+    managerFilterSelect.addEventListener('change', () => { managerFilter = managerFilterSelect.value; render(); });
 
     loadOrders();
 
@@ -304,14 +329,22 @@ window.Screens.orders = {
       ordersListState.sortDirection = sortDirection;
       ordersListState.displayCount = displayCount;
       ordersListState.scrollY = window.scrollY;
+      ordersListState.managerFilter = managerFilter;
     });
 
     function render() {
       const query = searchInput.value.trim().toLowerCase();
 
       let filtered = allOrders;
+      // Фаза 2 (roles/RBAC, M2.6) — "мои заказы". Менеджер: всегда жёстко
+      // по своему telegramId (нет UI-переключателя). Админ: по выбору в
+      // manager-filter-select, пусто = все.
+      const effectiveManagerId = window.CURRENT_ACCESS_ROLE === 'manager' ? window.CURRENT_STAFF_TELEGRAM_ID : managerFilter;
+      if (effectiveManagerId) {
+        filtered = filtered.filter(o => o.managerId === effectiveManagerId);
+      }
       if (query !== '') {
-        filtered = allOrders.filter(o => {
+        filtered = filtered.filter(o => {
           const haystack = `${o.productDisplay} ${o.productOriginal} ${o.searchTags} ${o.statusOrder} ${o.statusDelivery} ${o.purchaseChannel} ${o.clientDisplay} ${o.orderId}`.toLowerCase();
           return haystack.includes(query);
         });

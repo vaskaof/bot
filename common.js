@@ -141,9 +141,13 @@ function initAccessCheck(onSuccess) {
                 const accessInfo = await callServer('getMyAccessInfo');
                 window.CURRENT_ACCESS_ROLE = accessInfo.accessRole;
                 window.CURRENT_STAFF_NAME = accessInfo.name;
+                // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — нужен orders.js/
+                // clients.js для клиентского фильтра "мои заказы/клиенты".
+                window.CURRENT_STAFF_TELEGRAM_ID = accessInfo.telegramId;
             } catch (error) {
                 window.CURRENT_ACCESS_ROLE = null;
                 window.CURRENT_STAFF_NAME = '';
+                window.CURRENT_STAFF_TELEGRAM_ID = '';
             }
             loadingScreen.classList.add('hidden');
             appContent.classList.remove('hidden');
