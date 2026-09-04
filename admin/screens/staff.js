@@ -7,6 +7,17 @@
  * Использует getStaffList/addStaffMember/updateStaffRole/
  * deactivateStaffMember/reactivateStaffMember/getStaffAuditLog — canonical
  * контракт в backend `webapp-api.md`.
+ *
+ * Доп. правка (04.09.2026, репорт VASY после M2.5/M2.6 — "сравнить персонал
+ * с пользователями"/"добавлять персонал находя из БД клиентов"):
+ * `getStaffList`'s элементы получили `clientName`/`clientUsername` (LEFT
+ * JOIN на clients, null — telegram_id ни разу не открывал бота). Форма
+ * добавления сотрудника — поиск по `searchClients` (уже существующий
+ * admin-метод, тот же паттерн, что order-new.js) вместо ручного ввода TG-ID
+ * по умолчанию; `pending:true`-результаты (синтетический telegramId
+ * клиентов, известных только по "Заказы") отфильтрованы — непригодны для
+ * staff.telegram_id. Ручной ввод остаётся доступен ("Ввести Telegram ID
+ * вручную") для сотрудников, ещё не открывавших бота.
  */
 window.Screens = window.Screens || {};
 window.Screens.staff = {
@@ -25,8 +36,17 @@ window.Screens.staff = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="staff-add-form" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 space-y-2">
           <div class="text-sm font-medium text-gray-900 mb-1">Добавить сотрудника</div>
+          <!-- Поиск по уже известным клиентам (04.09.2026, репорт VASY — "добавлять
+               персонал находя из БД клиентов"). Найден — telegramId настоящий,
+               берётся из clients, вводить руками не нужно. -->
+          <div class="relative">
+            <input type="text" id="staff-search-input" placeholder="Найти клиента по имени/username/ID..." autocomplete="off"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+            <ul id="staff-search-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+          </div>
+          <button type="button" id="staff-manual-toggle-btn" class="text-xs text-indigo-600 font-medium">Ввести Telegram ID вручную (сотрудник ещё не открывал бота)</button>
           <input type="text" id="staff-add-telegram-id" placeholder="Telegram ID (только цифры)" inputmode="numeric"
-            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+            class="hidden w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
           <input type="text" id="staff-add-name" placeholder="Имя (для отображения)"
             class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
           <select id="staff-add-role" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
@@ -54,6 +74,50 @@ window.Screens.staff = {
 
     document.getElementById('staff-add-toggle-btn').addEventListener('click', () => {
       document.getElementById('staff-add-form').classList.toggle('hidden');
+    }, { signal });
+
+    // --- Поиск клиента для добавления в персонал (04.09.2026, репорт VASY) ---
+    const staffSearchInput = document.getElementById('staff-search-input');
+    const staffSearchDropdown = document.getElementById('staff-search-dropdown');
+    const staffManualToggleBtn = document.getElementById('staff-manual-toggle-btn');
+    const staffTelegramIdInput = document.getElementById('staff-add-telegram-id');
+    const staffNameInput = document.getElementById('staff-add-name');
+    let selectedTelegramId = '';
+
+    staffManualToggleBtn.addEventListener('click', () => {
+      staffTelegramIdInput.classList.remove('hidden');
+      staffSearchInput.value = '';
+      staffSearchDropdown.classList.remove('active');
+      selectedTelegramId = '';
+      staffTelegramIdInput.focus();
+    }, { signal });
+
+    const handleStaffSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { staffSearchDropdown.classList.remove('active'); return; }
+
+      const results = await callServer('searchClients', query);
+      // pending:true — синтетический telegramId (клиент известен только по
+      // "Заказы", не настоящий Telegram ID), непригоден для staff.telegram_id
+      // (см. backend clientsService.searchClients JSDoc) — исключаем.
+      const realResults = results.filter((item) => !item.pending);
+      FormHelpers.renderDropdown(staffSearchDropdown, realResults, (item) => `
+        <div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.displayName)}</div>
+      `, (item) => {
+        staffSearchInput.value = item.displayName;
+        selectedTelegramId = item.telegramId;
+        if (staffNameInput.value.trim() === '') staffNameInput.value = item.name || '';
+        staffSearchDropdown.classList.remove('active');
+        staffTelegramIdInput.classList.add('hidden');
+        staffTelegramIdInput.value = '';
+      });
+    }, 300);
+    staffSearchInput.addEventListener('input', handleStaffSearch, { signal });
+    staffSearchInput.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) staffSearchDropdown.classList.add('active'); }, { signal });
+    document.addEventListener('click', (e) => {
+      if (!staffSearchInput.contains(e.target) && !staffSearchDropdown.contains(e.target)) {
+        staffSearchDropdown.classList.remove('active');
+      }
     }, { signal });
 
     let reportDays = 30;
@@ -115,11 +179,15 @@ window.Screens.staff = {
     }
 
     document.getElementById('staff-add-save-btn').addEventListener('click', async () => {
-      const telegramId = document.getElementById('staff-add-telegram-id').value.trim();
-      const name = document.getElementById('staff-add-name').value.trim();
+      // Telegram ID — из выбора в поиске (selectedTelegramId) ИЛИ из ручного
+      // ввода (виден только после "Ввести Telegram ID вручную"); manual-поле
+      // имеет приоритет, если видимо (пользователь явно переключился на него).
+      const manualId = staffTelegramIdInput.classList.contains('hidden') ? '' : staffTelegramIdInput.value.trim();
+      const telegramId = manualId || selectedTelegramId;
+      const name = staffNameInput.value.trim();
       const accessRole = document.getElementById('staff-add-role').value;
       if (!/^\d+$/.test(telegramId)) {
-        showSaveToast(false, 'Telegram ID должен состоять только из цифр.');
+        showSaveToast(false, telegramId === '' ? 'Найдите клиента или введите Telegram ID вручную.' : 'Telegram ID должен состоять только из цифр.');
         return;
       }
       const btn = document.getElementById('staff-add-save-btn');
@@ -128,8 +196,11 @@ window.Screens.staff = {
       try {
         await callServer('addStaffMember', telegramId, name, accessRole);
         showSaveToast(true, 'Сотрудник добавлен.');
-        document.getElementById('staff-add-telegram-id').value = '';
-        document.getElementById('staff-add-name').value = '';
+        staffSearchInput.value = '';
+        staffTelegramIdInput.value = '';
+        staffTelegramIdInput.classList.add('hidden');
+        selectedTelegramId = '';
+        staffNameInput.value = '';
         document.getElementById('staff-add-form').classList.add('hidden');
         await load();
       } catch (error) {
@@ -141,6 +212,21 @@ window.Screens.staff = {
 
     if (window.lucide) window.lucide.createIcons();
     load();
+
+    /**
+     * Сравнение введённого вручную staff.name с реальным клиентом
+     * (04.09.2026, репорт VASY) — clientName/clientUsername приходят из
+     * getStaffList (LEFT JOIN на clients по telegram_id). Оба null — этот
+     * telegram_id ни разу не открывал бота, staff.name невозможно
+     * перепроверить.
+     */
+    function clientIdentityLine(item) {
+      if (item.clientName === null && item.clientUsername === null) {
+        return '<div class="text-[11px] text-amber-600 mt-0.5">Не найден среди клиентов (ни разу не открывал бота)</div>';
+      }
+      const label = [item.clientName, item.clientUsername].filter(Boolean).join(', ');
+      return `<div class="text-[11px] text-gray-400 mt-0.5">Клиент: ${escapeHtmlClient(label)}</div>`;
+    }
 
     async function load() {
       const listEl = document.getElementById('staff-list');
@@ -166,6 +252,7 @@ window.Screens.staff = {
             <div class="min-w-0">
               <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(item.name || '(без имени)')}</div>
               <div class="text-xs text-gray-400">ID ${escapeHtmlClient(item.telegramId)}</div>
+              ${clientIdentityLine(item)}
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-[11px] px-2 py-0.5 rounded-full ${item.accessRole === 'admin' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600'}">${item.accessRole === 'admin' ? 'Админ' : 'Менеджер'}</span>
