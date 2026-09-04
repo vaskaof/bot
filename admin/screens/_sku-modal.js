@@ -67,24 +67,31 @@ window.SkuModal = {
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Бренд</label>
-              <input type="text" id="sku-brand-input" list="sku-brand-datalist"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно" autocomplete="off">
-              <datalist id="sku-brand-datalist"></datalist>
+              <div class="relative">
+                <input type="text" id="sku-brand-input" autocomplete="off"
+                  class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Необязательно">
+                <ul id="sku-brand-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              </div>
             </div>
             <div>
-              <label class="text-xs font-medium text-gray-500">Персонаж</label>
-              <input type="text" id="sku-character-input" list="sku-character-datalist"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно" autocomplete="off">
-              <datalist id="sku-character-datalist"></datalist>
+              <label class="text-xs font-medium text-gray-500">Персонаж(и)</label>
+              <div id="sku-character-chips" class="flex flex-wrap gap-1.5 mt-1 empty:hidden"></div>
+              <div class="relative mt-1.5">
+                <input type="text" id="sku-character-input" autocomplete="off"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Добавить персонажа, Enter — подтвердить">
+                <ul id="sku-character-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Серия</label>
-              <input type="text" id="sku-series-input" list="sku-series-datalist"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
-                placeholder="Необязательно" autocomplete="off">
-              <datalist id="sku-series-datalist"></datalist>
+              <div class="relative">
+                <input type="text" id="sku-series-input" autocomplete="off"
+                  class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+                  placeholder="Необязательно">
+                <ul id="sku-series-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылки</label>
@@ -179,23 +186,139 @@ window.SkuModal = {
 
     // Автоподсказки Бренд/Персонаж/Серия из уже использованных значений
     // (слой 1 плана дедупликации каталога, 03.08.2026) — снижает разнобой
-    // написания одного и того же тега. Не блокирует свободный ввод нового
-    // значения — обычный HTML5 datalist, просто подсказка. Загружается один
-    // раз при монтировании экрана, не на каждое открытие модалки.
-    (async function loadTagDatalists() {
+    // написания одного и того же тега. Загружается один раз при монтировании
+    // экрана, не на каждое открытие модалки.
+    //
+    // ИСПРАВЛЕНО 05.09.2026 (репорт менеджера: "нажимает на Персонаж,
+    // выбирает из списка — ничего не вставляется") — раньше это был родной
+    // HTML5 `<input list=...>`+`<datalist>`. Нативный datalist ненадёжен
+    // именно в мобильных WebView (Android/iOS Telegram-клиент рендерит
+    // подсказки, но выбор по тапу не всегда реально проставляет `.value` —
+    // известная проблема платформы, не код этого проекта). Поле "Выпуск"
+    // рядом в этой же форме НИКОГДА не страдало этим, потому что у него уже
+    // был свой полностью самописный JS-дропдаун (`sku-original-dropdown`) —
+    // теперь Бренд/Персонаж/Серия переведены на тот же проверенный паттерн
+    // (`FormHelpers.renderDropdown` не переиспользован напрямую, т.к. он
+    // рассчитан на асинхронный поиск с debounce; здесь достаточно синхронной
+    // фильтрации по уже загруженному массиву).
+    let knownBrands = [];
+    let knownCharacters = [];
+    let knownSeries = [];
+    (async function loadTagValues() {
       try {
         const tags = await callServer('getCatalogTagValues');
-        const fill = (listId, values) => {
-          document.getElementById(listId).innerHTML =
-            values.map(v => `<option value="${escapeHtmlClient(v)}">`).join('');
-        };
-        fill('sku-brand-datalist', tags.brands);
-        fill('sku-character-datalist', tags.characters);
-        fill('sku-series-datalist', tags.series);
+        knownBrands = tags.brands || [];
+        knownCharacters = tags.characters || [];
+        knownSeries = tags.series || [];
       } catch (error) {
         // Подсказки — удобство, не критичная функциональность; тихо не показываем при сбое.
       }
     })();
+
+    /**
+     * Общий самописный дропдаун-автокомплит поверх уже загруженного массива
+     * значений (Бренд/Серия — одиночный выбор, клик просто подставляет
+     * значение в input). У Персонажа — свой отдельный вариант ниже
+     * (множественный выбор чипами, с исключением уже добавленных).
+     */
+    function wireSingleTagAutocomplete(inputId, dropdownId, getValues) {
+      const input = document.getElementById(inputId);
+      const dropdown = document.getElementById(dropdownId);
+
+      function renderSuggestions() {
+        const query = input.value.trim().toLowerCase();
+        if (query === '') { dropdown.classList.remove('active'); return; }
+        const matches = getValues().filter(v => v.toLowerCase().includes(query)).slice(0, 8);
+        if (matches.length === 0) { dropdown.classList.remove('active'); return; }
+
+        dropdown.innerHTML = matches.map(v => `<li class="p-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0 text-sm text-gray-700">${escapeHtmlClient(v)}</li>`).join('');
+        Array.from(dropdown.children).forEach((li, idx) => {
+          // mousedown, не click — срабатывает РАНЬШЕ blur инпута ниже, иначе
+          // дропдаун успевает скрыться до того, как долетит клик по пункту
+          // (тот же приём, что уже используется для "Выпуск" в этом файле).
+          li.addEventListener('mousedown', () => {
+            input.value = matches[idx];
+            dropdown.classList.remove('active');
+          });
+        });
+        dropdown.classList.add('active');
+      }
+
+      input.addEventListener('input', renderSuggestions);
+      input.addEventListener('focus', renderSuggestions);
+      input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('active'), 150));
+    }
+
+    wireSingleTagAutocomplete('sku-brand-input', 'sku-brand-dropdown', () => knownBrands);
+    wireSingleTagAutocomplete('sku-series-input', 'sku-series-dropdown', () => knownSeries);
+
+    // Персонаж(и) — множественный выбор (репорт VASY 05.09.2026: серии с
+    // 2+ персонажами раньше физически некуда было вписать второго). Хранится
+    // в UI как массив чипов, на сервер уходит одной строкой через запятую —
+    // без миграции: колонка `catalog_skus.character` остаётся тем же text-
+    // полем, что и раньше, старые одиночные значения читаются как один чип.
+    let characterChips = [];
+
+    function renderCharacterChips() {
+      const container = document.getElementById('sku-character-chips');
+      container.innerHTML = characterChips.map((name, idx) => `
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs">
+          ${escapeHtmlClient(name)}
+          <button type="button" class="character-chip-remove text-indigo-400 hover:text-indigo-700" data-idx="${idx}">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+        </span>
+      `).join('');
+      container.querySelectorAll('.character-chip-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          characterChips.splice(parseInt(btn.dataset.idx, 10), 1);
+          renderCharacterChips();
+        });
+      });
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function addCharacterChip(rawName) {
+      const name = rawName.trim();
+      if (name === '') return;
+      if (characterChips.some(c => c.toLowerCase() === name.toLowerCase())) return; // уже добавлен, тихий no-op
+      characterChips.push(name);
+      renderCharacterChips();
+    }
+
+    const characterInput = document.getElementById('sku-character-input');
+    const characterDropdown = document.getElementById('sku-character-dropdown');
+
+    function renderCharacterSuggestions() {
+      const query = characterInput.value.trim().toLowerCase();
+      if (query === '') { characterDropdown.classList.remove('active'); return; }
+      const matches = knownCharacters
+        .filter(v => v.toLowerCase().includes(query))
+        .filter(v => !characterChips.some(c => c.toLowerCase() === v.toLowerCase()))
+        .slice(0, 8);
+      if (matches.length === 0) { characterDropdown.classList.remove('active'); return; }
+
+      characterDropdown.innerHTML = matches.map(v => `<li class="p-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors last:border-0 text-sm text-gray-700">${escapeHtmlClient(v)}</li>`).join('');
+      Array.from(characterDropdown.children).forEach((li, idx) => {
+        li.addEventListener('mousedown', () => {
+          addCharacterChip(matches[idx]);
+          characterInput.value = '';
+          characterDropdown.classList.remove('active');
+        });
+      });
+      characterDropdown.classList.add('active');
+    }
+
+    characterInput.addEventListener('input', renderCharacterSuggestions);
+    characterInput.addEventListener('focus', renderCharacterSuggestions);
+    characterInput.addEventListener('blur', () => setTimeout(() => characterDropdown.classList.remove('active'), 150));
+    characterInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // не отправлять форму/модалку по Enter
+      addCharacterChip(characterInput.value);
+      characterInput.value = '';
+      characterDropdown.classList.remove('active');
+    });
 
     // Слой 5 (опционально) — авто-подстановка Бренда по словарю известных
     // франшиз, только если поле Бренд ещё пусто (никогда не перезаписывает
@@ -448,7 +571,12 @@ window.SkuModal = {
           document.getElementById('sku-original-input').value = details.original;
           document.getElementById('sku-short-input').value = details.shortName;
           document.getElementById('sku-brand-input').value = details.brand;
-          document.getElementById('sku-character-input').value = details.character;
+          // "Персонаж" хранится на сервере одной строкой через запятую
+          // (несколько персонажей, 05.09.2026) — старые позиции с ровно
+          // одним значением превращаются в один чип, без миграции данных.
+          characterChips = details.character ? details.character.split(',').map(s => s.trim()).filter(Boolean) : [];
+          document.getElementById('sku-character-input').value = '';
+          renderCharacterChips();
           document.getElementById('sku-series-input').value = details.series;
           document.getElementById('sku-image-input').value = details.imageUrl || '';
           document.getElementById('sku-description-input').value = details.description || '';
@@ -467,6 +595,8 @@ window.SkuModal = {
         ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input',
           'sku-image-input', 'sku-description-input', 'sku-link-add-input']
           .forEach(id => { document.getElementById(id).value = ''; });
+        characterChips = [];
+        renderCharacterChips();
 
         // Prefill (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
         // форма заказа передаёт сюда то, что менеджер уже напечатал в поле
@@ -524,7 +654,7 @@ window.SkuModal = {
             original: document.getElementById('sku-original-input').value.trim(),
             shortName: document.getElementById('sku-short-input').value.trim(),
             brand: document.getElementById('sku-brand-input').value.trim(),
-            character: document.getElementById('sku-character-input').value.trim(),
+            character: characterChips.join(', '),
             series: document.getElementById('sku-series-input').value.trim(),
             imageUrl: document.getElementById('sku-image-input').value.trim(),
             description: document.getElementById('sku-description-input').value.trim()
@@ -643,11 +773,17 @@ window.SkuModal = {
         return;
       }
 
+      // Захватываем текст, который менеджер напечатал в поле "Персонаж", но
+      // не подтвердил Enter/кликом по подсказке — иначе набранное, но не
+      // добавленное явным действием, тихо терялось бы при сохранении.
+      addCharacterChip(characterInput.value);
+      characterInput.value = '';
+
       const skuData = {
         original: original,
         shortName: document.getElementById('sku-short-input').value.trim(),
         brand: document.getElementById('sku-brand-input').value.trim(),
-        character: document.getElementById('sku-character-input').value.trim(),
+        character: characterChips.join(', '),
         series: document.getElementById('sku-series-input').value.trim(),
         // Только для проверки на дубль на входе (createSku/updateSku не пишут
         // link в саму строку SKU, Фаза 2, 03.08.2026) — первая из накопленных
