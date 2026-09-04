@@ -131,6 +131,20 @@ function initAccessCheck(onSuccess) {
     (async function () {
         try {
             const dictionaries = await callServer('getDictionaries');
+            // Фаза 2 (roles/RBAC, 04.09.2026) — роль текущего пользователя
+            // (admin/manager), нужна экранам, чтобы скрыть admin-only UI от
+            // менеджера (см. более.js/settings.js). Best-effort — сбой ЭТОГО
+            // запроса не должен блокировать открытие всей панели целиком;
+            // отсутствие window.CURRENT_ACCESS_ROLE трактуется экранами как
+            // "не показывать admin-only" (безопасный дефолт, не наоборот).
+            try {
+                const accessInfo = await callServer('getMyAccessInfo');
+                window.CURRENT_ACCESS_ROLE = accessInfo.accessRole;
+                window.CURRENT_STAFF_NAME = accessInfo.name;
+            } catch (error) {
+                window.CURRENT_ACCESS_ROLE = null;
+                window.CURRENT_STAFF_NAME = '';
+            }
             loadingScreen.classList.add('hidden');
             appContent.classList.remove('hidden');
             onSuccess(dictionaries);

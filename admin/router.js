@@ -28,7 +28,7 @@
  * MORE_GROUP ниже — единственное место, которое обе стороны (view app.html
  * и подсветка активного пункта здесь) обязаны знать одинаково.
  */
-const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet'];
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -44,6 +44,9 @@ const ROUTES = [
   // буфера/личных закупок, см. wallet.js. В MORE_GROUP наравне с settings/
   // contests/analytics/clients — та же логика сворачивания под "Ещё".
   { path: 'wallet', screen: 'wallet', navKey: 'wallet', showNav: true },
+  // Фаза 2 (roles/RBAC, M2.3, 04.09.2026) — admin-only (см. more.js/app.html
+  // — кнопка/карточка скрыты для менеджера; серверный гейт — MANAGER_ALLOWED_METHODS).
+  { path: 'staff', screen: 'staff', navKey: 'staff', showNav: true },
   { path: 'collectives', screen: 'collectives', navKey: null, showNav: true },
   // Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) — тот же
   // паттерн, что 'collectives'/'orders/new' — список + форма создания,
@@ -361,6 +364,15 @@ function startAdminRouter() {
   }
 
   initAccessCheck(function (dictionaries) {
+    // Фаза 2 (roles/RBAC, M2.3, 04.09.2026) — кнопка "Персонал" в разметке
+    // app.html присутствует всегда (роль неизвестна на этапе статического
+    // HTML), прячем её явно для не-admin здесь, СРАЗУ после того, как роль
+    // стала известна (window.CURRENT_ACCESS_ROLE — см. common.js
+    // initAccessCheck). Косметика — реальный гейт уже на сервере.
+    if (window.CURRENT_ACCESS_ROLE !== 'admin') {
+      const staffNavBtn = document.getElementById('staff-nav-btn');
+      if (staffNavBtn) staffNavBtn.style.display = 'none';
+    }
     renderRoute(dictionaries);
     window.addEventListener('hashchange', () => renderRoute(dictionaries));
   });

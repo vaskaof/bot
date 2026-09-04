@@ -21,6 +21,7 @@
   <script src="screens/_writeoff-modal.js?v=2"></script>
   <script src="screens/wishlist-demand.js?v=8"></script>
   <script src="screens/wallet.js?v=7"></script>
+  <script src="screens/staff.js?v=1"></script>
   <script src="screens/home.js?v=3"></script>
   <script src="screens/more.js?v=2"></script>
   <script src="screens/clients.js?v=4"></script>
@@ -189,6 +190,14 @@
       <button type="button" data-nav-key="wallet" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
         <i data-lucide="coins" class="w-[22px] h-[22px]"></i>
         <span class="text-[10px] font-medium leading-none">Кошелёк</span>
+      </button>
+      <!-- Фаза 2 (roles/RBAC, M2.3, 04.09.2026) — admin-only. Присутствует в
+           разметке всегда (роль ещё не известна на этапе статического HTML),
+           router.js прячет её для менеджера сразу после initAccessCheck —
+           см. startAdminRouter. -->
+      <button type="button" data-nav-key="staff" id="staff-nav-btn" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1.5 text-gray-400 hover:text-indigo-600 transition-colors pb-2 h-full">
+        <i data-lucide="user-cog" class="w-[22px] h-[22px]"></i>
+        <span class="text-[10px] font-medium leading-none">Персонал</span>
       </button>
 
       <!-- Узкий экран: сворачивает три кнопки выше под одну -->

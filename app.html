@@ -34,7 +34,11 @@
     (async function () {
       try {
         const context = await fetchUserContext();
-        if (context.role === 'admin') {
+        // Фаза 2 (roles/RBAC, 04.09.2026) — 'manager' уводится на ту же
+        // admin-панель, что 'admin' (там же серверный whitelist
+        // MANAGER_ALLOWED_METHODS решает, что менеджеру реально доступно —
+        // здесь только маршрутизация, не проверка прав).
+        if (context.role === 'admin' || context.role === 'manager') {
           window.location.replace('admin/app.html#/news');
         } else {
           window.location.replace('client/app.html#/news');

@@ -39,7 +39,13 @@ window.Screens.more = {
       { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' },
       // Э2 рефакторинга экономики, 25.08.2026 — "Факт выкупа" сюда не входит,
       // он привязан к заказу и открывается с экрана заказа (order-edit.js).
-      { route: 'wallet', icon: 'coins', title: 'Кошелёк ₸', description: 'Конвертация ₽→₸, буфер по каналам, личные закупки' }
+      { route: 'wallet', icon: 'coins', title: 'Кошелёк ₸', description: 'Конвертация ₽→₸, буфер по каналам, личные закупки' },
+      // Фаза 2 (roles/RBAC, M2.3, 04.09.2026) — admin-only, менеджер карточку
+      // вообще не видит (не просто задизейблена — её нет в массиве). Это
+      // косметика, реальный гейт уже на сервере (MANAGER_ALLOWED_METHODS).
+      ...(window.CURRENT_ACCESS_ROLE === 'admin'
+        ? [{ route: 'staff', icon: 'user-cog', title: 'Персонал', description: 'Менеджеры/админы, роли, журнал изменений' }]
+        : [])
     ];
 
     const list = document.getElementById('more-list');
