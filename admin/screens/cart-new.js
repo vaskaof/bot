@@ -180,12 +180,23 @@ window.Screens.cartNew = {
              ПОСЛЕДНИЙ блок экрана, как итог/завершение (репорт VASY
              05.09.2026 — раньше стоял над списком заявок, до того как
              менеджер вообще что-то добавил). -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between">
-          <div>
-            <div class="text-sm font-medium text-gray-700">Итого корзины</div>
-            <div class="text-[11px] text-gray-400 inline-flex items-center gap-1">Средняя комиссия${helpIcon('Средняя комиссия', '<p>Read-only сводка — взвешенное среднее по уже введённым комиссиям заявок. Ничего не сохраняется отдельно и ни на что не влияет, комиссия по-прежнему считается только на позициях.</p>')}: <span id="cart-avg-commission">—</span></div>
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-gray-700">Итого корзины</div>
+              <div class="text-[11px] text-gray-400 inline-flex items-center gap-1">Средняя комиссия${helpIcon('Средняя комиссия', '<p>Read-only сводка — взвешенное среднее по уже введённым комиссиям заявок. Ничего не сохраняется отдельно и ни на что не влияет, комиссия по-прежнему считается только на позициях.</p>')}: <span id="cart-avg-commission">—</span></div>
+            </div>
+            <div class="text-lg font-bold text-gray-900"><span id="cart-total-rub">0.00</span> ₽</div>
           </div>
-          <div class="text-lg font-bold text-gray-900"><span id="cart-total-rub">0.00</span> ₽</div>
+          <!-- «Итог с сайта выкупа» (доп. раунд 05.09.2026, репорт VASY) —
+               необязательно, пусто = ничего не меняется. Заполнено —
+               разница с суммой позиций делится между заявками по их долям
+               (слайдер "Доля разницы" появляется на каждой карточке ниже). -->
+          <div class="mt-3 pt-3 border-t border-gray-100">
+            <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Итог с сайта выкупа, в валюте корзины${helpIcon('Итог с сайта выкупа', '<p>Необязательно. Итоговая сумма чека с сайта/площадки выкупа целиком — если она отличается от суммы, введённой по заявкам (округление, общие расходы площадки и т.п.), разница распределяется между заявками пропорционально их «Доле разницы» (по умолчанию — поровну, слайдер на каждой заявке).</p><p>Пусто — работает как раньше, без разбивки.</p>')}</label>
+            <input type="number" id="cart-site-total-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none mt-1" placeholder="0.00 — необязательно" step="0.01">
+            <div id="cart-site-total-diff" class="hidden text-[11px] text-gray-500 mt-1.5"></div>
+          </div>
         </div>
 
         ${ManualClientModal.html()}
@@ -259,8 +270,41 @@ window.Screens.cartNew = {
     function searchClientStub(query) { return callServer('searchClients', query); }
     function searchReleaseStub(query) { return callServer('searchSku', query); }
 
+    // Разбивка суммы между заявками пропорционально весу поверх уже
+    // известных базовых цен — клиентская копия backend `splitProportionally`
+    // (server/src/lots/splitProportionally.js), намеренное дублирование
+    // (см. её JSDoc), только для мгновенного визуального фидбека. Раньше
+    // была ЛОКАЛЬНОЙ функцией внутри addLotItem (пересоздавалась на каждый
+    // лот) — вынесена сюда 05.09.2026, чтобы её мог использовать И лот
+    // (разбивка МЕЖДУ его позициями), И новая разбивка "Итог с сайта
+    // выкупа" на уровне всей корзины (МЕЖДУ заявками) — та же формула,
+    // один уровень выше.
+    function splitProportionallyClient(pool, rows, roundingStep) {
+      const step = roundingStep && roundingStep > 0 ? roundingStep : 0.01;
+      const result = new Map();
+      if (rows.length === 0) return result;
+      const basePrices = rows.map((r) => Number(r.basePrice) || 0);
+      const basesSum = basePrices.reduce((s, v) => s + v, 0);
+      const remainder = pool - basesSum;
+      const weights = rows.map((r) => (r.weight === null || r.weight === undefined ? 1 : Number(r.weight) || 0));
+      const totalWeight = weights.reduce((s, w) => s + w, 0);
+      const rawShares = rows.map((r, i) => (totalWeight > 0 ? (remainder * weights[i]) / totalWeight : 0));
+      const rawFinals = rows.map((r, i) => basePrices[i] + rawShares[i]);
+      let roundedSum = 0, largestIndex = 0;
+      rows.forEach((r, i) => {
+        const rounded = Math.round(rawFinals[i] / step) * step;
+        result.set(r.id, rounded);
+        roundedSum += rounded;
+        if (rawShares[i] > rawShares[largestIndex]) largestIndex = i;
+      });
+      const roundingRemainder = pool - roundedSum;
+      const targetId = rows[largestIndex].id;
+      result.set(targetId, (result.get(targetId) || 0) + roundingRemainder);
+      return result;
+    }
+
     // --- Итого/средняя комиссия (§4 п.4/п.5) ---
-    let items = []; // { type:'position'|'lot', getTotalRub(), getCommissionRub(), onRateChanged(), getPayload(), removeEl() }
+    let items = []; // { type:'position'|'lot', getTotalRub(), getCommissionRub(), onRateChanged(), getPayload(), removeEl(), getCostCoefficient(), reconciledDisplayEl?, coefBlockEl? }
     let itemSeq = 0;
 
     function recomputeTotals() {
@@ -270,7 +314,43 @@ window.Screens.cartNew = {
       avgCommissionDisplay.textContent = totalRub > 0
         ? `${((totalCommission / totalRub) * 100).toFixed(1)}% (${totalCommission.toFixed(2)} ₽)`
         : '—';
+      recomputeSiteTotalReconciliation(totalRub);
     }
+
+    // «Итог с сайта выкупа» (доп. раунд 05.09.2026, репорт VASY: "должны
+    // быть стоимости позиций, помимо этого стоимость всей корзины, их
+    // разница должна делиться между заказами с возможностью настройки") —
+    // необязательное поле в шапке "Итого корзины" (внизу экрана). Пусто —
+    // ничего не меняется визуально (та же карточка, что была всегда), сумма
+    // заявок остаётся единственным источником "Итого". Заполнено —
+    // показывает разницу с суммой позиций и живую разбивку по каждой
+    // заявке (та же формула/тот же UX, что уже есть внутри лота — здесь
+    // ровно на уровень выше). Ничего не отправляется на сервер отдельно —
+    // `buildPayload()` читает это же поле напрямую в header.
+    const siteTotalInput = document.getElementById('cart-site-total-input');
+    const siteTotalDiffEl = document.getElementById('cart-site-total-diff');
+    function recomputeSiteTotalReconciliation(totalRub) {
+      const raw = parseFloat(siteTotalInput.value);
+      const active = raw > 0;
+      items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.toggle('hidden', !active); });
+      if (!active) { siteTotalDiffEl.classList.add('hidden'); return; }
+
+      const poolRub = raw * currentRate;
+      const diffRub = poolRub - totalRub;
+      siteTotalDiffEl.classList.remove('hidden');
+      siteTotalDiffEl.textContent = Math.abs(diffRub) < 0.01
+        ? 'Совпадает с суммой позиций.'
+        : `Расходится с суммой позиций на ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`;
+
+      const rows = items.map((it) => ({ id: it.id, weight: it.getCostCoefficient(), basePrice: it.getTotalRub() }));
+      const shares = splitProportionallyClient(poolRub, rows, 1);
+      items.forEach((it) => {
+        if (!it.reconciledDisplayEl) return;
+        const shareRub = shares.get(it.id) || 0;
+        it.reconciledDisplayEl.textContent = `С учётом итога корзины: ${shareRub.toFixed(2)} ₽`;
+      });
+    }
+    siteTotalInput.addEventListener('input', () => recomputeTotals());
 
     const itemsList = document.getElementById('cart-items-list');
 
@@ -314,6 +394,19 @@ window.Screens.cartNew = {
             <input type="number" class="amount-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
           </div>
           <div class="text-xs text-gray-500 shrink-0">≈ <span class="amount-rub-display">0.00</span> ₽</div>
+        </div>
+
+        <!-- «Доля разницы» — видна ТОЛЬКО когда заполнено «Итог с сайта
+             выкупа» внизу экрана (доп. раунд 05.09.2026), см. её JSDoc в
+             render(). Скрыта по умолчанию — не захламляет обычное
+             создание, где этим полем никто не пользуется. -->
+        <div class="cost-coef-block hidden mb-2 pt-2 border-t border-gray-100">
+          <div class="flex items-center justify-between text-[11px] text-gray-500">
+            <span>Доля разницы с итогом корзины</span>
+            <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
+          </div>
+          <input type="range" min="0" max="2" step="0.25" value="1" class="cost-coef-slider w-full">
+          <div class="reconciled-display text-[11px] text-gray-500 mt-1"></div>
         </div>
 
         <div class="grid grid-cols-2 gap-2 mb-2">
@@ -396,7 +489,12 @@ window.Screens.cartNew = {
         taxiRfEl: rowEl.querySelector('.taxi-rf-input'),
         taxiRfSendEl: rowEl.querySelector('.taxi-rf-send-input'),
         shippingRfEl: rowEl.querySelector('.shipping-rf-input'),
-        taxiRfReceiveEl: rowEl.querySelector('.taxi-rf-receive-input')
+        taxiRfReceiveEl: rowEl.querySelector('.taxi-rf-receive-input'),
+        costCoefficient: 1,
+        coefBlockEl: rowEl.querySelector('.cost-coef-block'),
+        costCoefSliderEl: rowEl.querySelector('.cost-coef-slider'),
+        costFractionLabelEl: rowEl.querySelector('.coef-fraction-label'),
+        reconciledDisplayEl: rowEl.querySelector('.reconciled-display')
       };
 
       if (prefillClient) {
@@ -415,6 +513,17 @@ window.Screens.cartNew = {
       item.ownPurchaseCheckboxEl.addEventListener('change', () => {
         rowEl.querySelector('.client-row').classList.toggle('hidden', item.ownPurchaseCheckboxEl.checked);
         item.clientDropdownEl.classList.remove('active');
+      });
+
+      // «Доля разницы» (доп. раунд 05.09.2026) — блок скрыт, пока не
+      // заполнено «Итог с сайта выкупа» (см. recomputeSiteTotalReconciliation
+      // в render()), но слайдер уже живой — тянуть можно только за бегунок
+      // (тот же common.js:wireSliderThumbGuard, что везде в приложении).
+      wireSliderThumbGuard(item.costCoefSliderEl);
+      item.costCoefSliderEl.addEventListener('input', () => {
+        item.costCoefficient = parseFloat(item.costCoefSliderEl.value);
+        item.costFractionLabelEl.textContent = item.costCoefficient.toFixed(2);
+        recomputeTotals();
       });
 
       // Ссылка на покупку — тот же паттерн, что order-new.js:794-969.
@@ -519,7 +628,17 @@ window.Screens.cartNew = {
         item.amountRubDisplayEl.textContent = (amount * currentRate).toFixed(2);
         recomputeTotals();
       }
-      item.amountInputEl.addEventListener('input', () => { updateAmountRub(); fetchForecast(); });
+      // ИСПРАВЛЕНО 05.09.2026 (репорт VASY — "процент написан один, а
+      // реальный отличается") — раньше ввод "Суммы" пересчитывал только
+      // рублёвое отображение самой суммы, но НЕ "Комиссию ₽" — если
+      // менеджер сначала выставлял комиссию (% или ₽), а потом
+      // ПОПРАВЛЯЛ сумму (или наоборот — вводил сумму позже), поле "Комиссия
+      // ₽" оставалось привязано к СТАРОЙ сумме, расходясь с тем, что
+      // реально означает введённый %. `updateFeeRub()` уже безопасна для
+      // повторного вызова (не трогает поле, если оно сейчас в фокусе — см.
+      // ниже) и уже вызывается по этому же принципу на смене курса
+      // (`onRateChanged`) — теперь и на смене суммы.
+      item.amountInputEl.addEventListener('input', () => { updateAmountRub(); updateFeeRub(); fetchForecast(); });
 
       function updateFeeRub() {
         const percent = parseFloat(item.feePercentEl.value) || 0;
@@ -577,6 +696,7 @@ window.Screens.cartNew = {
       };
       item.getTotalRub = () => (parseFloat(item.amountInputEl.value) || 0) * currentRate;
       item.getCommissionRub = () => parseFloat(item.feeRubEl.value) || 0;
+      item.getCostCoefficient = () => item.costCoefficient;
       // Валидация комиссионного гейта перед сохранением — вызывается из
       // saveCart() на КАЖДОЙ позиции (см. §2.1 плана), не здесь.
       // «Личный заказ» исключён из гейта — тот же принцип, что order-new.js's
@@ -597,6 +717,11 @@ window.Screens.cartNew = {
           isOwnPurchase: item.ownPurchaseCheckboxEl.checked,
           productOriginal: item.productOriginal || item.productSearchEl.value,
           amount: item.amountInputEl.value,
+          // «Доля разницы» (доп. раунд 05.09.2026) — служебное поле, задействуется
+          // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа» (см.
+          // cartsService.createCart JSDoc); сервер сам его отбрасывает из
+          // payload createOrder, если реально не используется.
+          costCoefficient: item.costCoefficient,
           bookingSum: item.feeRubEl.value,
           // Цель стадии "Основная" ("Осталось") — БЕЗ этого paymentsService.
           // setStageTarget для неё вообще не вызывается (тот же реальный баг,
@@ -676,6 +801,18 @@ window.Screens.cartNew = {
               <input type="number" class="lot-amount-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
             </div>
           </div>
+          <!-- «Доля разницы» — весь ЛОТ как ОДНА заявка корзины (не путать
+               со слайдерами долей ВНУТРИ лота ниже) — видна ТОЛЬКО когда
+               заполнено «Итог с сайта выкупа» внизу экрана, см. её JSDoc в
+               render(). -->
+          <div class="cost-coef-block hidden mb-2">
+            <div class="flex items-center justify-between text-[11px] text-gray-500">
+              <span>Доля разницы с итогом корзины (лот целиком)</span>
+              <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
+            </div>
+            <input type="range" min="0" max="2" step="0.25" value="1" class="cost-coef-slider w-full">
+            <div class="reconciled-display text-[11px] text-gray-500 mt-1"></div>
+          </div>
           <div class="mb-2">
             <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Округление${helpIcon('Округление', '<p>Сумма каждой позиции лота округляется до выбранного шага, остаток от округления уходит на позицию с наибольшей долей разницы.</p>')}</label>
             <select class="lot-rounding-select w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none">
@@ -702,6 +839,21 @@ window.Screens.cartNew = {
       const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
       const positionsList = wrapEl.querySelector('.lot-positions-list');
       const addPositionBtn = wrapEl.querySelector('.add-lot-position-btn');
+      // «Доля разницы» лота целиком (доп. раунд 05.09.2026) — единственный
+      // `.cost-coef-block` на уровне всего лота (см. HTML выше, сразу под
+      // "Общая стоимость лота"); строки ВНУТРИ лота (positionsList) такого
+      // блока не имеют, поэтому селектор без риска задеть не ту разметку.
+      const cartCoefBlockEl = wrapEl.querySelector('.cost-coef-block');
+      const cartCoefSliderEl = cartCoefBlockEl.querySelector('.cost-coef-slider');
+      const cartCoefFractionLabelEl = cartCoefBlockEl.querySelector('.coef-fraction-label');
+      const cartReconciledDisplayEl = cartCoefBlockEl.querySelector('.reconciled-display');
+      let cartCostCoefficient = 1;
+      wireSliderThumbGuard(cartCoefSliderEl);
+      cartCoefSliderEl.addEventListener('input', () => {
+        cartCostCoefficient = parseFloat(cartCoefSliderEl.value);
+        cartCoefFractionLabelEl.textContent = cartCostCoefficient.toFixed(2);
+        recomputeTotals();
+      });
 
       // Ссылка на лот — та же кнопка "Найти", что на отдельной позиции
       // (resolveOrderProductLink), но БЕЗ привязки к конкретной строке —
@@ -773,31 +925,10 @@ window.Screens.cartNew = {
         return (parseFloat(amountInput.value) || 0) * currentRate;
       }
 
-      // Клиентская копия splitProportionally — та же формула и тот же принцип
-      // намеренного дублирования, что уже документирован в lot-new.js.
-      function splitProportionallyClient(pool, rows, roundingStep) {
-        const step = roundingStep && roundingStep > 0 ? roundingStep : 0.01;
-        const result = new Map();
-        if (rows.length === 0) return result;
-        const basePrices = rows.map((r) => Number(r.basePrice) || 0);
-        const basesSum = basePrices.reduce((s, v) => s + v, 0);
-        const remainder = pool - basesSum;
-        const weights = rows.map((r) => (r.weight === null || r.weight === undefined ? 1 : Number(r.weight) || 0));
-        const totalWeight = weights.reduce((s, w) => s + w, 0);
-        const rawShares = rows.map((r, i) => (totalWeight > 0 ? (remainder * weights[i]) / totalWeight : 0));
-        const rawFinals = rows.map((r, i) => basePrices[i] + rawShares[i]);
-        let roundedSum = 0, largestIndex = 0;
-        rows.forEach((r, i) => {
-          const rounded = Math.round(rawFinals[i] / step) * step;
-          result.set(r.id, rounded);
-          roundedSum += rounded;
-          if (rawShares[i] > rawShares[largestIndex]) largestIndex = i;
-        });
-        const roundingRemainder = pool - roundedSum;
-        const targetId = rows[largestIndex].id;
-        result.set(targetId, (result.get(targetId) || 0) + roundingRemainder);
-        return result;
-      }
+      // splitProportionallyClient — вынесена в область видимости render()
+      // (05.09.2026, см. её JSDoc там), используется как здесь (разбивка
+      // МЕЖДУ позициями лота), так и разбивкой "Итог с сайта выкупа" (МЕЖДУ
+      // заявками корзины) — одна и та же функция, не второй дубль.
 
       function updateSummary() {
         summaryText.textContent = `${lotRows.length} ${lotRows.length === 1 ? 'позиция' : 'позиций'} · Итого ${totalCostRub().toFixed(2)} ₽`;
@@ -1104,6 +1235,12 @@ window.Screens.cartNew = {
         onRateChanged: () => { amountSymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; lotRows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; }); patchAllCostShares(); },
         getTotalRub: () => totalCostRub(),
         getCommissionRub: () => lotRows.reduce((s, r) => s + (parseFloat(r.feeRubEl.value) || 0), 0),
+        // «Доля разницы» лота ЦЕЛИКОМ как одной заявки корзины (доп. раунд
+        // 05.09.2026) — НЕ путать с costCoefficient позиций ВНУТРИ лота
+        // (r.costCoefficient ниже, другой уровень разбивки).
+        getCostCoefficient: () => cartCostCoefficient,
+        coefBlockEl: cartCoefBlockEl,
+        reconciledDisplayEl: cartReconciledDisplayEl,
         hasPositions: () => lotRows.length > 0,
         hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
         // Слияние «Новый заказ»→«Корзина» (05.09.2026) — вызывается из
@@ -1113,6 +1250,11 @@ window.Screens.cartNew = {
         // обоснование, что у отдельной позиции (item.validateCommissionGate).
         validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.commissionGate.validate()),
         getPayload: () => ({
+          // «Доля разницы» лота целиком (доп. раунд 05.09.2026) — ТОЛЬКО
+          // если на экране заполнено «Итог с сайта выкупа», см.
+          // cartsService.createCart JSDoc. Верхний уровень объекта, НЕ
+          // внутри header — отдельный namespace от positions[].costCoefficient.
+          costCoefficient: cartCostCoefficient,
           header: {
             totalAmountInCurrency: amountInput.value,
             roundingStep: roundingSelect.value
@@ -1196,12 +1338,17 @@ window.Screens.cartNew = {
     let saving = false;
 
     function buildPayload() {
+      const siteTotal = parseFloat(siteTotalInput.value);
       const header = {
         currency: currencySelect.value,
         purchaseChannel: currentChannel(),
         purchaseAccount: document.querySelector('select[data-dict="purchaseAccount"]').value,
         cargo: document.querySelector('select[data-dict="cargo"]').value,
-        purchaseDate: dateInput.value
+        purchaseDate: dateInput.value,
+        // «Итог с сайта выкупа» (доп. раунд 05.09.2026) — необязательно,
+        // undefined если поле пустое (cartsService.createCart трактует это
+        // как «не указано», ровно прежнее поведение без разбивки разницы).
+        totalAmountInCurrency: siteTotal > 0 ? siteTotal : undefined
       };
       const statusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
       const statusOrder = document.querySelector('select[data-dict="statusOrder"]').value;
