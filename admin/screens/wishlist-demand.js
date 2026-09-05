@@ -455,7 +455,9 @@ window.Screens.wishlistDemand = {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const c = d.clients[parseInt(btn.dataset.idx, 10)];
-          navigateTo('orders/new', {
+          // Слияние «Новый заказ»→«Корзина» (05.09.2026) — cart-new.js читает
+          // те же параметры (см. её JSDoc §2.3).
+          navigateTo('carts/new', {
             telegramId: c.telegramId, username: c.username, name: c.name,
             skuOriginal: d.skuOriginal, productDisplay: d.productDisplay
           });
@@ -498,7 +500,7 @@ window.Screens.wishlistDemand = {
       // Фаза 5 (04.08.2026) — заказ без привязки к каталогу: "Выпуск" в форме
       // заполнится свободным текстом (productOriginal), не позицией каталога.
       row.querySelector('.order-from-unknown-btn').addEventListener('click', () => {
-        navigateTo('orders/new', {
+        navigateTo('carts/new', {
           telegramId: u.telegramId, username: u.username, name: u.clientName,
           productOriginal: u.rawTitle, wishlistId: u.wishlistId
         });

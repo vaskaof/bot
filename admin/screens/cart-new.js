@@ -1,27 +1,40 @@
 'use strict';
 
 /**
- * Экран "Новая корзина" — REFACTOR-CART.md §4, фаза 3 (03.09.2026).
- * Единая точка входа поверх уже живых `order-new.js`/`lot-new.js` — НЕ
- * заменяет их (VASY подтвердил переходный период, REFACTOR-CART.md §9
- * риск 1 / §10 п.3): отдельная кнопка "+ Корзина" рядом с "+ Новый заказ"
- * на `orders.js` (решение VASY, 03.09.2026, начало сессии фазы 3).
+ * Экран "Новая корзина" — REFACTOR-CART.md §4 (фаза 3, 03.09.2026), слияние
+ * с "Новым заказом" 05.09.2026 (IMPLEMENTATION-PLAN-CART-MERGE.md).
+ * **Единственная точка входа в создание заказа** — кнопка "+ Новый заказ"
+ * убрана с `orders.js`. Старые `order-new.js`/`lot-new.js` НЕ удалены
+ * физически (маршруты `orders/new`/`lots/new` технически достижимы), но
+ * больше не видны из UI — переходный период до полной живой проверки этого
+ * экрана тем же протоколом, что «Лот»/«Корзина» 02-03.09.2026.
  *
  * Модель экрана — список "заявок" корзины, каждая одного из двух видов:
- * - Позиция — клиент+товар+сумма (в валюте корзины)+комиссия+прогноз
- *   расходов, тот же набор полей и тот же прогноз-блок, что уже в
- *   `order-new.js` (одна карточка = один будущий `orders`-заказ с
- *   `cart_id`, БЕЗ лота).
+ * - Позиция — клиент+товар+сумма (в валюте корзины)+комиссия+«Сколько уже
+ *   оплачено»+прогноз расходов (тот же набор полей, что был в `order-new.js`,
+ *   минус старая пара «Оплачена ли бронь?»/«Уже получено при оформлении» —
+ *   см. ниже) — одна карточка = один будущий `orders`-заказ с `cart_id`,
+ *   БЕЗ лота.
  * - Лот — свёрнутая карточка-сводка, разворачивается в мини-версию формы
  *   `lot-new.js` (построчные клиент+товар+известная цена+два слайдера
- *   доли+комиссия, `splitProportionallyClient` — намеренно та же копия,
- *   что уже дублирует backend `splitProportionally`, см. её JSDoc там же
- *   про намеренное дублирование). Канал/аккаунт/карго/дата/статусы и
- *   валюта — ОБЩИЕ на всю корзину (шапка экрана), не запрашиваются повторно
- *   ни на позиции, ни на лоте — упрощение v1, переопределение по заявке
- *   backend уже поддерживает (`cartsService.createCart`'s `header`
- *   per-lot/per-position override), но UI для этого не заведён (см. задачу
- *   ниже "Что сознательно не входит в эту версию").
+ *   доли+комиссия+«Сколько уже оплачено», `splitProportionallyClient` —
+ *   намеренно та же копия, что уже дублирует backend `splitProportionally`,
+ *   см. её JSDoc там же про намеренное дублирование). Канал/аккаунт/карго/
+ *   дата/статусы и валюта — ОБЩИЕ на всю корзину (шапка экрана), не
+ *   запрашиваются повторно ни на позиции, ни на лоте — упрощение v1,
+ *   переопределение по заявке backend уже поддерживает (`cartsService.
+ *   createCart`'s `header` per-lot/per-position override), но UI для этого
+ *   не заведён (см. задачу ниже "Что сознательно не входит в эту версию").
+ *
+ * **«Сколько уже оплачено, ₽»** (IMPLEMENTATION-PLAN-CART-MERGE.md §0) —
+ * заменяет старую пару «Оплачена ли бронь?»(toggle)+«Уже получено при
+ * оформлении» — менеджеры путали эти два поля. На каждой карточке (и
+ * позиции, и позиции внутри лота) вычисляется `bookingPaid`/
+ * `bookingAlreadyInMainAmount`, отправляемые в уже существующий контракт
+ * `createOrder` (см. `computeBookingFields` ниже) — НЕ «живой» статус,
+ * фиксируется один раз в момент создания заказа, ровно как и старый ручной
+ * флаг (нет STAGE_BOOKING в платёжном движке, задним числом не
+ * пересчитывается — принятое ограничение, см. план §0).
  *
  * Единственный запрос на сохранение — `createCart(payload)`
  * (`server/src/carts/cartsService.js`, уже задеплоен фазой 2). Ничего не
@@ -35,22 +48,23 @@
  * заявка, не молча пропущено):
  * - Переопределение канала/аккаунта/карго/даты на уровне отдельной заявки
  *   (bulk-режим `order-new.js` это умеет для одиночных заказов — здесь нет).
- * - Комиссионный гейт (обязательная причина при заниженной комиссии,
- *   Э6/D-10) — НЕ подключён, тот же уже признанный пробел, что и в
- *   `lot-new.js` (см. project_bot_knopka_lot_cart_feature в памяти
- *   Architect'а — "комиссионный гейт не на позициях лота").
- * - "Оплачена ли бронь?"/"Основная оплата"/"Уже получено при оформлении"/
- *   "Личный заказ"/подписка на уведомление/ссылка на покупку/примечание —
- *   вся группа полей про ВХОДЯЩИЕ деньги клиента и служебные детали заказа.
- *   Осознанное упрощение по духу плана (§5.4: "при создании физически нет
- *   и не может быть блока «От клиентов»") — эти поля можно дозаполнить на
- *   `order-edit.js` сразу после создания корзины, тот же путь, что и для
- *   позиций внутри уже созданного лота сегодня.
  * - Восстановление черновика после сбоя (баннер) — см. параллель с
  *   `lot-new.js` выше.
  */
 const CART_DRAFT_KEY = 'pendingCartDraft';
 const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£' };
+
+// Слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-PLAN-CART-
+// MERGE.md §0) — единственное место, где считается формула замены старой
+// пары «Оплачена ли бронь?»+«Уже получено при оформлении» на одно число
+// «Сколько уже оплачено, ₽». Возвращает ровно тот же контракт, который
+// раньше заполнял менеджер вручную через toggle+модалку `#booking-overlap-
+// modal` в order-new.js — НЕ живой статус, фиксируется один раз здесь же,
+// при отправке формы (см. JSDoc шапки файла).
+function computeBookingFields(bookingSumRub, alreadyPaidRub) {
+  const bookingCovered = bookingSumRub > 0 && alreadyPaidRub >= bookingSumRub;
+  return { bookingPaid: bookingCovered ? 'Да' : 'Нет', bookingAlreadyInMainAmount: bookingCovered };
+}
 
 window.Screens = window.Screens || {};
 window.Screens.cartNew = {
@@ -268,7 +282,7 @@ window.Screens.cartNew = {
           <button type="button" class="remove-item-btn p-1 text-gray-300 hover:text-red-500"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
 
-        <div class="relative mb-2">
+        <div class="client-row relative mb-2">
           <input type="text" class="client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
           <ul class="client-dropdown dropdown-menu custom-scrollbar"></ul>
         </div>
@@ -295,6 +309,34 @@ window.Screens.cartNew = {
             <input type="number" class="fee-rub-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
           </div>
         </div>
+        ${FormHelpers.commissionGateHtml(`pos${id}-`)}
+
+        <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — «Личный заказ»,
+             «Сколько уже оплачено», ссылка на покупку, примечание,
+             уведомление клиента. См. IMPLEMENTATION-PLAN-CART-MERGE.md §2.1. -->
+        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
+          <input type="checkbox" class="own-purchase-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
+          Личный заказ (без плательщика)
+        </label>
+        <div class="mb-2">
+          <label class="text-[11px] text-gray-500">Сколько уже оплачено, ₽</label>
+          <input type="number" class="already-paid-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+        </div>
+        <div class="relative mb-2">
+          <label class="text-[11px] text-gray-500">Ссылка на покупку</label>
+          <div class="flex items-center gap-1">
+            <input type="text" class="purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
+            <button type="button" class="purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="text-[11px] text-gray-500">Примечание</label>
+          <textarea class="note-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" rows="2" maxlength="300" placeholder="Введите примечание..."></textarea>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
+          <input type="checkbox" class="notify-client-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
+          Уведомить клиента
+        </label>
 
         <div class="pt-2 border-t border-gray-100">
           <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Прогноз расходов (можно поправить)</div>
@@ -330,6 +372,13 @@ window.Screens.cartNew = {
         amountRubDisplayEl: rowEl.querySelector('.amount-rub-display'),
         feePercentEl: rowEl.querySelector('.fee-percent-input'),
         feeRubEl: rowEl.querySelector('.fee-rub-input'),
+        ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
+        alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
+        purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
+        purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
+        noteInputEl: rowEl.querySelector('.note-input'),
+        notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox'),
+        wishlistId: '',
         weightSumEl: rowEl.querySelector('.weight-sum-input'),
         taxiKzEl: rowEl.querySelector('.taxi-kz-input'),
         sdekEl: rowEl.querySelector('.sdek-input'),
@@ -349,6 +398,43 @@ window.Screens.cartNew = {
 
       item.amountCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || '';
       rowEl.querySelector('.remove-item-btn').addEventListener('click', () => removeItem(id));
+
+      // "Личный заказ" — та же логика, что order-new.js:230-235,656-664:
+      // скрывает поиск клиента, на getPayload() игнорирует уже выбранного.
+      item.ownPurchaseCheckboxEl.addEventListener('change', () => {
+        rowEl.querySelector('.client-row').classList.toggle('hidden', item.ownPurchaseCheckboxEl.checked);
+        item.clientDropdownEl.classList.remove('active');
+      });
+
+      // Ссылка на покупку — тот же паттерн, что order-new.js:794-969.
+      item.purchaseLinkResolveBtn.addEventListener('click', async () => {
+        const url = item.purchaseLinkInputEl.value.trim();
+        if (!url) return;
+        item.purchaseLinkResolveBtn.disabled = true;
+        try {
+          const result = await callServer('resolveOrderProductLink', url);
+          if (result.status === 'matched') {
+            item.productSearchEl.value = result.sku.value || result.sku.label || '';
+            item.productOriginal = result.sku.value || '';
+            showSaveToast(true, 'Ссылка распознана — товар найден в каталоге.');
+          } else if (result.status === 'unmatched') {
+            const skuModal = SkuModal.init({
+              onSaved: (skuResult, action) => {
+                if (action === 'create') {
+                  item.productSearchEl.value = skuResult.value;
+                  item.productOriginal = skuResult.value;
+                  showSaveToast(true, `Позиция «${skuResult.label || skuResult.value}» создана и добавлена в каталог`);
+                }
+              }
+            });
+            skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
+          }
+        } catch (error) {
+          showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
+        } finally {
+          item.purchaseLinkResolveBtn.disabled = false;
+        }
+      });
 
       const handleClientSearch = debounce(async (e) => {
         const query = e.target.value.trim();
@@ -441,6 +527,14 @@ window.Screens.cartNew = {
       item.feePercentEl.addEventListener('input', updateFeeRub);
       item.feeRubEl.addEventListener('input', updateFeePercent);
 
+      // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
+      // 05.09.2026) — N экземпляров на экране, скоуплены на rowEl своим
+      // idPrefix (см. _form-helpers.js JSDoc за обоснованием параметризации).
+      item.commissionGate = FormHelpers.wireCommissionGate({
+        root: rowEl, idPrefix: `pos${id}-`,
+        feePercentSelector: '.fee-percent-input', feeRubSelector: '.fee-rub-input'
+      });
+
       const fetchForecast = debounce(async () => {
         const amount = parseFloat(item.amountInputEl.value) || 0;
         if (amount <= 0) return;
@@ -453,6 +547,15 @@ window.Screens.cartNew = {
           if (item.taxiRfSendEl.value === '' && forecast.taxiRfSend) item.taxiRfSendEl.value = forecast.taxiRfSend.toFixed(2);
           if (item.shippingRfEl.value === '' && forecast.shippingRf) item.shippingRfEl.value = forecast.shippingRf.toFixed(2);
           if (item.taxiRfReceiveEl.value === '' && forecast.taxiRfReceive) item.taxiRfReceiveEl.value = forecast.taxiRfReceive.toFixed(2);
+          item.commissionGate.setThresholds({ warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent });
+          // Э6, точка безубыточности — та же карточка настроек, что setThresholds
+          // выше (найдено целевым ревью перед деплоем — без этого вызова блок
+          // "точка безубыточности" молча никогда не появлялся на cart-new.js).
+          item.commissionGate.setBreakeven({
+            breakevenCommissionPercent: forecast.breakevenCommissionPercent,
+            breakevenIsDefaultChannelPolicy: forecast.breakevenIsDefaultChannelPolicy,
+            breakevenUnavailableReason: forecast.breakevenUnavailableReason
+          });
         } catch (error) { /* прогноз — необязательное удобство, как в order-new.js */ }
       }, 400);
 
@@ -463,28 +566,54 @@ window.Screens.cartNew = {
       };
       item.getTotalRub = () => (parseFloat(item.amountInputEl.value) || 0) * currentRate;
       item.getCommissionRub = () => parseFloat(item.feeRubEl.value) || 0;
-      item.getPayload = () => ({
-        client: item.manualClientData
-          ? { telegramId: '', username: item.manualClientData.username, name: item.manualClientData.name }
-          : { telegramId: item.telegramId || '', username: item.username, name: item.name },
-        productOriginal: item.productOriginal || item.productSearchEl.value,
-        amount: item.amountInputEl.value,
-        bookingSum: item.feeRubEl.value,
-        // Цель стадии "Основная" ("Осталось") — БЕЗ этого paymentsService.
-        // setStageTarget для неё вообще не вызывается (тот же реальный баг,
-        // что уже нашли и исправили для позиций лота 02.09.2026, см.
-        // lotsService.js's JSDoc у createLot — здесь тот же случай для
-        // отдельной позиции корзины, не через лот).
-        mainSum: (item.getTotalRub() + (parseFloat(item.feeRubEl.value) || 0)).toFixed(2),
-        weightSum: item.weightSumEl.value,
-        taxiKzSum: item.taxiKzEl.value,
-        sdekSum: item.sdekEl.value,
-        taxiRfSum: item.taxiRfEl.value,
-        taxiRfSendSum: item.taxiRfSendEl.value,
-        shippingRfSum: item.shippingRfEl.value,
-        taxiRfReceiveSum: item.taxiRfReceiveEl.value,
-        requestId: generateRequestId()
-      });
+      // Валидация комиссионного гейта перед сохранением — вызывается из
+      // saveCart() на КАЖДОЙ позиции (см. §2.1 плана), не здесь.
+      // «Личный заказ» исключён из гейта — тот же принцип, что order-new.js's
+      // `!ownPurchaseCheckbox.checked && !commissionGate.validate()` (Э6/D-10):
+      // сервер (ordersService.createOrder) сам никогда не требует причину для
+      // client_kind='own' (F-35), гейтить это на клиенте было бы регрессией.
+      item.validateCommissionGate = () => item.ownPurchaseCheckboxEl.checked || item.commissionGate.validate();
+      item.getPayload = () => {
+        const bookingSumRub = parseFloat(item.feeRubEl.value) || 0;
+        const alreadyPaidRub = parseFloat(item.alreadyPaidInputEl.value) || 0;
+        const booking = computeBookingFields(bookingSumRub, alreadyPaidRub);
+        return {
+          client: item.ownPurchaseCheckboxEl.checked
+            ? { telegramId: '', username: '', name: '' }
+            : (item.manualClientData
+              ? { telegramId: '', username: item.manualClientData.username, name: item.manualClientData.name }
+              : { telegramId: item.telegramId || '', username: item.username, name: item.name }),
+          isOwnPurchase: item.ownPurchaseCheckboxEl.checked,
+          productOriginal: item.productOriginal || item.productSearchEl.value,
+          amount: item.amountInputEl.value,
+          bookingSum: item.feeRubEl.value,
+          // Цель стадии "Основная" ("Осталось") — БЕЗ этого paymentsService.
+          // setStageTarget для неё вообще не вызывается (тот же реальный баг,
+          // что уже нашли и исправили для позиций лота 02.09.2026, см.
+          // lotsService.js's JSDoc у createLot — здесь тот же случай для
+          // отдельной позиции корзины, не через лот).
+          mainSum: (item.getTotalRub() + (parseFloat(item.feeRubEl.value) || 0)).toFixed(2),
+          // «Сколько уже оплачено, ₽» (слияние «Новый заказ»→«Корзина»,
+          // 05.09.2026, IMPLEMENTATION-PLAN-CART-MERGE.md §0) — заменяет
+          // старую пару «Оплачена ли бронь?»+«Уже получено при оформлении».
+          mainAmountReceivedAtCreation: item.alreadyPaidInputEl.value,
+          bookingPaid: booking.bookingPaid,
+          bookingAlreadyInMainAmount: booking.bookingAlreadyInMainAmount,
+          purchaseLink: item.purchaseLinkInputEl.value.trim(),
+          remark: item.noteInputEl.value,
+          notifyClient: item.notifyClientCheckboxEl.checked,
+          commissionLowReason: item.commissionGate.getReason(),
+          wishlistId: item.wishlistId || '',
+          weightSum: item.weightSumEl.value,
+          taxiKzSum: item.taxiKzEl.value,
+          sdekSum: item.sdekEl.value,
+          taxiRfSum: item.taxiRfEl.value,
+          taxiRfSendSum: item.taxiRfSendEl.value,
+          shippingRfSum: item.shippingRfEl.value,
+          taxiRfReceiveSum: item.taxiRfReceiveEl.value,
+          requestId: generateRequestId()
+        };
+      };
 
       updateAmountRub();
       items.push(item);
@@ -554,6 +683,30 @@ window.Screens.cartNew = {
 
       let lotRows = [];
       let lotRowSeq = 0;
+
+      // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
+      // 05.09.2026) — пороги ОДНИ на весь лот (не зависят от суммы конкретной
+      // позиции, только от настроек/канала), запрашиваются ОДИН раз, не на
+      // каждую позицию — тот же принцип "один вызов на весь лот", что уже
+      // применяется к прогнозу Вес/СДЭК/Доставка_РФ на бэкенде
+      // (lotsService.createLot JSDoc).
+      let commissionThresholds = { warnPercent: null, reasonPercent: null };
+      // Э6, точка безубыточности — та же карточка настроек, что commissionThresholds
+      // выше, тот же принцип "один запрос на весь лот" (найдено целевым ревью
+      // перед деплоем, см. item.commissionGate.setBreakeven на отдельной позиции).
+      let commissionBreakeven = { breakevenCommissionPercent: null, breakevenIsDefaultChannelPolicy: false, breakevenUnavailableReason: null };
+      (async () => {
+        try {
+          const forecast = await callServer('getOrderForecast', 1, currencySelect.value, currentChannel());
+          commissionThresholds = { warnPercent: forecast.commissionWarnPercent, reasonPercent: forecast.commissionReasonPercent };
+          commissionBreakeven = {
+            breakevenCommissionPercent: forecast.breakevenCommissionPercent,
+            breakevenIsDefaultChannelPolicy: forecast.breakevenIsDefaultChannelPolicy,
+            breakevenUnavailableReason: forecast.breakevenUnavailableReason
+          };
+          lotRows.forEach((r) => { r.commissionGate.setThresholds(commissionThresholds); r.commissionGate.setBreakeven(commissionBreakeven); });
+        } catch (error) { /* гейт остаётся выключенным при сбое, как и на позиции */ }
+      })();
 
       function totalCostRub() {
         return (parseFloat(amountInput.value) || 0) * currentRate;
@@ -641,7 +794,7 @@ window.Screens.cartNew = {
             <span class="text-[10px] font-semibold text-gray-400">Позиция ${lotRows.length + 1}</span>
             <button type="button" class="remove-lot-row-btn p-1 text-gray-300 hover:text-red-500"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
           </div>
-          <div class="relative mb-1.5">
+          <div class="client-row relative mb-1.5">
             <input type="text" class="client-search w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="Поиск клиента..." autocomplete="off">
             <ul class="client-dropdown dropdown-menu custom-scrollbar"></ul>
           </div>
@@ -679,6 +832,33 @@ window.Screens.cartNew = {
               <input type="number" class="fee-rub-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
             </div>
           </div>
+          ${FormHelpers.commissionGateHtml(`lot${id}-row${rowId}-`)}
+
+          <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — те же 5 полей,
+               что на обычной позиции, см. IMPLEMENTATION-PLAN-CART-MERGE.md §2.2. -->
+          <label class="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none mt-1.5">
+            <input type="checkbox" class="own-purchase-checkbox w-3.5 h-3.5 accent-indigo-600 cursor-pointer">
+            Личный заказ (без плательщика)
+          </label>
+          <div class="mt-1.5">
+            <label class="text-[10px] text-gray-500">Сколько уже оплачено, ₽</label>
+            <input type="number" class="already-paid-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
+          </div>
+          <div class="mt-1.5">
+            <label class="text-[10px] text-gray-500">Ссылка на покупку</label>
+            <div class="flex items-center gap-1">
+              <input type="text" class="purchase-link-input flex-1 bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="https://...">
+              <button type="button" class="purchase-link-resolve-btn shrink-0 px-2 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-medium">Найти</button>
+            </div>
+          </div>
+          <div class="mt-1.5">
+            <label class="text-[10px] text-gray-500">Примечание</label>
+            <textarea class="note-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" rows="2" maxlength="300" placeholder="Введите примечание..."></textarea>
+          </div>
+          <label class="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none mt-1.5">
+            <input type="checkbox" class="notify-client-checkbox w-3.5 h-3.5 accent-indigo-600 cursor-pointer">
+            Уведомить клиента
+          </label>
         `;
         positionsList.appendChild(rowEl);
         if (window.lucide) window.lucide.createIcons();
@@ -702,10 +882,63 @@ window.Screens.cartNew = {
           weightSliderEl: rowEl.querySelector('.weight-slider'),
           weightFractionLabelEl: rowEl.querySelector('.weight-fraction-label'),
           feePercentEl: rowEl.querySelector('.fee-percent-input'),
-          feeRubEl: rowEl.querySelector('.fee-rub-input')
+          feeRubEl: rowEl.querySelector('.fee-rub-input'),
+          ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
+          alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
+          purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
+          purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
+          noteInputEl: rowEl.querySelector('.note-input'),
+          notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox')
         };
         if (row.knownPriceCurrencySymbolEl) row.knownPriceCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || '';
         lotRows.push(row);
+
+        // Комиссионный гейт Э6/D-10 на позиции лота — тот же приём, что на
+        // отдельной позиции корзины (§2.1), пороги — общие на весь лот (см.
+        // commissionThresholds выше, лот не запрашивает getOrderForecast на
+        // каждую строку отдельно).
+        row.commissionGate = FormHelpers.wireCommissionGate({
+          root: rowEl, idPrefix: `lot${id}-row${rowId}-`,
+          feePercentSelector: '.fee-percent-input', feeRubSelector: '.fee-rub-input'
+        });
+        row.commissionGate.setThresholds(commissionThresholds);
+        row.commissionGate.setBreakeven(commissionBreakeven);
+
+        // "Личный заказ" — та же логика, что на отдельной позиции (§2.1).
+        row.ownPurchaseCheckboxEl.addEventListener('change', () => {
+          rowEl.querySelector('.client-row').classList.toggle('hidden', row.ownPurchaseCheckboxEl.checked);
+          row.clientDropdownEl.classList.remove('active');
+        });
+
+        // Ссылка на покупку — тот же паттерн, что на отдельной позиции (§2.1).
+        row.purchaseLinkResolveBtn.addEventListener('click', async () => {
+          const url = row.purchaseLinkInputEl.value.trim();
+          if (!url) return;
+          row.purchaseLinkResolveBtn.disabled = true;
+          try {
+            const result = await callServer('resolveOrderProductLink', url);
+            if (result.status === 'matched') {
+              row.productSearchEl.value = result.sku.value || result.sku.label || '';
+              row.productOriginal = result.sku.value || '';
+              showSaveToast(true, 'Ссылка распознана — товар найден в каталоге.');
+            } else if (result.status === 'unmatched') {
+              const skuModal = SkuModal.init({
+                onSaved: (skuResult, action) => {
+                  if (action === 'create') {
+                    row.productSearchEl.value = skuResult.value;
+                    row.productOriginal = skuResult.value;
+                    showSaveToast(true, `Позиция «${skuResult.label || skuResult.value}» создана и добавлена в каталог`);
+                  }
+                }
+              });
+              skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
+            }
+          } catch (error) {
+            showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
+          } finally {
+            row.purchaseLinkResolveBtn.disabled = false;
+          }
+        });
 
         if (prefillClient) {
           row.telegramId = prefillClient.telegramId || '';
@@ -826,20 +1059,37 @@ window.Screens.cartNew = {
         getCommissionRub: () => lotRows.reduce((s, r) => s + (parseFloat(r.feeRubEl.value) || 0), 0),
         hasPositions: () => lotRows.length > 0,
         hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
+        // Слияние «Новый заказ»→«Корзина» (05.09.2026) — вызывается из
+        // saveCart() перед отправкой, тот же принцип, что на отдельной
+        // позиции (§2.1).
+        // «Личный заказ» исключён из гейта на КАЖДОЙ позиции лота — то же
+        // обоснование, что у отдельной позиции (item.validateCommissionGate).
+        validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.commissionGate.validate()),
         getPayload: () => ({
           header: {
             totalAmountInCurrency: amountInput.value,
             roundingStep: roundingSelect.value
           },
           positions: lotRows.map((r) => ({
-            client: r.manualClientData
-              ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
-              : { telegramId: r.telegramId || '', username: r.username, name: r.name },
+            client: r.ownPurchaseCheckboxEl.checked
+              ? { telegramId: '', username: '', name: '' }
+              : (r.manualClientData
+                ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
+                : { telegramId: r.telegramId || '', username: r.username, name: r.name }),
+            isOwnPurchase: r.ownPurchaseCheckboxEl.checked,
             productOriginal: r.productOriginal || r.productSearchEl.value,
             costCoefficient: r.costCoefficient,
             knownPriceRub: knownPriceRub(r),
             weightCoefficient: r.weightCoefficient,
             commissionRub: parseFloat(r.feeRubEl.value) || 0,
+            // «Сколько уже оплачено, ₽» — bookingPaid/bookingAlreadyInMainAmount
+            // вычисляются на СЕРВЕРЕ внутри lotsService.createLot (см. её
+            // JSDoc), не здесь — сюда уходит только сырое значение.
+            alreadyPaidRub: parseFloat(r.alreadyPaidInputEl.value) || 0,
+            purchaseLink: r.purchaseLinkInputEl.value.trim(),
+            remark: r.noteInputEl.value,
+            notifyClient: r.notifyClientCheckboxEl.checked,
+            commissionLowReason: r.commissionGate.getReason(),
             requestId: generateRequestId()
           }))
         })
@@ -859,7 +1109,27 @@ window.Screens.cartNew = {
 
     document.getElementById('add-position-btn').addEventListener('click', () => addPositionItem());
     document.getElementById('add-lot-btn').addEventListener('click', () => addLotItem());
-    addPositionItem(); // одна позиция сразу — заказ по умолчанию не тяжелее сегодняшнего (§4 плана)
+
+    // Предзаполнение из "Спрос клиентов" (слияние «Новый заказ»→«Корзина»,
+    // 05.09.2026, wishlist-demand.js теперь ведёт сюда вместо orders/new) —
+    // тот же набор параметров, что раньше читал order-new.js:1699-1719.
+    if (params && (params.telegramId || params.skuOriginal || params.productOriginal)) {
+      const prefillClient = params.telegramId ? {
+        telegramId: params.telegramId, username: params.username || '', name: params.name || '',
+        display: (params.name && params.username) ? `${params.name} (${params.username})` : (params.name || params.username || 'Клиент')
+      } : null;
+      const item = addPositionItem(prefillClient);
+      if (params.skuOriginal) {
+        item.productSearchEl.value = params.productDisplay || params.skuOriginal;
+        item.productOriginal = params.skuOriginal;
+      } else if (params.productOriginal) {
+        item.productSearchEl.value = params.productOriginal;
+        item.productOriginal = params.productOriginal;
+      }
+      if (params.wishlistId) item.wishlistId = params.wishlistId;
+    } else {
+      addPositionItem(); // одна позиция сразу — заказ по умолчанию не тяжелее сегодняшнего (§4 плана)
+    }
 
     document.addEventListener('click', (e) => {
       items.forEach((it) => {
@@ -899,6 +1169,17 @@ window.Screens.cartNew = {
         ? !(it.productOriginal || it.productSearchEl.value).trim()
         : (it.hasMissingProduct() || !it.hasPositions()));
       if (missingProduct) { showSaveToast(false, 'У каждой позиции (в том числе внутри лота) должен быть указан товар.'); return; }
+
+      // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
+      // 05.09.2026) — валидируется на КАЖДОЙ позиции (и на каждой позиции
+      // внутри каждого лота) перед отправкой, тот же принцип, что
+      // order-new.js:1632. Первый непрошедший гейт получает фокус сам
+      // (см. FormHelpers.wireCommissionGate's validate()), достаточно
+      // одного общего тоста здесь.
+      const commissionGateFailed = items.some((it) => it.type === 'position'
+        ? !it.validateCommissionGate()
+        : !it.validateCommissionGates());
+      if (commissionGateFailed) { showSaveToast(false, 'Заниженная комиссия требует указать причину — проверьте позиции.'); return; }
 
       saving = true;
       saveBtn.disabled = true;

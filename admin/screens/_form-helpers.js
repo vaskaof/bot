@@ -159,14 +159,23 @@ window.FormHelpers = {
    * (Э6, D-10/F-24, 26.08.2026) — общая для order-new.js/order-edit.js,
    * вставляется сразу под полем "Комиссия" (`#fee-percent`/`#fee-rub`).
    * Скрыта по умолчанию — `wireCommissionGate` управляет видимостью.
+   *
+   * `idPrefix` (слияние «Новый заказ»→«Корзина», 05.09.2026, IMPLEMENTATION-
+   * PLAN-CART-MERGE.md §1) — префикс всех id внутри, нужен, когда на одном
+   * экране одновременно живёт НЕСКОЛЬКО экземпляров гейта (N карточек
+   * корзины) — без него все копии делили бы одни и те же id и второй
+   * экземпляр либо не находил бы свои элементы, либо тихо управлял чужими.
+   * Без аргумента (`order-new.js`/`order-edit.js`, один гейт на экран) —
+   * пустой префикс, id как раньше, поведение не меняется.
+   * @param {string} [idPrefix]
    */
-  commissionGateHtml() {
+  commissionGateHtml(idPrefix = '') {
     return `
-      <div id="commission-hint-row" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2">
-        <div id="commission-hint-text" class="text-[12px] leading-tight"></div>
-        <div id="commission-reason-block" class="hidden flex flex-col gap-1">
-          <label for="commission-reason-input" class="text-[11px] text-gray-500">Причина занижения комиссии (обязательно для сохранения)</label>
-          <textarea id="commission-reason-input" rows="2" class="w-full rounded-lg border border-red-200 px-3 py-2 text-sm" placeholder="Например: постоянный клиент, скидка по договорённости"></textarea>
+      <div id="${idPrefix}commission-hint-row" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2">
+        <div id="${idPrefix}commission-hint-text" class="text-[12px] leading-tight"></div>
+        <div id="${idPrefix}commission-reason-block" class="hidden flex flex-col gap-1">
+          <label for="${idPrefix}commission-reason-input" class="text-[11px] text-gray-500">Причина занижения комиссии (обязательно для сохранения)</label>
+          <textarea id="${idPrefix}commission-reason-input" rows="2" class="w-full rounded-lg border border-red-200 px-3 py-2 text-sm" placeholder="Например: постоянный клиент, скидка по договорённости"></textarea>
         </div>
       </div>
       <!-- Точка безубыточности (Э6, чек-лист п.7, 26.08.2026) — ОТДЕЛЬНАЯ
@@ -174,8 +183,8 @@ window.FormHelpers = {
            валютного риска + налог по КАНАЛУ заказа, не целевая комиссия
            бизнеса) и разная видимость (не зависит от isDirty — актуальна,
            пока введена хоть какая-то комиссия, не только на изменении). -->
-      <div id="commission-breakeven-row" class="hidden field-row px-4 pb-3 -mt-1 border-b border-gray-100">
-        <div id="commission-breakeven-text" class="text-[11px] leading-tight"></div>
+      <div id="${idPrefix}commission-breakeven-row" class="hidden field-row px-4 pb-3 -mt-1 border-b border-gray-100">
+        <div id="${idPrefix}commission-breakeven-text" class="text-[11px] leading-tight"></div>
       </div>
     `;
   },
@@ -221,18 +230,25 @@ window.FormHelpers = {
    * заказа (в отличие от подсказки/причины выше, которые намеренно молчат
    * без `isDirty()`, R-03 — здесь нет аналогичного риска "требуем то, чего
    * менеджер не вводил": ничего не требуется, только показывается).
-   * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean}} [options]
+   * `root`/`idPrefix` (слияние «Новый заказ»→«Корзина», 05.09.2026,
+   * IMPLEMENTATION-PLAN-CART-MERGE.md §1) — `root` скоупит поиск и полей
+   * суммы/комиссии, и самих элементов гейта на конкретную карточку (не
+   * `document` целиком); `idPrefix` обязан совпадать с тем же префиксом,
+   * что передан в `commissionGateHtml` для этой же карточки. Без аргументов
+   * — `root=document`, `idPrefix=''`, поведение идентично прежнему
+   * (единственный гейт на весь экран, `order-new.js`/`order-edit.js`).
+   * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean, root?:ParentNode, idPrefix?:string}} [options]
    * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, setBreakeven(b:{breakevenCommissionPercent:number|null,breakevenIsDefaultChannelPolicy:boolean|null,breakevenUnavailableReason:string|null}|null):void, refresh():void, getReason():string, validate():boolean}}
    */
-  wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true } = {}) {
-    const feePercentInput = document.querySelector(feePercentSelector);
-    const feeRubInput = document.querySelector(feeRubSelector);
-    const hintRow = document.getElementById('commission-hint-row');
-    const hintText = document.getElementById('commission-hint-text');
-    const reasonBlock = document.getElementById('commission-reason-block');
-    const reasonInput = document.getElementById('commission-reason-input');
-    const breakevenRow = document.getElementById('commission-breakeven-row');
-    const breakevenText = document.getElementById('commission-breakeven-text');
+  wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true, root = document, idPrefix = '' } = {}) {
+    const feePercentInput = root.querySelector(feePercentSelector);
+    const feeRubInput = root.querySelector(feeRubSelector);
+    const hintRow = root.querySelector(`#${idPrefix}commission-hint-row`);
+    const hintText = root.querySelector(`#${idPrefix}commission-hint-text`);
+    const reasonBlock = root.querySelector(`#${idPrefix}commission-reason-block`);
+    const reasonInput = root.querySelector(`#${idPrefix}commission-reason-input`);
+    const breakevenRow = root.querySelector(`#${idPrefix}commission-breakeven-row`);
+    const breakevenText = root.querySelector(`#${idPrefix}commission-breakeven-text`);
     const noop = { setThresholds() {}, setBreakeven() {}, refresh() {}, getReason: () => '', validate: () => true };
     if (!feePercentInput || !hintRow || !hintText || !reasonBlock || !reasonInput) return noop;
 

@@ -51,15 +51,13 @@ window.Screens.orders = {
     root.innerHTML = `
       <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 flex items-center justify-between gap-1">
-          <button type="button" id="new-order-btn" title="Новый заказ" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="plus" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Новый</span>
-          </button>
-          <!-- Рефакторинг «Корзина», фаза 3 (REFACTOR-CART.md §4, 03.09.2026) —
-               отдельная кнопка рядом с "Новый" (решение VASY, переходный
-               период — старые order-new.js/lot-new.js не убираются, см.
-               cart-new.js JSDoc). -->
-          <button type="button" id="new-cart-btn" title="Новая корзина" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-
+               PLAN-CART-MERGE.md §4) — "+ Новый заказ" убран, "+ Корзина"
+               теперь единственная точка входа в создание заказа (и
+               одиночного, и нескольких сразу). Маршрут orders/new и сам
+               order-new.js НЕ удалены — технически достижимы, просто без
+               видимого входа из UI, переходный период не закрыт. -->
+          <button type="button" id="new-cart-btn" title="Новый заказ" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="shopping-cart" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Корзина</span>
           </button>
@@ -195,7 +193,6 @@ window.Screens.orders = {
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
 
-    document.getElementById('new-order-btn').addEventListener('click', () => navigateTo('orders/new'));
     document.getElementById('new-cart-btn').addEventListener('click', () => navigateTo('carts/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
     document.getElementById('lots-btn').addEventListener('click', () => navigateTo('lots'));
