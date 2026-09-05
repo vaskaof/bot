@@ -169,20 +169,23 @@ window.Screens.cartNew = {
           </div>
         </div>
 
-        <!-- Итого корзины — живой пересчёт (§4 п.4/п.5 плана) -->
+        <!-- Заявки -->
+        <div id="cart-items-list"></div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <button type="button" id="add-position-btn" class="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-600 text-sm font-medium">+ Добавить позицию</button>
+          <button type="button" id="add-lot-btn" class="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-600 text-sm font-medium">+ Добавить лот</button>
+        </div>
+
+        <!-- Итого корзины — живой пересчёт (§4 п.4/п.5 плана), намеренно
+             ПОСЛЕДНИЙ блок экрана, как итог/завершение (репорт VASY
+             05.09.2026 — раньше стоял над списком заявок, до того как
+             менеджер вообще что-то добавил). -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between">
           <div>
             <div class="text-sm font-medium text-gray-700">Итого корзины</div>
             <div class="text-[11px] text-gray-400 inline-flex items-center gap-1">Средняя комиссия${helpIcon('Средняя комиссия', '<p>Read-only сводка — взвешенное среднее по уже введённым комиссиям заявок. Ничего не сохраняется отдельно и ни на что не влияет, комиссия по-прежнему считается только на позициях.</p>')}: <span id="cart-avg-commission">—</span></div>
           </div>
           <div class="text-lg font-bold text-gray-900"><span id="cart-total-rub">0.00</span> ₽</div>
-        </div>
-
-        <!-- Заявки -->
-        <div id="cart-items-list"></div>
-        <div class="grid grid-cols-2 gap-2 mb-3">
-          <button type="button" id="add-position-btn" class="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-600 text-sm font-medium">+ Добавить позицию</button>
-          <button type="button" id="add-lot-btn" class="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-600 text-sm font-medium">+ Добавить лот</button>
         </div>
 
         ${ManualClientModal.html()}
@@ -282,6 +285,20 @@ window.Screens.cartNew = {
           <button type="button" class="remove-item-btn p-1 text-gray-300 hover:text-red-500"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
 
+        <!-- Ссылка на покупку — намеренно ПЕРВОЕ поле карточки (репорт VASY
+             05.09.2026): менеджер обычно стартует ввод именно со вставки
+             ссылки, "Найти" распознаёт товар в каталоге (в т.ч. по ссылкам,
+             ранее подтянутым из других заказов/вишлиста — см.
+             catalogService.findSkuByProductUrl, ничего нового заводить не
+             пришлось). -->
+        <div class="relative mb-2">
+          <label class="text-[11px] text-gray-500">Ссылка на покупку</label>
+          <div class="flex items-center gap-1">
+            <input type="text" class="purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
+            <button type="button" class="purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
+          </div>
+        </div>
+
         <div class="client-row relative mb-2">
           <input type="text" class="client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
           <ul class="client-dropdown dropdown-menu custom-scrollbar"></ul>
@@ -312,22 +329,16 @@ window.Screens.cartNew = {
         ${FormHelpers.commissionGateHtml(`pos${id}-`)}
 
         <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — «Личный заказ»,
-             «Сколько уже оплачено», ссылка на покупку, примечание,
-             уведомление клиента. См. IMPLEMENTATION-PLAN-CART-MERGE.md §2.1. -->
+             «Сколько уже оплачено», примечание, уведомление клиента. См.
+             IMPLEMENTATION-PLAN-CART-MERGE.md §2.1. -->
         <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
           <input type="checkbox" class="own-purchase-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
           Личный заказ (без плательщика)
+          ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
         </label>
         <div class="mb-2">
           <label class="text-[11px] text-gray-500">Сколько уже оплачено, ₽</label>
           <input type="number" class="already-paid-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
-        </div>
-        <div class="relative mb-2">
-          <label class="text-[11px] text-gray-500">Ссылка на покупку</label>
-          <div class="flex items-center gap-1">
-            <input type="text" class="purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
-            <button type="button" class="purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
-          </div>
         </div>
         <div class="mb-2">
           <label class="text-[11px] text-gray-500">Примечание</label>
@@ -345,14 +356,14 @@ window.Screens.cartNew = {
             <input type="number" class="weight-sum-input flex-1 bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01">
           </div>
           <div class="grid grid-cols-3 gap-1 mb-1.5">
-            <input type="number" class="taxi-kz-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="Такси КЗ" step="0.01">
-            <input type="number" class="sdek-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="СДЭК" step="0.01">
-            <input type="number" class="taxi-rf-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="Такси РФ" step="0.01">
+            <div><div class="text-[9px] text-gray-400 mb-0.5">Такси КЗ</div><input type="number" class="taxi-kz-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+            <div><div class="text-[9px] text-gray-400 mb-0.5">СДЭК</div><input type="number" class="sdek-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+            <div><div class="text-[9px] text-gray-400 mb-0.5">Такси РФ</div><input type="number" class="taxi-rf-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
           </div>
           <div class="grid grid-cols-3 gap-1">
-            <input type="number" class="taxi-rf-send-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="Такси (отпр.)" step="0.01">
-            <input type="number" class="shipping-rf-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="Отправка" step="0.01">
-            <input type="number" class="taxi-rf-receive-input bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="Такси (получ.)" step="0.01">
+            <div><div class="text-[9px] text-gray-400 mb-0.5">Такси (отпр.)</div><input type="number" class="taxi-rf-send-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+            <div><div class="text-[9px] text-gray-400 mb-0.5">Отправка</div><input type="number" class="shipping-rf-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+            <div><div class="text-[9px] text-gray-400 mb-0.5">Такси (получ.)</div><input type="number" class="taxi-rf-receive-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
           </div>
         </div>
       `;
@@ -624,7 +635,11 @@ window.Screens.cartNew = {
     function addLotItem() {
       const id = ++itemSeq;
       const wrapEl = document.createElement('div');
-      wrapEl.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible';
+      // Левый акцент-бордер (5.3, репорт VASY 05.09.2026) — визуально
+      // отличает "Лот" (несколько позиций как ОДНА заявка) от обычной
+      // "Позиции" на этом же экране (та же indigo-палитра, что уже у
+      // иконки "boxes" ниже).
+      wrapEl.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-indigo-400 mb-3 overflow-visible';
       wrapEl.innerHTML = `
         <div class="lot-summary-row flex items-center justify-between p-3 cursor-pointer">
           <div class="flex items-center gap-2 min-w-0">
@@ -640,6 +655,20 @@ window.Screens.cartNew = {
           </div>
         </div>
         <div class="lot-body hidden border-t border-gray-100 p-3">
+          <!-- Ссылка на лот — ОДНА на весь лот, в начале (5.2, репорт VASY
+               05.09.2026): раньше дублировалась на каждой позиции лота
+               (менеджер вписывал один и тот же URL построчно). "Найти" тут
+               не привязывает товар ни к одной конкретной строке (в лоте
+               несколько разных товаров) — только распознаёт/заводит позицию
+               каталога по ссылке информационно, товар на каждой строке
+               по-прежнему выбирается своим поиском ниже. -->
+          <div class="relative mb-2">
+            <label class="text-[11px] text-gray-500">Ссылка на покупку (одна на весь лот)</label>
+            <div class="flex items-center gap-1">
+              <input type="text" class="lot-purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
+              <button type="button" class="lot-purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
+            </div>
+          </div>
           <div class="mb-2">
             <label class="text-[11px] text-gray-500">Общая стоимость лота (в валюте корзины)</label>
             <div class="flex items-center gap-2">
@@ -666,11 +695,43 @@ window.Screens.cartNew = {
       const summaryText = wrapEl.querySelector('.lot-summary-text');
       const chevron = wrapEl.querySelector('.lot-chevron');
       const body = wrapEl.querySelector('.lot-body');
+      const lotPurchaseLinkInputEl = wrapEl.querySelector('.lot-purchase-link-input');
+      const lotPurchaseLinkResolveBtn = wrapEl.querySelector('.lot-purchase-link-resolve-btn');
       const amountInput = wrapEl.querySelector('.lot-amount-input');
       const amountSymbolEl = wrapEl.querySelector('.lot-amount-currency-symbol');
       const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
       const positionsList = wrapEl.querySelector('.lot-positions-list');
       const addPositionBtn = wrapEl.querySelector('.add-lot-position-btn');
+
+      // Ссылка на лот — та же кнопка "Найти", что на отдельной позиции
+      // (resolveOrderProductLink), но БЕЗ привязки к конкретной строке —
+      // лот содержит несколько разных товаров, поэтому результат только
+      // информирует (тост/создание позиции каталога), ничего не подставляет
+      // ни в одну из строк автоматически (5.2, см. комментарий в разметке).
+      lotPurchaseLinkResolveBtn.addEventListener('click', async () => {
+        const url = lotPurchaseLinkInputEl.value.trim();
+        if (!url) return;
+        lotPurchaseLinkResolveBtn.disabled = true;
+        try {
+          const result = await callServer('resolveOrderProductLink', url);
+          if (result.status === 'matched') {
+            showSaveToast(true, `Ссылка распознана — товар в каталоге: «${result.sku.value || result.sku.label || ''}». Выберите его в нужной строке лота вручную.`);
+          } else if (result.status === 'unmatched') {
+            const skuModal = SkuModal.init({
+              onSaved: (skuResult, action) => {
+                if (action === 'create') {
+                  showSaveToast(true, `Позиция «${skuResult.label || skuResult.value}» создана и добавлена в каталог — выберите её в нужной строке лота.`);
+                }
+              }
+            });
+            skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
+          }
+        } catch (error) {
+          showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
+        } finally {
+          lotPurchaseLinkResolveBtn.disabled = false;
+        }
+      });
 
       let expanded = false;
       summaryRow.addEventListener('click', (e) => {
@@ -767,14 +828,30 @@ window.Screens.cartNew = {
         updateSummary();
       }
 
+      // ИСПРАВЛЕНО 05.09.2026 (репорт VASY — "проставил комиссию 20% везде,
+      // средняя по корзине показывала ~16-17%") — обеим функциям не хватало
+      // `recomputeTotals()` в конце, в отличие от их зеркала на отдельной
+      // позиции (`updateFeeRub`/`updateFeePercent` выше, которые его всегда
+      // вызывали). Своё поле "Комиссия ₽" у строки лота обновлялось верно,
+      // но сводка "Итого корзины"/"Средняя комиссия" наверху экрана
+      // пересчитывалась только когда триггерилось что-то ДРУГОЕ у лота
+      // (сумма/цена/слайдер/округление/добавление строки) — застревала на
+      // снимке "как было до того, как проставили комиссию", если менеджер
+      // после ввода % больше ничего в лоте не трогал. Похоже, чисто
+      // витринный баг (то, что реально уходит в getPayload() — та же
+      // строка feeRubEl.value — уже было верным и без этого фикса), но не
+      // подтверждено на сохранённых данных (VASY тестировал без сохранения),
+      // регресс-тест ниже фиксирует именно ЭКРАННОЕ значение.
       function updateRowFeeRub(row) {
         const percent = parseFloat(row.feePercentEl.value) || 0;
         const rub = row.costShareRub * (percent / 100);
         if (document.activeElement !== row.feeRubEl) row.feeRubEl.value = rub > 0 ? rub.toFixed(2) : '';
+        recomputeTotals();
       }
       function updateRowFeePercent(row) {
         const rub = parseFloat(row.feeRubEl.value) || 0;
         if (row.costShareRub > 0 && document.activeElement !== row.feePercentEl) row.feePercentEl.value = ((rub / row.costShareRub) * 100).toFixed(2);
+        recomputeTotals();
       }
 
       function removeLotRow(rowId) {
@@ -834,22 +911,18 @@ window.Screens.cartNew = {
           </div>
           ${FormHelpers.commissionGateHtml(`lot${id}-row${rowId}-`)}
 
-          <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — те же 5 полей,
-               что на обычной позиции, см. IMPLEMENTATION-PLAN-CART-MERGE.md §2.2. -->
+          <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — те же поля,
+               что на обычной позиции, см. IMPLEMENTATION-PLAN-CART-MERGE.md §2.2.
+               Ссылка на покупку сюда НЕ входит — одна на весь лот, см.
+               .lot-purchase-link-input в шапке лота (5.2). -->
           <label class="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none mt-1.5">
             <input type="checkbox" class="own-purchase-checkbox w-3.5 h-3.5 accent-indigo-600 cursor-pointer">
             Личный заказ (без плательщика)
+            ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
           </label>
           <div class="mt-1.5">
             <label class="text-[10px] text-gray-500">Сколько уже оплачено, ₽</label>
             <input type="number" class="already-paid-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
-          </div>
-          <div class="mt-1.5">
-            <label class="text-[10px] text-gray-500">Ссылка на покупку</label>
-            <div class="flex items-center gap-1">
-              <input type="text" class="purchase-link-input flex-1 bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="https://...">
-              <button type="button" class="purchase-link-resolve-btn shrink-0 px-2 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-medium">Найти</button>
-            </div>
           </div>
           <div class="mt-1.5">
             <label class="text-[10px] text-gray-500">Примечание</label>
@@ -885,8 +958,6 @@ window.Screens.cartNew = {
           feeRubEl: rowEl.querySelector('.fee-rub-input'),
           ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
           alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
-          purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
-          purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
           noteInputEl: rowEl.querySelector('.note-input'),
           notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox')
         };
@@ -908,36 +979,6 @@ window.Screens.cartNew = {
         row.ownPurchaseCheckboxEl.addEventListener('change', () => {
           rowEl.querySelector('.client-row').classList.toggle('hidden', row.ownPurchaseCheckboxEl.checked);
           row.clientDropdownEl.classList.remove('active');
-        });
-
-        // Ссылка на покупку — тот же паттерн, что на отдельной позиции (§2.1).
-        row.purchaseLinkResolveBtn.addEventListener('click', async () => {
-          const url = row.purchaseLinkInputEl.value.trim();
-          if (!url) return;
-          row.purchaseLinkResolveBtn.disabled = true;
-          try {
-            const result = await callServer('resolveOrderProductLink', url);
-            if (result.status === 'matched') {
-              row.productSearchEl.value = result.sku.value || result.sku.label || '';
-              row.productOriginal = result.sku.value || '';
-              showSaveToast(true, 'Ссылка распознана — товар найден в каталоге.');
-            } else if (result.status === 'unmatched') {
-              const skuModal = SkuModal.init({
-                onSaved: (skuResult, action) => {
-                  if (action === 'create') {
-                    row.productSearchEl.value = skuResult.value;
-                    row.productOriginal = skuResult.value;
-                    showSaveToast(true, `Позиция «${skuResult.label || skuResult.value}» создана и добавлена в каталог`);
-                  }
-                }
-              });
-              skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
-            }
-          } catch (error) {
-            showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
-          } finally {
-            row.purchaseLinkResolveBtn.disabled = false;
-          }
         });
 
         if (prefillClient) {
@@ -1017,6 +1058,12 @@ window.Screens.cartNew = {
         row.productSearchEl.addEventListener('input', () => { row.productOriginal = row.productSearchEl.value; });
         row.productSearchEl.addEventListener('focus', () => { if (row.productSearchEl.value.trim().length >= 2) row.productDropdownEl.classList.add('active'); });
 
+        // Тянуть можно только за сам бегунок, не за любую точку трека —
+        // репорт VASY 05.09.2026, тот же паттерн, что уже есть на
+        // "Коллективках" (`common.js:wireSliderThumbGuard`).
+        wireSliderThumbGuard(row.costSliderEl);
+        wireSliderThumbGuard(row.weightSliderEl);
+
         row.knownPriceInputEl.addEventListener('input', patchAllCostShares);
         row.costSliderEl.addEventListener('input', () => {
           row.costCoefficient = parseFloat(row.costSliderEl.value);
@@ -1086,7 +1133,12 @@ window.Screens.cartNew = {
             // вычисляются на СЕРВЕРЕ внутри lotsService.createLot (см. её
             // JSDoc), не здесь — сюда уходит только сырое значение.
             alreadyPaidRub: parseFloat(r.alreadyPaidInputEl.value) || 0,
-            purchaseLink: r.purchaseLinkInputEl.value.trim(),
+            // Ссылка на покупку — одна на весь лот (5.2), то же значение
+            // уходит в КАЖДУЮ позицию лота (positions[].purchaseLink на
+            // backend'е как принимал строку на каждую позицию, так и
+            // принимает — контракт не менялся, меняется только откуда
+            // фронтенд берёт это значение).
+            purchaseLink: lotPurchaseLinkInputEl.value.trim(),
             remark: r.noteInputEl.value,
             notifyClient: r.notifyClientCheckboxEl.checked,
             commissionLowReason: r.commissionGate.getReason(),

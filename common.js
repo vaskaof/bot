@@ -175,6 +175,41 @@ function debounce(func, wait) {
 }
 
 /**
+ * Гвард "тянуть только за кончик ползунка" для `<input type="range">` —
+ * вынесено в общий модуль 05.09.2026 (репорт VASY на `cart-new.js`) из
+ * `collective-detail.js` (25.08.2026, тот же репорт "пальцем можно случайно
+ * нажать на ползунок и он сразу перескочет"). Нативный range в большинстве
+ * браузеров и мобильном Telegram WebView перепрыгивает к точке клика при
+ * тапе В ЛЮБОМ месте трека, не только за сам "бегунок" — это и есть
+ * источник случайных нажатий. Перехватывает `mousedown`/`touchstart` ДО
+ * начала перетаскивания и блокирует его (`preventDefault`), если точка
+ * касания дальше `THUMB_GRAB_TOLERANCE_PX` от текущего положения бегунка —
+ * дальнейшее движение пальца/курсора уже не долетает до слайдера, т.к.
+ * сам "drag" так и не начался. `collective-detail.js` оставлен со своей
+ * исходной инлайн-копией (стабильный, отдельно протестированный код,
+ * трогать не было причины) — эта функция для НОВЫХ мест использования
+ * (`lot-new.js`/`cart-new.js`), сама логика идентична.
+ * @param {HTMLInputElement} sliderEl `<input type="range">`
+ */
+function wireSliderThumbGuard(sliderEl) {
+    const THUMB_GRAB_TOLERANCE_PX = 14;
+    function isNearThumb(clientX) {
+        const rect = sliderEl.getBoundingClientRect();
+        const min = parseFloat(sliderEl.min);
+        const max = parseFloat(sliderEl.max);
+        const percent = (parseFloat(sliderEl.value) - min) / (max - min);
+        const thumbX = rect.left + percent * rect.width;
+        return Math.abs(clientX - thumbX) <= THUMB_GRAB_TOLERANCE_PX;
+    }
+    function guardSliderGrab(e) {
+        const point = e.touches && e.touches[0] ? e.touches[0] : e;
+        if (!isNearThumb(point.clientX)) e.preventDefault();
+    }
+    sliderEl.addEventListener('mousedown', guardSliderGrab);
+    sliderEl.addEventListener('touchstart', guardSliderGrab, { passive: false });
+}
+
+/**
  * Экранирует HTML-теги для безопасного вывода пользовательских данных.
  * @param {string} unsafe Строка с потенциально опасными символами
  * @returns {string} Безопасная строка

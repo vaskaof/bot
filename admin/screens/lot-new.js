@@ -556,6 +556,12 @@ window.Screens.lotNew = {
         patchAllCostShares();
       });
 
+      // Тянуть можно только за сам бегунок, не за любую точку трека —
+      // репорт VASY 05.09.2026, тот же паттерн, что уже есть на
+      // "Коллективках" (`common.js:wireSliderThumbGuard`).
+      wireSliderThumbGuard(row.costSliderEl);
+      wireSliderThumbGuard(row.weightSliderEl);
+
       row.costSliderEl.addEventListener('input', () => {
         row.costCoefficient = parseFloat(row.costSliderEl.value);
         row.costFractionLabelEl.textContent = unitsFractionLabel(row.costCoefficient);
