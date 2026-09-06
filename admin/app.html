@@ -44,8 +44,15 @@
   <!-- Рефакторинг «Корзина», фаза 3 (REFACTOR-CART.md §4, 03.09.2026);
        слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-PLAN-
        CART-MERGE.md) -->
-  <script src="screens/_cart-money.js?v=1"></script>
-  <script src="screens/cart-new.js?v=6"></script>
+  <script src="screens/_cart-money.js?v=2"></script>
+  <!-- Разделение на модули (§5 D4, IMPLEMENTATION-PLAN-CART-UX.md,
+       07.09.2026) — карточки "Позиция"/"Лот" вынесены из cart-new.js,
+       которое иначе стало бы третьим god-файлом (план §9 п.8). Порядок
+       важен — обе зависят от _cart-money.js (CartMoney), cart-new.js
+       зависит от обеих (CartPosition/CartLot). -->
+  <script src="screens/_cart-position.js?v=1"></script>
+  <script src="screens/_cart-lot.js?v=1"></script>
+  <script src="screens/cart-new.js?v=8"></script>
   <style>
     body {
       background-color: #f3f4f9;
@@ -81,8 +88,21 @@
        19.08.2026, тот же баг и то же исправление, что client/app.html:
        `pb-safe` не входит в базовую сборку Tailwind CDN (нет
        tailwind.config), никогда не давал реального отступа. */
+    /* Высота зоны "над нижней навигацией" — ОДНО место, от которого зависят
+       #bottom-nav сама (высота) и любая fixed-панель, которая должна встать
+       НАД ней (#bulk-actions-bar, #cart-summary-bar — см. их правила ниже).
+       Введено 06.09.2026 (Фаза C, целевое ревью перед деплоем) при добавлении
+       ВТОРОГО потребителя этого же значения — до этого оно было буквально
+       скопировано в #bulk-actions-bar, второй copy-paste уже не оправдан. */
+    :root {
+      --above-bottom-nav: calc(70px + env(safe-area-inset-bottom));
+    }
+    /* Отступ под системную зону iPhone (Home Indicator) — ИСПРАВЛЕНО
+       19.08.2026, тот же баг и то же исправление, что client/app.html:
+       `pb-safe` не входит в базовую сборку Tailwind CDN (нет
+       tailwind.config), никогда не давал реального отступа. */
     #bottom-nav {
-      height: calc(70px + env(safe-area-inset-bottom));
+      height: var(--above-bottom-nav);
       padding-bottom: env(safe-area-inset-bottom);
     }
     /* Панель массовых действий (Э3 рефакторинга коллективок, `orders.js`/
@@ -95,7 +115,14 @@
        "почти незаметного" до блокирующего клики совсем. Поднимаем панель
        НАД навигацией — та же высота, что #bottom-nav сама себе выставляет. */
     #bulk-actions-bar {
-      bottom: calc(70px + env(safe-area-inset-bottom));
+      bottom: var(--above-bottom-nav);
+    }
+    /* Липкая панель итогов "Корзины" (Фаза C, IMPLEMENTATION-PLAN-CART-
+       UX.md §4 C1, 06.09.2026) — ПЕРВЫЙ sticky-элемент в приложении вообще.
+       Тот же приём "над нижней навигацией", что уже решён выше для
+       #bulk-actions-bar. */
+    #cart-summary-bar {
+      bottom: var(--above-bottom-nav);
     }
   </style>
 </head>

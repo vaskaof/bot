@@ -157,7 +157,67 @@ function splitProportionallyClient(pool, rows, roundingStep) {
   return result;
 }
 
+/**
+ * Подпись слайдера доли (внутри лота) человеческим языком вместо голого
+ * множителя (§5 D3, IMPLEMENTATION-PLAN-CART-UX.md) — репорт-мотивация:
+ * "1.00" ничего не значит менеджеру, не знакомому с формулой
+ * `splitProportionally`. Диапазон слайдера — 0..2, шаг 0.25 (`cost-slider`/
+ * `weight-slider` в cart-new.js) — три канонических значения из плана
+ * (0/1/2) плюс обобщение на промежуточные шаги, которые план явно не
+ * перечислил, но слайдер их допускает.
+ * @param {number} value 0..2
+ * @returns {string}
+ */
+function humanFractionLabel(value) {
+  const v = Number(value) || 0;
+  if (v === 0) return '0 — не участвует';
+  if (v === 1) return '×1 — как у всех';
+  if (v === 2) return '×2 — вдвое больше';
+  const vLabel = Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return v < 1 ? `×${vLabel} — меньше, чем у всех` : `×${vLabel} — больше, чем у всех`;
+}
+
+/**
+ * Символы валют корзины — общая статическая таблица (§5 D4, перенесена из
+ * cart-new.js при разделении на модули: `_cart-position.js`/`_cart-lot.js`
+ * обе читают её, а после разделения на файлы модульного `const` из
+ * cart-new.js им уже не видно — нужен общий, window-уровня, источник).
+ */
+const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£' };
+
+/**
+ * Прогноз расходов (§4 C1 "Прогноз логистики") — имена полей позиции,
+ * которые складывает липкая панель итогов (cart-new.js's
+ * updateSummaryPanelDetails) — суммируется ТОЛЬКО по отдельным позициям:
+ * строки внутри лота не имеют этих полей вообще (прогноз лота считается на
+ * бэкенде одним вызовом на весь лот, см. lotsService.createLot JSDoc).
+ * Общий источник для cart-new.js (агрегация) И `_cart-position.js`
+ * (проводка слушателей 'input' на эти же поля, §5 D4).
+ */
+const FORECAST_FIELD_KEYS = ['weightSumEl', 'taxiKzEl', 'sdekEl', 'taxiRfEl', 'taxiRfSendEl', 'shippingRfEl', 'taxiRfReceiveEl'];
+
+/**
+ * Слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-PLAN-CART-
+ * MERGE.md §0) — единственное место, где считается формула замены старой
+ * пары «Оплачена ли бронь?»+«Уже получено при оформлении» на одно число
+ * «Сколько уже оплачено, ₽». Возвращает ровно тот же контракт, который
+ * раньше заполнял менеджер вручную через toggle+модалку `#booking-overlap-
+ * modal` в order-new.js — НЕ живой статус, фиксируется один раз при
+ * отправке формы. Перенесена сюда из cart-new.js 06.09.2026 (§5 D4) — уже
+ * была чистой (без DOM), просто жила не в том файле. Используется только
+ * `_cart-position.js` (лот вычисляет это же на СЕРВЕРЕ, см. lotsService.
+ * createLot JSDoc — сюда с лота уходит только сырое значение).
+ * @param {number} bookingSumRub
+ * @param {number} alreadyPaidRub
+ * @returns {{bookingPaid: 'Да'|'Нет', bookingAlreadyInMainAmount: boolean}}
+ */
+function computeBookingFields(bookingSumRub, alreadyPaidRub) {
+  const bookingCovered = bookingSumRub > 0 && alreadyPaidRub >= bookingSumRub;
+  return { bookingPaid: bookingCovered ? 'Да' : 'Нет', bookingAlreadyInMainAmount: bookingCovered };
+}
+
 window.CartMoney = {
   feeRubFromPercent, feePercentFromRub, totalFromFeeRub, feeRubFromTotal, clampTotal,
-  totalBreakdownText, splitProportionallyClient
+  totalBreakdownText, splitProportionallyClient, humanFractionLabel,
+  CURRENCY_SYMBOLS, computeBookingFields, FORECAST_FIELD_KEYS
 };
