@@ -270,51 +270,55 @@ window.Screens.cartNew = {
     function searchClientStub(query) { return callServer('searchClients', query); }
     function searchReleaseStub(query) { return callServer('searchSku', query); }
 
-    // Разбивка суммы между заявками пропорционально весу поверх уже
-    // известных базовых цен — клиентская копия backend `splitProportionally`
-    // (server/src/lots/splitProportionally.js), намеренное дублирование
-    // (см. её JSDoc), только для мгновенного визуального фидбека. Раньше
-    // была ЛОКАЛЬНОЙ функцией внутри addLotItem (пересоздавалась на каждый
-    // лот) — вынесена сюда 05.09.2026, чтобы её мог использовать И лот
-    // (разбивка МЕЖДУ его позициями), И новая разбивка "Итог с сайта
-    // выкупа" на уровне всей корзины (МЕЖДУ заявками) — та же формула,
-    // один уровень выше.
-    function splitProportionallyClient(pool, rows, roundingStep) {
-      const step = roundingStep && roundingStep > 0 ? roundingStep : 0.01;
-      const result = new Map();
-      if (rows.length === 0) return result;
-      const basePrices = rows.map((r) => Number(r.basePrice) || 0);
-      const basesSum = basePrices.reduce((s, v) => s + v, 0);
-      const remainder = pool - basesSum;
-      const weights = rows.map((r) => (r.weight === null || r.weight === undefined ? 1 : Number(r.weight) || 0));
-      const totalWeight = weights.reduce((s, w) => s + w, 0);
-      const rawShares = rows.map((r, i) => (totalWeight > 0 ? (remainder * weights[i]) / totalWeight : 0));
-      const rawFinals = rows.map((r, i) => basePrices[i] + rawShares[i]);
-      let roundedSum = 0, largestIndex = 0;
-      rows.forEach((r, i) => {
-        const rounded = Math.round(rawFinals[i] / step) * step;
-        result.set(r.id, rounded);
-        roundedSum += rounded;
-        if (rawShares[i] > rawShares[largestIndex]) largestIndex = i;
-      });
-      const roundingRemainder = pool - roundedSum;
-      const targetId = rows[largestIndex].id;
-      result.set(targetId, (result.get(targetId) || 0) + roundingRemainder);
-      return result;
+    // Денежная математика (связка Сумма↔Комиссия%↔Комиссия₽↔Итог,
+    // разбивка разницы) вынесена в screens/_cart-money.js 06.09.2026
+    // (IMPLEMENTATION-PLAN-CART-UX.md §5 D4 — ответ на вопрос VASY про
+    // god-файлы: cart-new.js не должен стать третьим, чистый расчёт без DOM
+    // заодно впервые покрывается unit-тестами без браузера). Локальный
+    // алиас — короче на месте вызова, тот же приём, что уже применён к
+    // window.FormHelpers-функциям.
+    const splitProportionallyClient = CartMoney.splitProportionallyClient;
+
+    // --- Итого/средняя комиссия (§4 п.4/п.5, ИСПРАВЛЕНО 06.09.2026 —
+    // IMPLEMENTATION-PLAN-CART-UX.md §2 A2/A3) ---
+    // { type:'position'|'lot', getTotalRub() — СЫРАЯ известная база (для
+    // разбивки разницы, зеркало backend basePrice), getEffectiveBaseRub() —
+    // РЕКОНСИЛИРОВАННАЯ база (для отображения "Итого"/комиссии, A3),
+    // setReconciledShareRub(rubOrNull), getCommissionRub(), onRateChanged(),
+    // getPayload(), getCostCoefficient(), reconciledDisplayEl?, coefBlockEl? }
+    let items = [];
+    let itemSeq = 0;
+    // Guard от бесконечной рекурсии (см. план §2 A2 — единственное место с
+    // реальным риском зацикливания): setReconciledShareRub на каждой заявке
+    // вызывает её собственный пересчёт (updateFeeRub/patchAllCostShares),
+    // который зовёт recomputeTotals() → recomputeSiteTotalReconciliation()
+    // заново. Без guard'а это бесконечный цикл.
+    let reconciling = false;
+
+    // Чистое обновление сводки — БЕЗ повторного запуска реконсиляции (её
+    // вызывает только recomputeTotals ниже). Используется как из
+    // recomputeTotals, так и изнутри recomputeSiteTotalReconciliation после
+    // применения долей — там нельзя звать recomputeTotals (см. guard выше).
+    function updateSummaryDisplay() {
+      // A3: "Итого корзины"/"Средняя комиссия" считаются от РЕКОНСИЛИРОВАННОЙ
+      // базы (если реконсиляция активна) — раньше показывали СЫРУЮ сумму,
+      // которая расходилась с реально сохраняемыми суммами (репорт VASY
+      // "итог корзины теряется"/не совпадает).
+      const effectiveTotalRub = items.reduce((s, it) => s + (it.getEffectiveBaseRub ? it.getEffectiveBaseRub() : it.getTotalRub()) || 0, 0);
+      const totalCommission = items.reduce((s, it) => s + (it.getCommissionRub() || 0), 0);
+      totalRubDisplay.textContent = effectiveTotalRub.toFixed(2);
+      avgCommissionDisplay.textContent = effectiveTotalRub > 0
+        ? `${((totalCommission / effectiveTotalRub) * 100).toFixed(1)}% (${totalCommission.toFixed(2)} ₽)`
+        : '—';
     }
 
-    // --- Итого/средняя комиссия (§4 п.4/п.5) ---
-    let items = []; // { type:'position'|'lot', getTotalRub(), getCommissionRub(), onRateChanged(), getPayload(), removeEl(), getCostCoefficient(), reconciledDisplayEl?, coefBlockEl? }
-    let itemSeq = 0;
-
     function recomputeTotals() {
-      const totalRub = items.reduce((s, it) => s + (it.getTotalRub() || 0), 0);
-      const totalCommission = items.reduce((s, it) => s + (it.getCommissionRub() || 0), 0);
-      totalRubDisplay.textContent = totalRub.toFixed(2);
-      avgCommissionDisplay.textContent = totalRub > 0
-        ? `${((totalCommission / totalRub) * 100).toFixed(1)}% (${totalCommission.toFixed(2)} ₽)`
-        : '—';
-      recomputeSiteTotalReconciliation(totalRub);
+      updateSummaryDisplay();
+      // Реконсиляция всегда получает СЫРУЮ сумму известных цен (та же база,
+      // что backend's knownBasesSum) — не реконсилированную, иначе разница
+      // считалась бы от уже сдвинутого числа.
+      const rawTotalRub = items.reduce((s, it) => s + (it.getTotalRub() || 0), 0);
+      recomputeSiteTotalReconciliation(rawTotalRub);
     }
 
     // «Итог с сайта выкупа» (доп. раунд 05.09.2026, репорт VASY: "должны
@@ -327,28 +331,50 @@ window.Screens.cartNew = {
     // заявке (та же формула/тот же UX, что уже есть внутри лота — здесь
     // ровно на уровень выше). Ничего не отправляется на сервер отдельно —
     // `buildPayload()` читает это же поле напрямую в header.
+    //
+    // ИСПРАВЛЕНО 06.09.2026 (§2 A1/A2) — раньше только показывала
+    // read-only текст "С учётом итога корзины: N ₽" и НИЧЕГО не сообщала
+    // самим заявкам, из-за чего комиссия и (для лота) внутренняя разбивка
+    // оставались привязаны к СТАРОЙ, до-реконсиляционной сумме — корень
+    // обоих багов из репорта VASY. Теперь передаёт реальную долю каждой
+    // заявке через `setReconciledShareRub`, которая сама триггерит
+    // пересчёт комиссии/итога (позиция) или строк внутри лота (A2).
     const siteTotalInput = document.getElementById('cart-site-total-input');
     const siteTotalDiffEl = document.getElementById('cart-site-total-diff');
     function recomputeSiteTotalReconciliation(totalRub) {
+      if (reconciling) return; // см. guard выше
       const raw = parseFloat(siteTotalInput.value);
       const active = raw > 0;
       items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.toggle('hidden', !active); });
-      if (!active) { siteTotalDiffEl.classList.add('hidden'); return; }
 
-      const poolRub = raw * currentRate;
-      const diffRub = poolRub - totalRub;
-      siteTotalDiffEl.classList.remove('hidden');
-      siteTotalDiffEl.textContent = Math.abs(diffRub) < 0.01
-        ? 'Совпадает с суммой позиций.'
-        : `Расходится с суммой позиций на ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`;
+      reconciling = true;
+      try {
+        if (!active) {
+          siteTotalDiffEl.classList.add('hidden');
+          items.forEach((it) => it.setReconciledShareRub(null));
+          return;
+        }
 
-      const rows = items.map((it) => ({ id: it.id, weight: it.getCostCoefficient(), basePrice: it.getTotalRub() }));
-      const shares = splitProportionallyClient(poolRub, rows, 1);
-      items.forEach((it) => {
-        if (!it.reconciledDisplayEl) return;
-        const shareRub = shares.get(it.id) || 0;
-        it.reconciledDisplayEl.textContent = `С учётом итога корзины: ${shareRub.toFixed(2)} ₽`;
-      });
+        const poolRub = raw * currentRate;
+        const diffRub = poolRub - totalRub;
+        siteTotalDiffEl.classList.remove('hidden');
+        siteTotalDiffEl.textContent = Math.abs(diffRub) < 0.01
+          ? 'Совпадает с суммой позиций.'
+          : `Расходится с суммой позиций на ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`;
+
+        const rows = items.map((it) => ({ id: it.id, weight: it.getCostCoefficient(), basePrice: it.getTotalRub() }));
+        const shares = splitProportionallyClient(poolRub, rows, 1);
+        items.forEach((it) => {
+          const shareRub = shares.get(it.id) || 0;
+          if (it.reconciledDisplayEl) it.reconciledDisplayEl.textContent = `С учётом итога корзины: ${shareRub.toFixed(2)} ₽`;
+          it.setReconciledShareRub(shareRub);
+        });
+      } finally {
+        reconciling = false;
+      }
+      // Заявки внутри применили свои пересчёты, пока guard был поднят —
+      // сводка наверху экрана обновляется финальным чистым проходом.
+      updateSummaryDisplay();
     }
     siteTotalInput.addEventListener('input', () => recomputeTotals());
 
@@ -421,6 +447,18 @@ window.Screens.cartNew = {
         </div>
         ${FormHelpers.commissionGateHtml(`pos${id}-`)}
 
+        <!-- «Итог» (клиент платит) — четвёртая вершина связки Сумма↔%↔₽↔Итог
+             (§2 A1, ИСПРАВЛЕНО 06.09.2026, зеркало order-new.js's
+             #total-payment-input) — РЕДАКТИРУЕМОЕ поле, не read-only
+             подпись: менеджер часто идёт от круглой суммы к клиенту назад к
+             комиссии, как уже годами работает в order-new.js. Прямой репорт
+             VASY «по каждой позиции не вижу итога». -->
+        <div class="mb-2 pt-2 border-t border-gray-100 bg-indigo-50 -mx-3 px-3 py-2">
+          <label class="text-[11px] text-gray-600 font-medium">Итог (клиент платит), ₽</label>
+          <input type="number" class="total-payment-input w-full bg-white rounded-lg px-2 py-2 text-base font-bold text-gray-900 outline-none border border-indigo-100" placeholder="0.00" step="0.01">
+          <div class="total-breakdown-display text-[11px] text-gray-500 mt-1"></div>
+        </div>
+
         <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — «Личный заказ»,
              «Сколько уже оплачено», примечание, уведомление клиента. См.
              IMPLEMENTATION-PLAN-CART-MERGE.md §2.1. -->
@@ -476,6 +514,12 @@ window.Screens.cartNew = {
         amountRubDisplayEl: rowEl.querySelector('.amount-rub-display'),
         feePercentEl: rowEl.querySelector('.fee-percent-input'),
         feeRubEl: rowEl.querySelector('.fee-rub-input'),
+        totalPaymentEl: rowEl.querySelector('.total-payment-input'),
+        totalBreakdownEl: rowEl.querySelector('.total-breakdown-display'),
+        // Реконсилированная доля (§2 A1/A2, ИСПРАВЛЕНО 06.09.2026) — null,
+        // пока «Итог с сайта выкупа» не заполнен: тогда база для комиссии —
+        // СЫРАЯ сумма (getTotalRub). Заполнен — база берётся отсюда.
+        reconciledShareRub: null,
         ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
         alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
         purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
@@ -628,34 +672,86 @@ window.Screens.cartNew = {
         item.amountRubDisplayEl.textContent = (amount * currentRate).toFixed(2);
         recomputeTotals();
       }
-      // ИСПРАВЛЕНО 05.09.2026 (репорт VASY — "процент написан один, а
-      // реальный отличается") — раньше ввод "Суммы" пересчитывал только
-      // рублёвое отображение самой суммы, но НЕ "Комиссию ₽" — если
-      // менеджер сначала выставлял комиссию (% или ₽), а потом
-      // ПОПРАВЛЯЛ сумму (или наоборот — вводил сумму позже), поле "Комиссия
-      // ₽" оставалось привязано к СТАРОЙ сумме, расходясь с тем, что
-      // реально означает введённый %. `updateFeeRub()` уже безопасна для
-      // повторного вызова (не трогает поле, если оно сейчас в фокусе — см.
-      // ниже) и уже вызывается по этому же принципу на смене курса
-      // (`onRateChanged`) — теперь и на смене суммы.
-      item.amountInputEl.addEventListener('input', () => { updateAmountRub(); updateFeeRub(); fetchForecast(); });
 
+      // База для комиссии/итога (§2 A1, ИСПРАВЛЕНО 06.09.2026) — если «Итог
+      // с сайта выкупа» реконсилировал эту заявку, база = её реальная
+      // реконсилированная доля, НЕ сырая сумма×курс. Раньше комиссия вообще
+      // не знала о реконсиляции — корень бага "комиссия не учитывает
+      // разницу" из репорта VASY (направление всегда в минус, см.
+      // cartsService.createCart JSDoc за полным разбором).
+      item.getEffectiveBaseRub = () => (item.reconciledShareRub !== null ? item.reconciledShareRub : item.getTotalRub());
+
+      // Связка Сумма↔Комиссия %↔Комиссия ₽↔Итог — ТОЧНО как в order-new.js
+      // (см. IMPLEMENTATION-PLAN-CART-UX.md §0 п.3, VASY 06.09.2026: "если
+      // рублевая стоимость меняется то сразу визуально идёт изменение итога
+      // по комиссии, и если вручную редактируется итог комиссии — меняется
+      // процент под это соотношение автоматически"). Расчёт — в
+      // screens/_cart-money.js (чистые функции, без DOM).
       function updateFeeRub() {
-        const percent = parseFloat(item.feePercentEl.value) || 0;
-        const rub = (parseFloat(item.amountInputEl.value) || 0) * currentRate * (percent / 100);
+        const rub = CartMoney.feeRubFromPercent(item.getEffectiveBaseRub(), parseFloat(item.feePercentEl.value) || 0);
         if (document.activeElement !== item.feeRubEl) item.feeRubEl.value = rub > 0 ? rub.toFixed(2) : '';
+        updateTotalDisplay();
         recomputeTotals();
       }
       function updateFeePercent() {
-        const totalRub = (parseFloat(item.amountInputEl.value) || 0) * currentRate;
-        const rub = parseFloat(item.feeRubEl.value) || 0;
         if (document.activeElement !== item.feePercentEl) {
-          item.feePercentEl.value = totalRub > 0 ? ((rub / totalRub) * 100).toFixed(2) : '';
+          const percent = CartMoney.feePercentFromRub(item.getEffectiveBaseRub(), parseFloat(item.feeRubEl.value) || 0);
+          item.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
         }
+        updateTotalDisplay();
         recomputeTotals();
       }
+      // «Итог» (клиент платит) = база + «Комиссия ₽» — не read-only подпись,
+      // полноценная четвёртая вершина связки (§2 C2).
+      function updateTotalDisplay() {
+        const base = item.getEffectiveBaseRub();
+        const feeRub = parseFloat(item.feeRubEl.value) || 0;
+        const total = CartMoney.totalFromFeeRub(base, feeRub);
+        if (document.activeElement !== item.totalPaymentEl) {
+          item.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
+        }
+        item.totalBreakdownEl.textContent = (base > 0 || feeRub > 0)
+          ? `${base.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
+          : '';
+      }
+      // Правка «Итога» вручную — выводит «Комиссия ₽»/«Комиссия %» обратно
+      // (`updateFromTotalPayment`-эквивалент order-new.js).
+      function updateFromTotal() {
+        const base = item.getEffectiveBaseRub();
+        const feeRub = CartMoney.feeRubFromTotal(base, parseFloat(item.totalPaymentEl.value) || 0);
+        item.feeRubEl.value = feeRub > 0 ? feeRub.toFixed(2) : '';
+        const percent = CartMoney.feePercentFromRub(base, feeRub);
+        item.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
+        item.totalBreakdownEl.textContent = (base > 0 || feeRub > 0)
+          ? `${base.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
+          : '';
+        recomputeTotals();
+      }
+      function clampTotalOnBlur() {
+        const clamped = CartMoney.clampTotal(item.getEffectiveBaseRub(), parseFloat(item.totalPaymentEl.value) || 0);
+        item.totalPaymentEl.value = clamped > 0 ? clamped.toFixed(2) : '';
+        updateFromTotal();
+      }
+
+      // ИСПРАВЛЕНО 05.09.2026 (репорт VASY — "процент написан один, а
+      // реальный отличается") — раньше ввод "Суммы" пересчитывал только
+      // рублёвое отображение самой суммы, но НЕ "Комиссию ₽". `updateFeeRub()`
+      // безопасна для повторного вызова (не трогает поле, если оно сейчас в
+      // фокусе) и уже вызывается по этому же принципу на смене курса
+      // (`onRateChanged`) — теперь и на смене суммы.
+      item.amountInputEl.addEventListener('input', () => { updateAmountRub(); updateFeeRub(); fetchForecast(); });
       item.feePercentEl.addEventListener('input', updateFeeRub);
       item.feeRubEl.addEventListener('input', updateFeePercent);
+      item.totalPaymentEl.addEventListener('input', updateFromTotal);
+      item.totalPaymentEl.addEventListener('blur', clampTotalOnBlur);
+
+      // Реконсиляция по «Итогу с сайта выкупа» (§2 A1) — вызывается из
+      // recomputeSiteTotalReconciliation в render(). null — реконсиляция
+      // выключена/сброшена, возврат к сырой сумме.
+      item.setReconciledShareRub = (shareRub) => {
+        item.reconciledShareRub = shareRub;
+        updateFeeRub();
+      };
 
       // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
       // 05.09.2026) — N экземпляров на экране, скоуплены на rowEl своим
@@ -723,12 +819,20 @@ window.Screens.cartNew = {
           // payload createOrder, если реально не используется.
           costCoefficient: item.costCoefficient,
           bookingSum: item.feeRubEl.value,
+          // Комиссия по проценту (§2 A1, ИСПРАВЛЕНО 06.09.2026) — сервер
+          // (cartsService.createCart) пересчитывает bookingSum от РЕАЛЬНОЙ
+          // реконсилированной доли, если этот процент задан — см. её JSDoc.
+          // Не мешает старому поведению: пусто/не задан — сервер не трогает
+          // bookingSum вообще (обратная совместимость).
+          commissionPercent: item.feePercentEl.value,
           // Цель стадии "Основная" ("Осталось") — БЕЗ этого paymentsService.
           // setStageTarget для неё вообще не вызывается (тот же реальный баг,
           // что уже нашли и исправили для позиций лота 02.09.2026, см.
           // lotsService.js's JSDoc у createLot — здесь тот же случай для
-          // отдельной позиции корзины, не через лот).
-          mainSum: (item.getTotalRub() + (parseFloat(item.feeRubEl.value) || 0)).toFixed(2),
+          // отдельной позиции корзины, не через лот). База — РЕКОНСИЛИРОВАННАЯ
+          // (getEffectiveBaseRub), не сырая — иначе "Осталось" разошлось бы с
+          // тем, что реально показано на экране как "Итог".
+          mainSum: (item.getEffectiveBaseRub() + (parseFloat(item.feeRubEl.value) || 0)).toFixed(2),
           // «Сколько уже оплачено, ₽» (слияние «Новый заказ»→«Корзина»,
           // 05.09.2026, IMPLEMENTATION-PLAN-CART-MERGE.md §0) — заменяет
           // старую пару «Оплачена ли бронь?»+«Уже получено при оформлении».
@@ -925,13 +1029,26 @@ window.Screens.cartNew = {
         return (parseFloat(amountInput.value) || 0) * currentRate;
       }
 
-      // splitProportionallyClient — вынесена в область видимости render()
-      // (05.09.2026, см. её JSDoc там), используется как здесь (разбивка
-      // МЕЖДУ позициями лота), так и разбивкой "Итог с сайта выкупа" (МЕЖДУ
-      // заявками корзины) — одна и та же функция, не второй дубль.
+      // Реконсилированный пул лота (§2 A2, ИСПРАВЛЕНО 06.09.2026) — null,
+      // пока «Итог с сайта выкупа» не затронул лот целиком (как ОДНУ заявку
+      // корзины). Заполнен — все строки ВНУТРИ лота должны делить именно
+      // ЭТУ сумму, не сырое поле «Общая стоимость лота» — раньше
+      // `patchAllCostShares` брала сырое значение напрямую, из-за чего
+      // шапка лота показывала одну сумму, а строки внутри в сумме давали
+      // другую (репорт VASY «доля разницы не соотносится между позициями»).
+      let reconciledPoolRub = null;
+      function effectivePoolRub() {
+        return reconciledPoolRub !== null ? reconciledPoolRub : totalCostRub();
+      }
+
+      // splitProportionallyClient — вынесена в screens/_cart-money.js
+      // 06.09.2026 (была в области видимости render() с 05.09.2026, см. её
+      // JSDoc там), используется как здесь (разбивка МЕЖДУ позициями лота),
+      // так и разбивкой "Итог с сайта выкупа" (МЕЖДУ заявками корзины) —
+      // одна и та же функция, не второй дубль.
 
       function updateSummary() {
-        summaryText.textContent = `${lotRows.length} ${lotRows.length === 1 ? 'позиция' : 'позиций'} · Итого ${totalCostRub().toFixed(2)} ₽`;
+        summaryText.textContent = `${lotRows.length} ${lotRows.length === 1 ? 'позиция' : 'позиций'} · Итого ${effectivePoolRub().toFixed(2)} ₽`;
         recomputeTotals();
       }
 
@@ -946,8 +1063,13 @@ window.Screens.cartNew = {
         return (parseFloat(row.knownPriceInputEl.value) || 0) * currentRate;
       }
 
+      // ИСПРАВЛЕНО 06.09.2026 (§2 A2) — пул берётся из effectivePoolRub(),
+      // не из сырого totalCostRub() напрямую: если «Итог с сайта выкупа»
+      // реконсилировал лот целиком, строки внутри должны делить РЕАЛЬНУЮ
+      // (реконсилированную) сумму — иначе шапка лота показывает одно число,
+      // а строки внутри в сумме дают другое (репорт VASY).
       function patchAllCostShares() {
-        const pool = totalCostRub();
+        const pool = effectivePoolRub();
         const roundingStep = parseFloat(roundingSelect.value) || 1;
         const costRows = lotRows.map((r) => ({ id: r.id, weight: r.costCoefficient, basePrice: knownPriceRub(r) }));
         const shares = splitProportionallyClient(pool, costRows, roundingStep);
@@ -959,30 +1081,54 @@ window.Screens.cartNew = {
         updateSummary();
       }
 
-      // ИСПРАВЛЕНО 05.09.2026 (репорт VASY — "проставил комиссию 20% везде,
-      // средняя по корзине показывала ~16-17%") — обеим функциям не хватало
-      // `recomputeTotals()` в конце, в отличие от их зеркала на отдельной
-      // позиции (`updateFeeRub`/`updateFeePercent` выше, которые его всегда
-      // вызывали). Своё поле "Комиссия ₽" у строки лота обновлялось верно,
-      // но сводка "Итого корзины"/"Средняя комиссия" наверху экрана
-      // пересчитывалась только когда триггерилось что-то ДРУГОЕ у лота
-      // (сумма/цена/слайдер/округление/добавление строки) — застревала на
-      // снимке "как было до того, как проставили комиссию", если менеджер
-      // после ввода % больше ничего в лоте не трогал. Похоже, чисто
-      // витринный баг (то, что реально уходит в getPayload() — та же
-      // строка feeRubEl.value — уже было верным и без этого фикса), но не
-      // подтверждено на сохранённых данных (VASY тестировал без сохранения),
-      // регресс-тест ниже фиксирует именно ЭКРАННОЕ значение.
+      // Связка Сумма↔Комиссия %↔Комиссия ₽↔Итог для строки ВНУТРИ лота —
+      // тот же расчёт, что на отдельной позиции (§2 A1), база = её
+      // `costShareRub` (уже реконсилированная, если применимо — см.
+      // patchAllCostShares выше). ИСПРАВЛЕНО 05.09.2026 (репорт VASY —
+      // "проставил комиссию 20% везде, средняя по корзине показывала
+      // ~16-17%") — обеим функциям не хватало `recomputeTotals()` в конце;
+      // 06.09.2026 обе переведены на screens/_cart-money.js вместо
+      // инлайн-формулы, добавлена связка с «Итогом» строки.
       function updateRowFeeRub(row) {
-        const percent = parseFloat(row.feePercentEl.value) || 0;
-        const rub = row.costShareRub * (percent / 100);
+        const rub = CartMoney.feeRubFromPercent(row.costShareRub, parseFloat(row.feePercentEl.value) || 0);
         if (document.activeElement !== row.feeRubEl) row.feeRubEl.value = rub > 0 ? rub.toFixed(2) : '';
+        updateRowTotalDisplay(row);
         recomputeTotals();
       }
       function updateRowFeePercent(row) {
-        const rub = parseFloat(row.feeRubEl.value) || 0;
-        if (row.costShareRub > 0 && document.activeElement !== row.feePercentEl) row.feePercentEl.value = ((rub / row.costShareRub) * 100).toFixed(2);
+        if (document.activeElement !== row.feePercentEl) {
+          const percent = CartMoney.feePercentFromRub(row.costShareRub, parseFloat(row.feeRubEl.value) || 0);
+          row.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
+        }
+        updateRowTotalDisplay(row);
         recomputeTotals();
+      }
+      // «Итог» строки лота (§2 C2) — тот же принцип, что на отдельной
+      // позиции: редактируемое поле, четвёртая вершина связки.
+      function updateRowTotalDisplay(row) {
+        const feeRub = parseFloat(row.feeRubEl.value) || 0;
+        const total = CartMoney.totalFromFeeRub(row.costShareRub, feeRub);
+        if (document.activeElement !== row.totalPaymentEl) {
+          row.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
+        }
+        row.totalBreakdownEl.textContent = (row.costShareRub > 0 || feeRub > 0)
+          ? `${row.costShareRub.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
+          : '';
+      }
+      function updateRowFromTotal(row) {
+        const feeRub = CartMoney.feeRubFromTotal(row.costShareRub, parseFloat(row.totalPaymentEl.value) || 0);
+        row.feeRubEl.value = feeRub > 0 ? feeRub.toFixed(2) : '';
+        const percent = CartMoney.feePercentFromRub(row.costShareRub, feeRub);
+        row.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
+        row.totalBreakdownEl.textContent = (row.costShareRub > 0 || feeRub > 0)
+          ? `${row.costShareRub.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
+          : '';
+        recomputeTotals();
+      }
+      function clampRowTotalOnBlur(row) {
+        const clamped = CartMoney.clampTotal(row.costShareRub, parseFloat(row.totalPaymentEl.value) || 0);
+        row.totalPaymentEl.value = clamped > 0 ? clamped.toFixed(2) : '';
+        updateRowFromTotal(row);
       }
 
       function removeLotRow(rowId) {
@@ -1042,6 +1188,14 @@ window.Screens.cartNew = {
           </div>
           ${FormHelpers.commissionGateHtml(`lot${id}-row${rowId}-`)}
 
+          <!-- «Итог» строки лота — та же четвёртая вершина связки, что на
+               отдельной позиции (§2 A1/C2, ИСПРАВЛЕНО 06.09.2026). -->
+          <div class="mt-1.5 pt-1.5 border-t border-gray-200 bg-indigo-50 -mx-2.5 px-2.5 py-1.5">
+            <label class="text-[10px] text-gray-600 font-medium">Итог (клиент платит), ₽</label>
+            <input type="number" class="total-payment-input w-full bg-white rounded-lg px-2 py-1.5 text-sm font-bold text-gray-900 outline-none border border-indigo-100" placeholder="0.00" step="0.01">
+            <div class="total-breakdown-display text-[10px] text-gray-500 mt-0.5"></div>
+          </div>
+
           <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026) — те же поля,
                что на обычной позиции, см. IMPLEMENTATION-PLAN-CART-MERGE.md §2.2.
                Ссылка на покупку сюда НЕ входит — одна на весь лот, см.
@@ -1087,6 +1241,8 @@ window.Screens.cartNew = {
           weightFractionLabelEl: rowEl.querySelector('.weight-fraction-label'),
           feePercentEl: rowEl.querySelector('.fee-percent-input'),
           feeRubEl: rowEl.querySelector('.fee-rub-input'),
+          totalPaymentEl: rowEl.querySelector('.total-payment-input'),
+          totalBreakdownEl: rowEl.querySelector('.total-breakdown-display'),
           ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
           alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
           noteInputEl: rowEl.querySelector('.note-input'),
@@ -1207,6 +1363,8 @@ window.Screens.cartNew = {
         });
         row.feePercentEl.addEventListener('input', () => updateRowFeeRub(row));
         row.feeRubEl.addEventListener('input', () => updateRowFeePercent(row));
+        row.totalPaymentEl.addEventListener('input', () => updateRowFromTotal(row));
+        row.totalPaymentEl.addEventListener('blur', () => clampRowTotalOnBlur(row));
 
         patchAllCostShares();
         return row;
@@ -1233,12 +1391,27 @@ window.Screens.cartNew = {
       const lotItem = {
         id, type: 'lot', rowEl: wrapEl,
         onRateChanged: () => { amountSymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; lotRows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; }); patchAllCostShares(); },
+        // СЫРАЯ база лота — то, что реально ввёл менеджер в «Общая стоимость
+        // лота», используется в разбивке разницы НА УРОВНЕ КОРЗИНЫ (тот же
+        // смысл, что basePrice позиции — известная цена ДО реконсиляции).
         getTotalRub: () => totalCostRub(),
+        // РЕКОНСИЛИРОВАННАЯ база лота (§2 A3, ИСПРАВЛЕНО 06.09.2026) — для
+        // отображения "Итого корзины"/"Средняя комиссия" наверху экрана.
+        getEffectiveBaseRub: () => effectivePoolRub(),
         getCommissionRub: () => lotRows.reduce((s, r) => s + (parseFloat(r.feeRubEl.value) || 0), 0),
         // «Доля разницы» лота ЦЕЛИКОМ как одной заявки корзины (доп. раунд
         // 05.09.2026) — НЕ путать с costCoefficient позиций ВНУТРИ лота
         // (r.costCoefficient ниже, другой уровень разбивки).
         getCostCoefficient: () => cartCostCoefficient,
+        // Реконсиляция на уровне корзины (§2 A1/A2) — вызывается из
+        // recomputeSiteTotalReconciliation в render(). Прокидывает
+        // реконсилированный пул ВНУТРЬ лота через patchAllCostShares (A2) —
+        // без этого шапка лота показывала одну сумму, строки внутри
+        // суммировались в другую (репорт VASY).
+        setReconciledShareRub: (shareRub) => {
+          reconciledPoolRub = shareRub;
+          patchAllCostShares();
+        },
         coefBlockEl: cartCoefBlockEl,
         reconciledDisplayEl: cartReconciledDisplayEl,
         hasPositions: () => lotRows.length > 0,
@@ -1271,6 +1444,10 @@ window.Screens.cartNew = {
             knownPriceRub: knownPriceRub(r),
             weightCoefficient: r.weightCoefficient,
             commissionRub: parseFloat(r.feeRubEl.value) || 0,
+            // Комиссия по проценту (§2 A1, ИСПРАВЛЕНО 06.09.2026) —
+            // lotsService.createLot пересчитывает commissionRub от РЕАЛЬНОЙ
+            // costShareRub позиции, если этот процент задан — см. её JSDoc.
+            commissionPercent: r.feePercentEl.value,
             // «Сколько уже оплачено, ₽» — bookingPaid/bookingAlreadyInMainAmount
             // вычисляются на СЕРВЕРЕ внутри lotsService.createLot (см. её
             // JSDoc), не здесь — сюда уходит только сырое значение.
