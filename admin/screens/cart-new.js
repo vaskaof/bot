@@ -304,7 +304,14 @@ window.Screens.cartNew = {
       // базы (если реконсиляция активна) — раньше показывали СЫРУЮ сумму,
       // которая расходилась с реально сохраняемыми суммами (репорт VASY
       // "итог корзины теряется"/не совпадает).
-      const effectiveTotalRub = items.reduce((s, it) => s + (it.getEffectiveBaseRub ? it.getEffectiveBaseRub() : it.getTotalRub()) || 0, 0);
+      // Скобки вокруг `|| 0` обязательны — `+` связывает крепче `||`, без
+      // скобок `s + X || 0` читается как `(s + X) || 0`: если накопленная
+      // сумма ДО этого шага случайно даст 0/NaN, весь накопленный итог
+      // (не только вклад текущей заявки) обнулился бы молча. Найдено
+      // целевым ревью перед деплоем 06.09.2026 (latent — сегодня
+      // getEffectiveBaseRub()/getTotalRub() сами гарантируют не-NaN, но
+      // выражение не должно полагаться на это неявно).
+      const effectiveTotalRub = items.reduce((s, it) => s + ((it.getEffectiveBaseRub ? it.getEffectiveBaseRub() : it.getTotalRub()) || 0), 0);
       const totalCommission = items.reduce((s, it) => s + (it.getCommissionRub() || 0), 0);
       totalRubDisplay.textContent = effectiveTotalRub.toFixed(2);
       avgCommissionDisplay.textContent = effectiveTotalRub > 0
@@ -710,9 +717,7 @@ window.Screens.cartNew = {
         if (document.activeElement !== item.totalPaymentEl) {
           item.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
         }
-        item.totalBreakdownEl.textContent = (base > 0 || feeRub > 0)
-          ? `${base.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
-          : '';
+        item.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(base, feeRub);
       }
       // Правка «Итога» вручную — выводит «Комиссия ₽»/«Комиссия %» обратно
       // (`updateFromTotalPayment`-эквивалент order-new.js).
@@ -722,9 +727,7 @@ window.Screens.cartNew = {
         item.feeRubEl.value = feeRub > 0 ? feeRub.toFixed(2) : '';
         const percent = CartMoney.feePercentFromRub(base, feeRub);
         item.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
-        item.totalBreakdownEl.textContent = (base > 0 || feeRub > 0)
-          ? `${base.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
-          : '';
+        item.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(base, feeRub);
         recomputeTotals();
       }
       function clampTotalOnBlur() {
@@ -1111,18 +1114,14 @@ window.Screens.cartNew = {
         if (document.activeElement !== row.totalPaymentEl) {
           row.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
         }
-        row.totalBreakdownEl.textContent = (row.costShareRub > 0 || feeRub > 0)
-          ? `${row.costShareRub.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
-          : '';
+        row.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(row.costShareRub, feeRub);
       }
       function updateRowFromTotal(row) {
         const feeRub = CartMoney.feeRubFromTotal(row.costShareRub, parseFloat(row.totalPaymentEl.value) || 0);
         row.feeRubEl.value = feeRub > 0 ? feeRub.toFixed(2) : '';
         const percent = CartMoney.feePercentFromRub(row.costShareRub, feeRub);
         row.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
-        row.totalBreakdownEl.textContent = (row.costShareRub > 0 || feeRub > 0)
-          ? `${row.costShareRub.toFixed(2)} стоимость + ${feeRub.toFixed(2)} комиссия`
-          : '';
+        row.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(row.costShareRub, feeRub);
         recomputeTotals();
       }
       function clampRowTotalOnBlur(row) {

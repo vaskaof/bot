@@ -99,6 +99,24 @@ function clampTotal(baseRub, total) {
 }
 
 /**
+ * Текст разложения «Итога» на карточке — «база стоимость + комиссия
+ * комиссия», под полем «Итог» (§4 C2). Вынесена сюда 06.09.2026 (найдено
+ * целевым ревью перед деплоем — та же строка была буквально скопирована 4
+ * раза: позиция/updateTotalDisplay, позиция/updateFromTotal, строка
+ * лота/updateRowTotalDisplay, строка лота/updateRowFromTotal) — один текст,
+ * не 4 копии, которые придётся синхронизировать вручную при любой правке
+ * формулировки.
+ * @param {number} baseRub
+ * @param {number} feeRub
+ * @returns {string} пусто, если и база, и комиссия равны 0
+ */
+function totalBreakdownText(baseRub, feeRub) {
+  const base = Number(baseRub) || 0;
+  const fee = Number(feeRub) || 0;
+  return (base > 0 || fee > 0) ? `${base.toFixed(2)} стоимость + ${fee.toFixed(2)} комиссия` : '';
+}
+
+/**
  * Разбивка суммы между заявками пропорционально весу поверх уже известных
  * базовых цен — клиентская копия backend `splitProportionally`
  * (`server/src/lots/splitProportionally.js`), намеренное дублирование (см.
@@ -141,5 +159,5 @@ function splitProportionallyClient(pool, rows, roundingStep) {
 
 window.CartMoney = {
   feeRubFromPercent, feePercentFromRub, totalFromFeeRub, feeRubFromTotal, clampTotal,
-  splitProportionallyClient
+  totalBreakdownText, splitProportionallyClient
 };
