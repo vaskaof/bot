@@ -300,10 +300,46 @@ window.Screens.cartNew = {
         resetBtn.classList.toggle('hidden', !isManual);
       }
 
+      // Найдено целевым ревью перед деплоем 06.09.2026 — ДВА реальных
+      // денежных бага в наивном `parseFloat(value) || 0`:
+      // 1. Очистка поля (backspace до пусто) давала `manualRub = 0`, не
+      //    `null` — заявка оставалась "вручную" с НУЛЕВОЙ базой вместо
+      //    возврата в "авто" (0 и "не указано" неразличимы через `|| 0`).
+      // 2. Отрицательное число принималось как есть и уходило в
+      //    fixedShareRub без пола — отрицательная база/комиссия на сервере.
+      // Пустое поле — явный возврат в "авто" (как кнопка "Сбросить"), не
+      // NaN-в-0. Отрицательное — обрезается в 0 (та же граница, что уже
+      // есть у остальных денежных полей экрана, см. feeRubFromPercent и
+      // т.п. в _cart-money.js).
       inputEl.addEventListener('input', () => {
-        manualRub = parseFloat(inputEl.value) || 0;
-        setModeDisplay(true);
+        const raw = inputEl.value.trim();
+        if (raw === '') {
+          manualRub = null;
+          setModeDisplay(false);
+        } else {
+          const parsed = parseFloat(raw);
+          manualRub = isNaN(parsed) ? null : Math.max(0, parsed);
+          setModeDisplay(manualRub !== null);
+        }
         if (onChangeCb) onChangeCb();
+      });
+      // Обрезка отрицательного значения в самом поле — только на blur (не
+      // на каждый 'input'), тот же принцип, что clampTotalOnBlur (§2 A1):
+      // переписывать значение прямо во время набора сбивало бы курсор
+      // менеджера. Внутреннее состояние (`manualRub`) уже обрезано выше —
+      // это только синхронизация видимого значения с тем, что реально уйдёт
+      // на сервер.
+      inputEl.addEventListener('blur', () => {
+        if (manualRub !== null && inputEl.value !== '') {
+          inputEl.value = manualRub.toFixed(2);
+        } else if (manualRub === null && onChangeCb) {
+          // Поле только что вернулось в "авто" (очищено вручную, не кнопкой
+          // "Сбросить") — `setAutoPreview` внутри пересчёта пропускала
+          // запись, пока поле было в фокусе (не перезаписывать то, что
+          // менеджер печатает); фокус только что ушёл — самое время
+          // показать живой предпросмотр вместо пустого поля.
+          onChangeCb();
+        }
       });
       resetBtn.addEventListener('click', () => {
         manualRub = null;
@@ -491,7 +527,7 @@ window.Screens.cartNew = {
             <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
           </div>
           <div class="flex items-center gap-1.5">
-            <input type="number" class="manual-total-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+            <input type="number" class="manual-total-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01" min="0">
             <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
           </div>
         </div>
@@ -977,7 +1013,7 @@ window.Screens.cartNew = {
               <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <input type="number" class="manual-total-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
+              <input type="number" class="manual-total-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01" min="0">
               <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
             </div>
           </div>
