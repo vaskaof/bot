@@ -279,13 +279,65 @@ window.Screens.cartNew = {
     // window.FormHelpers-функциям.
     const splitProportionallyClient = CartMoney.splitProportionallyClient;
 
+    // Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) — общий
+    // контрол для отдельной позиции И лота целиком (оба — заявки корзины
+    // верхнего уровня, §0 п.1). Заменяет абстрактный слайдер-коэффициент
+    // (0-2, "1.00" ничего не значит для человека) редактируемым полем
+    // конечной суммы в ₽ + переключателем «авто»/«вручную». НЕ применяется
+    // к строкам ВНУТРИ лота (те остаются слайдерами, §3 B4 — сознательная
+    // граница, не забытый случай).
+    function wireManualShareControl(blockEl) {
+      const inputEl = blockEl.querySelector('.manual-total-input');
+      const labelEl = blockEl.querySelector('.manual-mode-label');
+      const resetBtn = blockEl.querySelector('.manual-total-reset-btn');
+      let manualRub = null; // null = «авто»
+      let onChangeCb = null;
+
+      function setModeDisplay(isManual) {
+        labelEl.textContent = isManual ? 'вручную' : 'авто';
+        labelEl.classList.toggle('text-indigo-600', isManual);
+        labelEl.classList.toggle('text-gray-400', !isManual);
+        resetBtn.classList.toggle('hidden', !isManual);
+      }
+
+      inputEl.addEventListener('input', () => {
+        manualRub = parseFloat(inputEl.value) || 0;
+        setModeDisplay(true);
+        if (onChangeCb) onChangeCb();
+      });
+      resetBtn.addEventListener('click', () => {
+        manualRub = null;
+        inputEl.value = '';
+        setModeDisplay(false);
+        if (onChangeCb) onChangeCb();
+      });
+
+      return {
+        getManualRub: () => manualRub,
+        // Живой предпросмотр в режиме «авто» — НЕ трогает поле, если оно
+        // сейчас в фокусе (менеджер может как раз вводить своё число) ИЛИ
+        // уже переведено в «вручную» (значение принадлежит менеджеру, не
+        // автопересчёту).
+        setAutoPreview: (valueRub) => {
+          if (manualRub !== null || document.activeElement === inputEl) return;
+          inputEl.value = valueRub > 0 ? valueRub.toFixed(2) : '';
+        },
+        // Полный сброс — вызывается, когда реконсиляция целиком выключена
+        // (поле «Итог с сайта выкупа» очищено), чтобы не оставлять
+        // «вручную» висеть на скрытом, неактуальном блоке.
+        reset: () => { manualRub = null; inputEl.value = ''; setModeDisplay(false); },
+        onChange: (fn) => { onChangeCb = fn; }
+      };
+    }
+
     // --- Итого/средняя комиссия (§4 п.4/п.5, ИСПРАВЛЕНО 06.09.2026 —
     // IMPLEMENTATION-PLAN-CART-UX.md §2 A2/A3) ---
     // { type:'position'|'lot', getTotalRub() — СЫРАЯ известная база (для
     // разбивки разницы, зеркало backend basePrice), getEffectiveBaseRub() —
     // РЕКОНСИЛИРОВАННАЯ база (для отображения "Итого"/комиссии, A3),
     // setReconciledShareRub(rubOrNull), getCommissionRub(), onRateChanged(),
-    // getPayload(), getCostCoefficient(), reconciledDisplayEl?, coefBlockEl? }
+    // getPayload(), getCostCoefficient() — 0, если заявка зафиксирована
+    // вручную (§3 B1/B2, manualShare), иначе 1 — coefBlockEl? }
     let items = [];
     let itemSeq = 0;
     // Guard от бесконечной рекурсии (см. план §2 A2 — единственное место с
@@ -373,7 +425,6 @@ window.Screens.cartNew = {
         const shares = splitProportionallyClient(poolRub, rows, 1);
         items.forEach((it) => {
           const shareRub = shares.get(it.id) || 0;
-          if (it.reconciledDisplayEl) it.reconciledDisplayEl.textContent = `С учётом итога корзины: ${shareRub.toFixed(2)} ₽`;
           it.setReconciledShareRub(shareRub);
         });
       } finally {
@@ -429,17 +480,20 @@ window.Screens.cartNew = {
           <div class="text-xs text-gray-500 shrink-0">≈ <span class="amount-rub-display">0.00</span> ₽</div>
         </div>
 
-        <!-- «Доля разницы» — видна ТОЛЬКО когда заполнено «Итог с сайта
-             выкупа» внизу экрана (доп. раунд 05.09.2026), см. её JSDoc в
-             render(). Скрыта по умолчанию — не захламляет обычное
-             создание, где этим полем никто не пользуется. -->
+        <!-- Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026 — замена
+             абстрактного слайдера-коэффициента прямым вводом суммы, VASY:
+             "отредактировать вручную долю"). Видна ТОЛЬКО когда заполнено
+             «Итог с сайта выкупа» внизу экрана, см. её JSDoc в render().
+             Скрыта по умолчанию — не захламляет обычное создание. -->
         <div class="cost-coef-block hidden mb-2 pt-2 border-t border-gray-100">
-          <div class="flex items-center justify-between text-[11px] text-gray-500">
-            <span>Доля разницы с итогом корзины</span>
-            <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
+          <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+            <span>Итог заявки с учётом разницы, ₽</span>
+            <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
           </div>
-          <input type="range" min="0" max="2" step="0.25" value="1" class="cost-coef-slider w-full">
-          <div class="reconciled-display text-[11px] text-gray-500 mt-1"></div>
+          <div class="flex items-center gap-1.5">
+            <input type="number" class="manual-total-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+            <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2 mb-2">
@@ -541,12 +595,11 @@ window.Screens.cartNew = {
         taxiRfSendEl: rowEl.querySelector('.taxi-rf-send-input'),
         shippingRfEl: rowEl.querySelector('.shipping-rf-input'),
         taxiRfReceiveEl: rowEl.querySelector('.taxi-rf-receive-input'),
-        costCoefficient: 1,
-        coefBlockEl: rowEl.querySelector('.cost-coef-block'),
-        costCoefSliderEl: rowEl.querySelector('.cost-coef-slider'),
-        costFractionLabelEl: rowEl.querySelector('.coef-fraction-label'),
-        reconciledDisplayEl: rowEl.querySelector('.reconciled-display')
+        coefBlockEl: rowEl.querySelector('.cost-coef-block')
       };
+      // Ручная фиксация доли (§3 B1/B2) — контрол внутри coefBlockEl.
+      item.manualShare = wireManualShareControl(item.coefBlockEl);
+      item.manualShare.onChange(() => recomputeTotals());
 
       if (prefillClient) {
         item.telegramId = prefillClient.telegramId || '';
@@ -566,16 +619,11 @@ window.Screens.cartNew = {
         item.clientDropdownEl.classList.remove('active');
       });
 
-      // «Доля разницы» (доп. раунд 05.09.2026) — блок скрыт, пока не
-      // заполнено «Итог с сайта выкупа» (см. recomputeSiteTotalReconciliation
-      // в render()), но слайдер уже живой — тянуть можно только за бегунок
-      // (тот же common.js:wireSliderThumbGuard, что везде в приложении).
-      wireSliderThumbGuard(item.costCoefSliderEl);
-      item.costCoefSliderEl.addEventListener('input', () => {
-        item.costCoefficient = parseFloat(item.costCoefSliderEl.value);
-        item.costFractionLabelEl.textContent = item.costCoefficient.toFixed(2);
-        recomputeTotals();
-      });
+      // Ручная фиксация доли — блок скрыт, пока не заполнено «Итог с сайта
+      // выкупа» (см. recomputeSiteTotalReconciliation в render()), контрол
+      // (`item.manualShare`) уже подключён выше сразу после конструирования
+      // `item` — здесь отдельная проводка больше не нужна (§3 B1, ИСПРАВЛЕНО
+      // 06.09.2026, заменила слайдер).
 
       // Ссылка на покупку — тот же паттерн, что order-new.js:794-969.
       item.purchaseLinkResolveBtn.addEventListener('click', async () => {
@@ -753,6 +801,8 @@ window.Screens.cartNew = {
       // выключена/сброшена, возврат к сырой сумме.
       item.setReconciledShareRub = (shareRub) => {
         item.reconciledShareRub = shareRub;
+        if (shareRub === null) item.manualShare.reset(); // реконсиляция выключена целиком — не оставлять «вручную» висеть на скрытом блоке
+        else item.manualShare.setAutoPreview(shareRub);
         updateFeeRub();
       };
 
@@ -793,9 +843,17 @@ window.Screens.cartNew = {
         updateAmountRub();
         updateFeeRub();
       };
-      item.getTotalRub = () => (parseFloat(item.amountInputEl.value) || 0) * currentRate;
+      // Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) — заявка
+      // «вручную» использует число, введённое менеджером в «Итог заявки с
+      // учётом разницы», как свою «известную базу» ВМЕСТО сырой
+      // сумма×курс — та же роль, что раньше играл вес=0 слайдера, только
+      // явным числом, а не абстрактным коэффициентом.
+      item.getTotalRub = () => {
+        const manualRub = item.manualShare.getManualRub();
+        return manualRub !== null ? manualRub : (parseFloat(item.amountInputEl.value) || 0) * currentRate;
+      };
       item.getCommissionRub = () => parseFloat(item.feeRubEl.value) || 0;
-      item.getCostCoefficient = () => item.costCoefficient;
+      item.getCostCoefficient = () => (item.manualShare.getManualRub() !== null ? 0 : 1);
       // Валидация комиссионного гейта перед сохранением — вызывается из
       // saveCart() на КАЖДОЙ позиции (см. §2.1 плана), не здесь.
       // «Личный заказ» исключён из гейта — тот же принцип, что order-new.js's
@@ -816,11 +874,12 @@ window.Screens.cartNew = {
           isOwnPurchase: item.ownPurchaseCheckboxEl.checked,
           productOriginal: item.productOriginal || item.productSearchEl.value,
           amount: item.amountInputEl.value,
-          // «Доля разницы» (доп. раунд 05.09.2026) — служебное поле, задействуется
-          // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа» (см.
-          // cartsService.createCart JSDoc); сервер сам его отбрасывает из
-          // payload createOrder, если реально не используется.
-          costCoefficient: item.costCoefficient,
+          // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) — служебные
+          // поля, задействуются ТОЛЬКО если на экране заполнено «Итог с
+          // сайта выкупа» (см. cartsService.createCart JSDoc); сервер сам
+          // отбрасывает их из payload createOrder, если не используются.
+          costCoefficient: item.getCostCoefficient(),
+          fixedShareRub: item.manualShare.getManualRub(),
           bookingSum: item.feeRubEl.value,
           // Комиссия по проценту (§2 A1, ИСПРАВЛЕНО 06.09.2026) — сервер
           // (cartsService.createCart) пересчитывает bookingSum от РЕАЛЬНОЙ
@@ -908,17 +967,19 @@ window.Screens.cartNew = {
               <input type="number" class="lot-amount-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
             </div>
           </div>
-          <!-- «Доля разницы» — весь ЛОТ как ОДНА заявка корзины (не путать
-               со слайдерами долей ВНУТРИ лота ниже) — видна ТОЛЬКО когда
-               заполнено «Итог с сайта выкупа» внизу экрана, см. её JSDoc в
-               render(). -->
+          <!-- Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) —
+               весь ЛОТ как ОДНА заявка корзины (НЕ путать со слайдерами
+               долей ВНУТРИ лота ниже — те остаются, §3 B4). Видна ТОЛЬКО
+               когда заполнено «Итог с сайта выкупа», см. её JSDoc в render(). -->
           <div class="cost-coef-block hidden mb-2">
-            <div class="flex items-center justify-between text-[11px] text-gray-500">
-              <span>Доля разницы с итогом корзины (лот целиком)</span>
-              <span class="coef-fraction-label font-semibold text-indigo-600">1.00</span>
+            <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+              <span>Итог лота с учётом разницы, ₽</span>
+              <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
             </div>
-            <input type="range" min="0" max="2" step="0.25" value="1" class="cost-coef-slider w-full">
-            <div class="reconciled-display text-[11px] text-gray-500 mt-1"></div>
+            <div class="flex items-center gap-1.5">
+              <input type="number" class="manual-total-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
+              <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+            </div>
           </div>
           <div class="mb-2">
             <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Округление${helpIcon('Округление', '<p>Сумма каждой позиции лота округляется до выбранного шага, остаток от округления уходит на позицию с наибольшей долей разницы.</p>')}</label>
@@ -946,21 +1007,14 @@ window.Screens.cartNew = {
       const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
       const positionsList = wrapEl.querySelector('.lot-positions-list');
       const addPositionBtn = wrapEl.querySelector('.add-lot-position-btn');
-      // «Доля разницы» лота целиком (доп. раунд 05.09.2026) — единственный
-      // `.cost-coef-block` на уровне всего лота (см. HTML выше, сразу под
-      // "Общая стоимость лота"); строки ВНУТРИ лота (positionsList) такого
-      // блока не имеют, поэтому селектор без риска задеть не ту разметку.
+      // Ручная фиксация доли лота целиком (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026)
+      // — единственный `.cost-coef-block` на уровне всего лота (см. HTML
+      // выше, сразу под "Общая стоимость лота"); строки ВНУТРИ лота
+      // (positionsList) такого блока не имеют, поэтому селектор без риска
+      // задеть не ту разметку.
       const cartCoefBlockEl = wrapEl.querySelector('.cost-coef-block');
-      const cartCoefSliderEl = cartCoefBlockEl.querySelector('.cost-coef-slider');
-      const cartCoefFractionLabelEl = cartCoefBlockEl.querySelector('.coef-fraction-label');
-      const cartReconciledDisplayEl = cartCoefBlockEl.querySelector('.reconciled-display');
-      let cartCostCoefficient = 1;
-      wireSliderThumbGuard(cartCoefSliderEl);
-      cartCoefSliderEl.addEventListener('input', () => {
-        cartCostCoefficient = parseFloat(cartCoefSliderEl.value);
-        cartCoefFractionLabelEl.textContent = cartCostCoefficient.toFixed(2);
-        recomputeTotals();
-      });
+      const lotManualShare = wireManualShareControl(cartCoefBlockEl);
+      lotManualShare.onChange(() => recomputeTotals());
 
       // Ссылка на лот — та же кнопка "Найти", что на отдельной позиции
       // (resolveOrderProductLink), но БЕЗ привязки к конкретной строке —
@@ -1391,28 +1445,34 @@ window.Screens.cartNew = {
         id, type: 'lot', rowEl: wrapEl,
         onRateChanged: () => { amountSymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; lotRows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = CURRENCY_SYMBOLS[currentCurrency] || ''; }); patchAllCostShares(); },
         // СЫРАЯ база лота — то, что реально ввёл менеджер в «Общая стоимость
-        // лота», используется в разбивке разницы НА УРОВНЕ КОРЗИНЫ (тот же
-        // смысл, что basePrice позиции — известная цена ДО реконсиляции).
-        getTotalRub: () => totalCostRub(),
+        // лота», ИЛИ ручная фиксация (§3 B1/B2) — используется в разбивке
+        // разницы НА УРОВНЕ КОРЗИНЫ (тот же смысл, что basePrice позиции —
+        // известная цена ДО реконсиляции).
+        getTotalRub: () => {
+          const manualRub = lotManualShare.getManualRub();
+          return manualRub !== null ? manualRub : totalCostRub();
+        },
         // РЕКОНСИЛИРОВАННАЯ база лота (§2 A3, ИСПРАВЛЕНО 06.09.2026) — для
         // отображения "Итого корзины"/"Средняя комиссия" наверху экрана.
         getEffectiveBaseRub: () => effectivePoolRub(),
         getCommissionRub: () => lotRows.reduce((s, r) => s + (parseFloat(r.feeRubEl.value) || 0), 0),
-        // «Доля разницы» лота ЦЕЛИКОМ как одной заявки корзины (доп. раунд
-        // 05.09.2026) — НЕ путать с costCoefficient позиций ВНУТРИ лота
-        // (r.costCoefficient ниже, другой уровень разбивки).
-        getCostCoefficient: () => cartCostCoefficient,
+        // «Доля разницы» лота ЦЕЛИКОМ как одной заявки корзины — НЕ путать с
+        // costCoefficient позиций ВНУТРИ лота (r.costCoefficient ниже,
+        // другой уровень разбивки, слайдеры, §3 B4).
+        getCostCoefficient: () => (lotManualShare.getManualRub() !== null ? 0 : 1),
         // Реконсиляция на уровне корзины (§2 A1/A2) — вызывается из
         // recomputeSiteTotalReconciliation в render(). Прокидывает
         // реконсилированный пул ВНУТРЬ лота через patchAllCostShares (A2) —
         // без этого шапка лота показывала одну сумму, строки внутри
-        // суммировались в другую (репорт VASY).
+        // суммировались в другую (репорт VASY). Реконсиляция выключена
+        // целиком (`null`) — сбрасывает ручную фиксацию лота тоже.
         setReconciledShareRub: (shareRub) => {
           reconciledPoolRub = shareRub;
+          if (shareRub === null) lotManualShare.reset();
+          else lotManualShare.setAutoPreview(shareRub);
           patchAllCostShares();
         },
         coefBlockEl: cartCoefBlockEl,
-        reconciledDisplayEl: cartReconciledDisplayEl,
         hasPositions: () => lotRows.length > 0,
         hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
         // Слияние «Новый заказ»→«Корзина» (05.09.2026) — вызывается из
@@ -1422,11 +1482,12 @@ window.Screens.cartNew = {
         // обоснование, что у отдельной позиции (item.validateCommissionGate).
         validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.commissionGate.validate()),
         getPayload: () => ({
-          // «Доля разницы» лота целиком (доп. раунд 05.09.2026) — ТОЛЬКО
-          // если на экране заполнено «Итог с сайта выкупа», см.
+          // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) лота целиком —
+          // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа», см.
           // cartsService.createCart JSDoc. Верхний уровень объекта, НЕ
           // внутри header — отдельный namespace от positions[].costCoefficient.
-          costCoefficient: cartCostCoefficient,
+          costCoefficient: lotManualShare.getManualRub() !== null ? 0 : 1,
+          fixedShareRub: lotManualShare.getManualRub(),
           header: {
             totalAmountInCurrency: amountInput.value,
             roundingStep: roundingSelect.value
@@ -1544,6 +1605,25 @@ window.Screens.cartNew = {
         ? !(it.productOriginal || it.productSearchEl.value).trim()
         : (it.hasMissingProduct() || !it.hasPositions()));
       if (missingProduct) { showSaveToast(false, 'У каждой позиции (в том числе внутри лота) должен быть указан товар.'); return; }
+
+      // Ручная фиксация доли (§3 B3) — если реконсиляция активна И ВСЕ
+      // заявки зафиксированы вручную, splitProportionally кладёт остаток
+      // округления на первую заявку (вырожденный случай totalWeight<=0,
+      // см. её JSDoc) — введённое вручную число молча "поехало" бы.
+      // Блокируем ДО отправки вместо тихого сдвига денег.
+      const siteTotalRaw = parseFloat(siteTotalInput.value);
+      if (siteTotalRaw > 0) {
+        const allManual = items.every((it) => it.getCostCoefficient() === 0);
+        if (allManual) {
+          const poolRub = siteTotalRaw * currentRate;
+          const manualSum = items.reduce((s, it) => s + (it.getTotalRub() || 0), 0);
+          const diffRub = poolRub - manualSum;
+          if (Math.abs(diffRub) > 1) {
+            showSaveToast(false, `Все суммы заданы вручную, но в сумме дают ${manualSum.toFixed(2)} ₽ вместо ${poolRub.toFixed(2)} ₽ (расхождение ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽) — поправьте одну из сумм или верните заявку в режим «авто».`);
+            return;
+          }
+        }
+      }
 
       // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
       // 05.09.2026) — валидируется на КАЖДОЙ позиции (и на каждой позиции
