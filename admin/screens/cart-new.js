@@ -102,6 +102,45 @@ window.Screens.cartNew = {
             </div>
           </div>
 
+          <!-- «Итог с сайта выкупа» (§5 D1, IMPLEMENTATION-PLAN-CART-UX-2.md,
+               07.09.2026) — переехало сюда ИЗ #cart-summary-sheet (было
+               внутри сворачиваемой панели итогов, найдено репортом VASY:
+               это ВВОД, а не итог, ему не место в сворачиваемой панели).
+               id-ы (#cart-site-total-input/#cart-site-total-diff) и вся
+               привязанная логика (recomputeSiteTotalReconciliation,
+               buildPayload) НЕ менялись — переехала только разметка (D2).
+               Переключатель режима деления разницы (Фаза A,
+               #cart-diff-split-row) добавится сюда же следующим шагом. -->
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="receipt" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Итог с сайта выкупа${helpIcon('Итог с сайта выкупа', '<p>Необязательно. Итоговая сумма чека с сайта/площадки выкупа целиком — если она отличается от суммы, введённой по заявкам (округление, общие расходы площадки и т.п.), разница распределяется между заявками пропорционально их доле. Пусто — работает как раньше, без разбивки.</p>')}</span>
+            </div>
+            <div class="flex-1 w-full">
+              <input type="number" id="cart-site-total-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00 — в валюте корзины, необязательно" step="0.01">
+              <div id="cart-site-total-diff" class="hidden text-[11px] text-gray-500 mt-1.5"></div>
+
+              <!-- Правило деления разницы (§2 A1, IMPLEMENTATION-PLAN-
+                   CART-UX-2.md, 07.09.2026, решение VASY §0.1 п.1 —
+                   менеджер выбирает сам, явным вопросом). Видно только
+                   когда «Итог с сайта выкупа» заполнен (то же условие,
+                   что открывает cost-coef-block на карточках, см.
+                   recomputeSiteTotalReconciliation). -->
+              <div id="cart-diff-split-row" class="hidden mt-2">
+                <div class="text-[12px] text-gray-700 mb-1.5 inline-flex items-center gap-1">
+                  Разница корзины: <b id="cart-diff-amount">+0.00 ₽</b>. Как разделить между заявками?
+                  ${helpIcon('Как делится разница', '<p><b>По сумме</b> — крупная заявка получает бОльшую долю разницы (пропорционально своей известной сумме). Пример: позиция $100 и позиция $10, разница 2 000 ₽ — «по сумме» отдаст первой ≈1 818 ₽, второй ≈182 ₽.</p><p><b>Поровну</b> — разница делится на равные доли независимо от размера заявки. Тот же пример: обеим по 1 000 ₽ — вторая заявка получит долю в 2 раза больше своей суммы.</p><p>Заявки, зафиксированные вручную («Задать сумму вручную»), в разделе не участвуют — их сумма уже задана менеджером.</p>')}
+                </div>
+                <div class="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                  <button type="button" data-mode="amount" class="cart-diff-mode-btn px-3 py-1.5 text-[12px]">По сумме</button>
+                  <button type="button" data-mode="equal" class="cart-diff-mode-btn px-3 py-1.5 text-[12px]">Поровну</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
@@ -190,56 +229,63 @@ window.Screens.cartNew = {
            orders.js/collective-detail.js): fixed + bottom:calc(70px+safe-
            area), см. правило в app.html. Свёрнута по умолчанию — сводная
            строка всегда видна, по тапу разворачивается вверх в лист с
-           разбивкой по клиентам/оплате/прогнозу логистики; поле «Итог с
-           сайта выкупа» переехало сюда же (было отдельным дублирующим
-           блоком внизу страницы). -->
-      <div id="cart-summary-bar" class="fixed left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-        <button type="button" id="cart-summary-toggle" class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left">
-          <div class="flex items-center gap-1.5 text-[12px] text-gray-600 min-w-0 overflow-x-auto whitespace-nowrap">
-            <span>Выкуп <b id="cart-total-rub" class="font-semibold text-gray-900">0.00</b> ₽</span>
-            <span class="text-gray-300">·</span>
-            <span>Комиссия <b id="cs-fee-rub" class="font-semibold text-gray-900">0.00</b> (<span id="cs-fee-pct">0.0%</span>)</span>
-            <span class="text-gray-300">·</span>
-            <span>С клиентов <b id="cs-client-rub" class="font-semibold text-gray-900">0.00</b> ₽</span>
-            <span id="cs-site-note" class="text-gray-400">· итог сайта не указан</span>
-            <span id="cs-site-diff" class="hidden shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium"></span>
+           разбивкой по клиентам/оплате/прогнозу логистики. Поле «Итог с
+           сайта выкупа» отсюда СЪЕХАЛО ОБРАТНО в шапку корзины (§5 D1,
+           IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — это ввод, не
+           итог, ему не место в сворачиваемой панели.
+
+           Свёрнутая строка ПЕРЕСОБРАНА §4 C1/C2/C3 (IMPLEMENTATION-PLAN-
+           CART-UX-2.md, 07.09.2026, репорт VASY «на 320px читается
+           только прокруткой»): была одна overflow-x-auto whitespace-
+           nowrap строка — заменена сеткой 2×2 без единого overflow-x на
+           контейнере, читается целиком на 320px. Кнопка разворачивания —
+           отдельная пилюля под сеткой (была весь ряд кликабелен как
+           кнопка) — сама сетка больше не внутри кнопки, слушатель
+           теперь только на пилюле #cart-summary-toggle. -->
+      <div id="cart-summary-bar" class="fixed left-0 right-0 z-40 bg-emerald-50 border-t border-emerald-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div class="px-4 py-2.5">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <div class="text-[11px] text-gray-500">Итог корзины</div>
+            <div class="text-[11px] text-gray-500 text-right">Осталось получить</div>
+            <div class="text-lg font-bold text-gray-900 truncate"><span id="cart-total-rub">0.00</span> ₽</div>
+            <div class="text-lg font-bold text-gray-900 text-right truncate"><span id="cs-remaining-rub">0.00</span> ₽</div>
+            <div class="text-[11px] text-gray-600 truncate">Комиссия <span id="cs-fee-rub">0.00</span> ₽ (<span id="cs-fee-pct">0.0%</span>)</div>
+            <div class="text-[11px] text-right truncate">
+              <span id="cs-site-note" class="text-gray-400">итог сайта не указан</span>
+              <span id="cs-site-diff" class="hidden px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium"></span>
+            </div>
           </div>
-          <i data-lucide="chevron-up" id="cart-summary-chevron" class="w-4 h-4 text-gray-400 shrink-0 transition-transform"></i>
-        </button>
-        <div id="cart-summary-sheet" class="hidden border-t border-gray-100 px-4 py-3 max-h-[55vh] overflow-y-auto custom-scrollbar">
+          <div class="flex justify-center mt-1.5">
+            <button type="button" id="cart-summary-toggle" class="px-3 py-1 rounded-full border border-emerald-300 bg-white text-emerald-700 text-[12px] font-medium inline-flex items-center gap-1">
+              <span id="cart-summary-toggle-label">Подробнее</span>
+              <i data-lucide="chevron-up" id="cart-summary-chevron" class="w-3.5 h-3.5 transition-transform"></i>
+            </button>
+          </div>
+        </div>
+        <div id="cart-summary-sheet" class="hidden border-t border-emerald-100 px-4 py-3 max-h-[55vh] overflow-y-auto custom-scrollbar bg-white">
           <div class="text-[11px] text-gray-500 inline-flex items-center gap-1 mb-2 pb-2 border-b border-gray-100">Средняя комиссия${helpIcon('Средняя комиссия', '<p>Read-only сводка — взвешенное среднее по уже введённым комиссиям заявок. Ничего не сохраняется отдельно и ни на что не влияет, комиссия по-прежнему считается только на позициях.</p>')}: <span id="cart-avg-commission">—</span></div>
 
           <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">По клиентам</div>
           <div id="cs-by-client-list" class="mb-3"></div>
 
+          <!-- "С клиентов"/"Уже оплачено" — было "Уже оплачено"/"Осталось
+               получить" до §4 C1: "Осталось получить" переехало в саму
+               свёрнутую строку (самое действенное число), детали остались
+               здесь. -->
           <div class="grid grid-cols-2 gap-2 mb-3 pt-2 border-t border-gray-100">
+            <div>
+              <div class="text-[11px] text-gray-500">С клиентов</div>
+              <div class="text-sm font-semibold text-gray-900"><span id="cs-client-rub">0.00</span> ₽</div>
+            </div>
             <div>
               <div class="text-[11px] text-gray-500">Уже оплачено</div>
               <div class="text-sm font-semibold text-gray-900"><span id="cs-paid-rub">0.00</span> ₽</div>
             </div>
-            <div>
-              <div class="text-[11px] text-gray-500">Осталось получить</div>
-              <div class="text-sm font-semibold text-gray-900"><span id="cs-remaining-rub">0.00</span> ₽</div>
-            </div>
           </div>
 
-          <div class="mb-3 pt-2 border-t border-gray-100">
+          <div class="pt-2 border-t border-gray-100">
             <div class="text-[11px] text-gray-500">Прогноз логистики</div>
             <div class="text-sm font-semibold text-gray-900"><span id="cs-forecast-rub">0.00</span> ₽</div>
-          </div>
-
-          <!-- «Итог с сайта выкупа» (доп. раунд 05.09.2026, репорт VASY) —
-               необязательно, пусто = ничего не меняется. Заполнено —
-               разница с суммой позиций делится между заявками по их долям
-               (слайдер "Доля разницы" появляется на каждой карточке).
-               ПЕРЕЕХАЛО сюда из отдельной карты внизу страницы (§4 C1) —
-               id-ы намеренно НЕ менялись (cart-site-total-input/-diff),
-               вся привязанная к ним логика ниже (recomputeSiteTotal
-               Reconciliation) не тронута. -->
-          <div class="pt-2 border-t border-gray-100">
-            <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Итог с сайта выкупа, в валюте корзины${helpIcon('Итог с сайта выкупа', '<p>Необязательно. Итоговая сумма чека с сайта/площадки выкупа целиком — если она отличается от суммы, введённой по заявкам (округление, общие расходы площадки и т.п.), разница распределяется между заявками пропорционально их «Доле разницы» (по умолчанию — поровну, слайдер на каждой заявке).</p><p>Пусто — работает как раньше, без разбивки.</p>')}</label>
-            <input type="number" id="cart-site-total-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none mt-1" placeholder="0.00 — необязательно" step="0.01">
-            <div id="cart-site-total-diff" class="hidden text-[11px] text-gray-500 mt-1.5"></div>
           </div>
         </div>
       </div>
@@ -268,9 +314,15 @@ window.Screens.cartNew = {
     const summaryToggleBtn = document.getElementById('cart-summary-toggle');
     const summarySheetEl = document.getElementById('cart-summary-sheet');
     const summaryChevronEl = document.getElementById('cart-summary-chevron');
+    // §4 C3 — пилюля вместо серого шеврона, подпись меняется на "Свернуть"
+    // в раскрытом состоянии (сам шеврон, как и раньше, разворачивается на
+    // 180deg — второй, избыточный сигнал того же состояния оставлен, он был
+    // и раньше, менять незачем).
+    const summaryToggleLabelEl = document.getElementById('cart-summary-toggle-label');
     summaryToggleBtn.addEventListener('click', () => {
       const expanded = summarySheetEl.classList.toggle('hidden') === false;
       summaryChevronEl.style.transform = expanded ? 'rotate(180deg)' : '';
+      summaryToggleLabelEl.textContent = expanded ? 'Свернуть' : 'Подробнее';
     });
 
     // §5 D1 — "Свернуть все"/"Развернуть все".
@@ -721,13 +773,15 @@ window.Screens.cartNew = {
     // «Итог с сайта выкупа» (доп. раунд 05.09.2026, репорт VASY: "должны
     // быть стоимости позиций, помимо этого стоимость всей корзины, их
     // разница должна делиться между заказами с возможностью настройки") —
-    // необязательное поле в шапке "Итого корзины" (внизу экрана). Пусто —
-    // ничего не меняется визуально (та же карточка, что была всегда), сумма
-    // заявок остаётся единственным источником "Итого". Заполнено —
-    // показывает разницу с суммой позиций и живую разбивку по каждой
-    // заявке (та же формула/тот же UX, что уже есть внутри лота — здесь
-    // ровно на уровень выше). Ничего не отправляется на сервер отдельно —
-    // `buildPayload()` читает это же поле напрямую в header.
+    // необязательное поле, теперь в ШАПКЕ корзины (§5 D1,
+    // IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026 — переехало из
+    // сворачиваемой панели итогов, это ВВОД, не итог). Пусто — ничего не
+    // меняется визуально, сумма заявок остаётся единственным источником
+    // "Итого". Заполнено — показывает разницу с суммой позиций и живую
+    // разбивку по каждой заявке (та же формула/тот же UX, что уже есть
+    // внутри лота — здесь ровно на уровень выше). Ничего не отправляется на
+    // сервер отдельно — `buildPayload()` читает это же поле напрямую в
+    // header.
     //
     // ИСПРАВЛЕНО 06.09.2026 (§2 A1/A2) — раньше только показывала
     // read-only текст "С учётом итога корзины: N ₽" и НИЧЕГО не сообщала
@@ -738,11 +792,52 @@ window.Screens.cartNew = {
     // пересчёт комиссии/итога (позиция) или строк внутри лота (A2).
     const siteTotalInput = document.getElementById('cart-site-total-input');
     const siteTotalDiffEl = document.getElementById('cart-site-total-diff');
+
+    // Правило деления разницы (§2 A2, IMPLEMENTATION-PLAN-CART-UX-2.md,
+    // 07.09.2026, решение VASY §0.1 п.1) — сохраняется в localStorage, НЕ в
+    // `financial_settings`: менеджеру запись настроек запрещена
+    // (`upsertFinancialSetting` в `MANAGER_EXCLUDED_METHODS`,
+    // `api/contract.js`), а это чисто личное предпочтение экрана.
+    let diffSplitMode = localStorage.getItem('cartDiffSplitMode') || 'amount';
+    const diffSplitRowEl = document.getElementById('cart-diff-split-row');
+    const diffAmountEl = document.getElementById('cart-diff-amount');
+    const diffModeButtons = Array.from(document.querySelectorAll('.cart-diff-mode-btn'));
+    function updateDiffModeButtons() {
+      diffModeButtons.forEach((btn) => {
+        const active = btn.dataset.mode === diffSplitMode;
+        btn.classList.toggle('bg-indigo-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-gray-600', !active);
+      });
+    }
+    updateDiffModeButtons();
+    diffModeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (diffSplitMode === btn.dataset.mode) return;
+        diffSplitMode = btn.dataset.mode;
+        localStorage.setItem('cartDiffSplitMode', diffSplitMode);
+        updateDiffModeButtons();
+        recomputeTotals();
+      });
+    });
+
+    // Вес заявки для разбивки разницы (§2 A3) — звать ВЕЗДЕ вместо
+    // it.getCostCoefficient() при разбивке разницы КОРЗИНЫ (не путать с
+    // getCostCoefficient(), которая осталась как есть — её по-прежнему
+    // читает getPayload() заявки для ДРУГОЙ цели, см. A5/JSDoc заявок).
+    // Сама формула — в screens/_cart-money.js (чистая функция, unit-тесты,
+    // §10 плана), здесь только тонкая обёртка под DOM-заявку.
+    function diffWeightFor(it) {
+      return CartMoney.diffWeightFor(diffSplitMode, it.getManualRub ? it.getManualRub() : null, it.getTotalRub());
+    }
+
     function recomputeSiteTotalReconciliation(totalRub) {
       if (reconciling) return; // см. guard выше
       const raw = parseFloat(siteTotalInput.value);
       const active = raw > 0;
       items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.toggle('hidden', !active); });
+      diffSplitRowEl.classList.toggle('hidden', !active);
 
       reconciling = true;
       try {
@@ -760,8 +855,15 @@ window.Screens.cartNew = {
         siteTotalDiffEl.textContent = Math.abs(diffRub) < 0.01
           ? 'Совпадает с суммой позиций.'
           : `Расходится с суммой позиций на ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`;
+        diffAmountEl.textContent = `${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽`;
 
-        const rows = items.map((it) => ({ id: it.id, weight: it.getCostCoefficient(), basePrice: it.getTotalRub() }));
+        // A4, вырожденный случай (ни у одной неручной заявки не введена
+        // сумма в режиме 'amount', либо все заявки зафиксированы вручную)
+        // — normalizeDegenerateWeights пересобирает веса в 1, молча, см.
+        // её JSDoc в _cart-money.js.
+        const rows = CartMoney.normalizeDegenerateWeights(
+          items.map((it) => ({ id: it.id, weight: diffWeightFor(it), basePrice: it.getTotalRub() }))
+        );
         const shares = splitProportionallyClient(poolRub, rows, 1);
         items.forEach((it) => {
           const shareRub = shares.get(it.id) || 0;
@@ -798,7 +900,11 @@ window.Screens.cartNew = {
       getCurrentRate: () => currentRate,
       getCurrentCurrency: () => currentCurrency,
       recomputeTotals, updateSummaryDisplay, removeItem,
-      clientLabelFor, collectClientRow, wireManualShareControl, currentChannel
+      clientLabelFor, collectClientRow, wireManualShareControl, currentChannel,
+      // §2 A5 — вес заявки для payload'а costCoefficient (разбивка разницы
+      // КОРЗИНЫ), используется getPayload() и позиции, и лота вместо
+      // жёсткой "1" — см. их JSDoc/_cart-money.js.
+      diffWeightFor
     };
 
     function removeItem(id) {

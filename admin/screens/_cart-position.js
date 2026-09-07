@@ -238,6 +238,10 @@ window.CartPosition = {
     // Ручная фиксация доли (§3 B1/B2) — контрол внутри coefBlockEl.
     item.manualShare = ctx.wireManualShareControl(item.coefBlockEl);
     item.manualShare.onChange(() => ctx.recomputeTotals());
+    // §2 A3 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — плоский метод
+    // на самой заявке, которым ctx.diffWeightFor(it) пользуется без знания
+    // о внутреннем `manualShare` (тот же контракт нужен и лоту).
+    item.getManualRub = () => item.manualShare.getManualRub();
 
     // §5 D1 — сворачивание/разворачивание карточки. Новая заявка всегда
     // открыта (per план) — `.position-body` не скрыт по умолчанию в
@@ -604,7 +608,12 @@ window.CartPosition = {
         // поля, задействуются ТОЛЬКО если на экране заполнено «Итог с
         // сайта выкупа» (см. cartsService.createCart JSDoc); сервер сам
         // отбрасывает их из payload createOrder, если не используются.
-        costCoefficient: item.getCostCoefficient(),
+        // §2 A5 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) —
+        // ctx.diffWeightFor(item), НЕ item.getCostCoefficient(): вес
+        // теперь зависит от выбранного менеджером правила деления разницы
+        // ("по сумме"/"поровну"), не жёстко 1. Backend не меняется —
+        // splitProportionally на сервере нормирует произвольные веса.
+        costCoefficient: ctx.diffWeightFor(item),
         fixedShareRub: item.manualShare.getManualRub(),
         bookingSum: item.feeRubEl.value,
         // Комиссия по проценту (§2 A1, ИСПРАВЛЕНО 06.09.2026) — сервер

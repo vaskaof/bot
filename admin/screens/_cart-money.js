@@ -158,6 +158,47 @@ function splitProportionallyClient(pool, rows, roundingStep) {
 }
 
 /**
+ * Вес заявки для разбивки разницы КОРЗИНЫ (§2 A3, IMPLEMENTATION-PLAN-
+ * CART-UX-2.md, 07.09.2026) — НЕ путать с фиксированным
+ * `getCostCoefficient()` заявки (0/1, другая цель — читает её
+ * `getPayload()` заявки для контракта createOrder, см. её JSDoc).
+ * Перенесена сюда из `cart-new.js` (была там чистой функцией, замкнутой на
+ * `diffSplitMode`) для unit-покрытия (§10 плана) — `cart-new.js` вызывает
+ * её через тонкую обёртку `diffWeightFor(it)`, подставляющую
+ * `it.getManualRub()`/`it.getTotalRub()`.
+ *
+ * Ручная фиксация доли — всегда вне разницы (вес 0), иначе режим 'amount'
+ * — вес = известная сумма заявки (крупная заявка получает бОльшую долю
+ * разницы), режим 'equal' — все заявки поровну (вес 1, старое поведение
+ * до этой фазы).
+ * @param {'amount'|'equal'} mode
+ * @param {number|null|undefined} manualRub null/undefined, если заявка НЕ зафиксирована вручную
+ * @param {number} totalRub СЫРАЯ известная база заявки (её `getTotalRub()`)
+ * @returns {number} >= 0
+ */
+function diffWeightFor(mode, manualRub, totalRub) {
+  if (manualRub !== null && manualRub !== undefined) return 0;
+  return mode === 'amount' ? (Number(totalRub) || 0) : 1;
+}
+
+/**
+ * A4, вырожденный случай (IMPLEMENTATION-PLAN-CART-UX-2.md §2 A4) — если
+ * сумма весов ВСЕХ заявок <= 0 (например, режим "по сумме" и ни у одной
+ * ещё не введена сумма, либо все заявки зафиксированы вручную),
+ * `splitProportionallyClient` положила бы весь пул на первую заявку молча,
+ * без объяснения — вырожденный случай её формулы (totalWeight<=0 в её
+ * коде), не отдельная ошибка. Пересобирает веса в 1 (эквивалент "поровну")
+ * — молча, без тоста, это нормальное состояние "менеджер ещё не всё ввёл".
+ * @param {{id:string, weight:number, basePrice?:number|null}[]} rows
+ * @returns {{id:string, weight:number, basePrice?:number|null}[]}
+ */
+function normalizeDegenerateWeights(rows) {
+  const totalWeight = rows.reduce((s, r) => s + (Number(r.weight) || 0), 0);
+  if (totalWeight > 0) return rows;
+  return rows.map((r) => ({ ...r, weight: 1 }));
+}
+
+/**
  * Подпись слайдера доли (внутри лота) человеческим языком вместо голого
  * множителя (§5 D3, IMPLEMENTATION-PLAN-CART-UX.md) — репорт-мотивация:
  * "1.00" ничего не значит менеджеру, не знакомому с формулой
@@ -219,5 +260,6 @@ function computeBookingFields(bookingSumRub, alreadyPaidRub) {
 window.CartMoney = {
   feeRubFromPercent, feePercentFromRub, totalFromFeeRub, feeRubFromTotal, clampTotal,
   totalBreakdownText, splitProportionallyClient, humanFractionLabel,
-  CURRENCY_SYMBOLS, computeBookingFields, FORECAST_FIELD_KEYS
+  CURRENCY_SYMBOLS, computeBookingFields, FORECAST_FIELD_KEYS,
+  diffWeightFor, normalizeDegenerateWeights
 };

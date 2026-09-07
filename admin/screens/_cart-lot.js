@@ -592,6 +592,10 @@ window.CartLot = {
       // costCoefficient позиций ВНУТРИ лота (r.costCoefficient ниже,
       // другой уровень разбивки, слайдеры, §3 B4).
       getCostCoefficient: () => (lotManualShare.getManualRub() !== null ? 0 : 1),
+      // §2 A3 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — тот же
+      // плоский метод, что на отдельной позиции (см. её JSDoc), которым
+      // ctx.diffWeightFor(lotItem) пользуется без знания о `lotManualShare`.
+      getManualRub: () => lotManualShare.getManualRub(),
       // Реконсиляция на уровне корзины (§2 A1/A2) — вызывается из
       // recomputeSiteTotalReconciliation в render(). Прокидывает
       // реконсилированный пул ВНУТРЬ лота через patchAllCostShares (A2) —
@@ -646,7 +650,12 @@ window.CartLot = {
         // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа», см.
         // cartsService.createCart JSDoc. Верхний уровень объекта, НЕ
         // внутри header — отдельный namespace от positions[].costCoefficient.
-        costCoefficient: lotManualShare.getManualRub() !== null ? 0 : 1,
+        // §2 A5 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) —
+        // ctx.diffWeightFor(lotItem), не жёсткий 0/1: вес лота как ОДНОЙ
+        // заявки корзины тоже зависит от правила деления разницы. Ссылка на
+        // `lotItem` валидна — вызывается уже ПОСЛЕ полного конструирования
+        // объекта (замыкание, не мгновенное чтение).
+        costCoefficient: ctx.diffWeightFor(lotItem),
         fixedShareRub: lotManualShare.getManualRub(),
         header: {
           totalAmountInCurrency: amountInput.value,
