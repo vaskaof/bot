@@ -257,8 +257,21 @@ window.Screens.cartNew = {
              развёрнуто) — физическая верхняя граница панели всегда здесь
              (fixed+bottom, высота растёт вверх при разворачивании, эта
              полоска остаётся на месте). touch-none — жест внутри самого
-             язычка не должен ещё и скроллить страницу под ним. -->
-        <div id="cart-summary-drag-handle" class="w-full flex justify-center pt-1.5 pb-1 cursor-grab touch-none">
+             язычка не должен ещё и скроллить страницу под ним.
+             УВЕЛИЧЕНО 08.09.2026 (репорт VASY: "с правой стороны пальцем
+             срабатывало легче и немного на большем диапазоне... случайно
+             проматываю страницу вместо захвата шторки") — контейнер уже был
+             на всю ширину панели (w-full, ловит жест по всей ширине, не
+             только видимая полоска по центру), реальная проблема —
+             недостаточная ВЫСОТА хитбокса (было ~16px, палец промахивается
+             по вертикали мимо тонкой полосы). Вертикальный отступ py-1.5
+             увеличен до py-3.5, почти втрое (визуальная полоска-подсказка
+             осталась тем же размером, выросла только невидимая область
+             вокруг неё). См. также сниженный порог срабатывания ниже
+             (0.35 → 0.2 от хода панели). НЕ использовать обратные кавычки
+             внутри этого HTML-комментария — он живёт внутри JS template
+             literal (см. JSDoc файла, наступали на это уже несколько раз). -->
+        <div id="cart-summary-drag-handle" class="w-full flex justify-center py-3.5 cursor-grab touch-none">
           <div class="w-10 h-1.5 rounded-full bg-emerald-300"></div>
         </div>
         <div class="px-4 pb-2.5">
@@ -276,14 +289,17 @@ window.Screens.cartNew = {
           <div class="flex justify-center mt-1.5">
             <button type="button" id="cart-summary-toggle" class="px-3 py-1 rounded-full border border-emerald-300 bg-white text-emerald-700 text-[12px] font-medium inline-flex items-center gap-1">
               <span id="cart-summary-toggle-label">Подробнее</span>
-              <!-- ИСПРАВЛЕНО 07.09.2026 (репорт VASY — "стрелочка вверх,
-                   должна быть вниз") — базовая иконка была chevron-up
-                   (стрелка уже смотрела вверх в свёрнутом состоянии, хотя
-                   свёрнуто = "разверни вниз/потяни" по конвенции остального
-                   экрана: .position-chevron/.lot-chevron используют
-                   chevron-down как базу, поворот на 180deg только при
-                   развороте — здесь теперь та же конвенция). -->
-              <i data-lucide="chevron-down" id="cart-summary-chevron" class="w-3.5 h-3.5 transition-transform"></i>
+              <!-- ВТОРОЕ ИСПРАВЛЕНИЕ 08.09.2026 (репорт VASY после первого
+                   фикса 07.09.2026 — направление оказалось обратным его
+                   ожиданию): здесь именно "Развернуть = вверх, Свернуть =
+                   вниз", НЕ конвенция .position-chevron/.lot-chevron (у тех
+                   наоборот, но их никто не просил трогать — это осознанно
+                   применяется ТОЛЬКО к этой панели). База — chevron-up
+                   (свёрнуто, «Подробнее»/приглашение развернуть, смотрит
+                   вверх), поворот на 180deg при развороте (даёт «Свернуть»,
+                   смотрит вниз) — та же JS-логика rotate(180deg), что и
+                   раньше, поменялась только САМА иконка. -->
+              <i data-lucide="chevron-up" id="cart-summary-chevron" class="w-3.5 h-3.5 transition-transform"></i>
             </button>
           </div>
         </div>
@@ -426,7 +442,10 @@ window.Screens.cartNew = {
       summarySheetEl.classList.remove('dragging'); // возвращаем transition — доезжает плавно до ближайшего состояния
       if (!dragMoved) return; // не двигали — это просто тап, решает click ниже
       const currentHeight = summarySheetEl.getBoundingClientRect().height;
-      setSummaryExpanded(currentHeight >= dragOpenHeight * 0.35); // проехал больше трети хода — доезжаем до конца
+      // Порог снижен 0.35→0.2 (08.09.2026, репорт VASY: "срабатывало легче
+      // и на большем диапазоне") — раскрытие/закрытие фиксируется уже после
+      // пятой части хода панели, а не трети.
+      setSummaryExpanded(currentHeight >= dragOpenHeight * 0.2);
     }
     dragHandleEl.addEventListener('pointerup', endSummaryDrag);
     dragHandleEl.addEventListener('pointercancel', endSummaryDrag);
