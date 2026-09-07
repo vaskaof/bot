@@ -60,6 +60,11 @@ const ROUTES = [
   // кнопка "+ Корзина", не feature-флаг и не замена "+ Новый заказ" —
   // переходный период, старое не убирается, см. cart-new.js JSDoc).
   { path: 'carts/new', screen: 'cartNew', navKey: null, showNav: true },
+  // Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7, 07.09.2026) — список корзин,
+  // тот же паттерн, что 'lots'/'collectives' — не в нижней навигации, вход
+  // иконкой с orders.js. Карточка одной корзины — regex-маршрут ниже
+  // (cartMatch), по образцу lotMatch.
+  { path: 'carts', screen: 'carts', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
@@ -144,6 +149,13 @@ function matchRoute(hash) {
   const lotMatch = clean !== 'lots/new' && clean.match(/^lots\/([^/]+)$/);
   if (lotMatch) {
     return { screen: 'lotDetail', navKey: null, showNav: true, params: { lotId: decodeURIComponent(lotMatch[1]) } };
+  }
+
+  // Адресуемый маршрут карточки корзины (Фаза F, §7 плана, 07.09.2026) —
+  // тот же паттерн/то же исключение 'carts/new', что lotMatch выше.
+  const cartMatch = clean !== 'carts/new' && clean.match(/^carts\/([^/]+)$/);
+  if (cartMatch) {
+    return { screen: 'cartDetail', navKey: null, showNav: true, params: { cartId: decodeURIComponent(cartMatch[1]) } };
   }
 
   const route = ROUTES.find((r) => r.path === clean);

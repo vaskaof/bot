@@ -50,38 +50,51 @@ window.Screens.orders = {
 
     root.innerHTML = `
       <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 flex items-center justify-between gap-1">
+        <!-- Целевое ревью Фазы F (07.09.2026) нашло реальный риск: 7-я
+             кнопка ("Корзины") в прежнем flex-row без переноса сжимала бы
+             все 7 иконок в один нескроллящийся ряд на узких экранах
+             Telegram Mini App (~360-400px) — grid-cols-4 переносит 7-ю
+             кнопку на вторую строку (4+3), каждая кнопка сохраняет размер
+             вместо сжатия. -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
           <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-
                PLAN-CART-MERGE.md §4) — "+ Новый заказ" убран, "+ Корзина"
                теперь единственная точка входа в создание заказа (и
                одиночного, и нескольких сразу). Маршрут orders/new и сам
                order-new.js НЕ удалены — технически достижимы, просто без
                видимого входа из UI, переходный период не закрыт. -->
-          <button type="button" id="new-cart-btn" title="Новый заказ" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="new-cart-btn" title="Новый заказ" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="shopping-cart" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Корзина</span>
           </button>
-          <button type="button" id="collectives-btn" title="Коллективки" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="collectives-btn" title="Коллективки" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="package-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Коллективки</span>
           </button>
           <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) —
                тот же паттерн, что "Коллективки": ведёт на список, создание —
-               внутри lots.js (две кнопки "+ Лот"/"+ Корзина" на самом списке,
-               не здесь — иначе этот ряд разрастается до 7 кнопок). -->
-          <button type="button" id="lots-btn" title="Лоты" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+               внутри lots.js (две кнопки "+ Лот"/"+ Корзина" на самом списке). -->
+          <button type="button" id="lots-btn" title="Лоты" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="boxes" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Лоты</span>
           </button>
-          <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <!-- Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7 F1, 07.09.2026) —
+               список корзин, тот же паттерн, что "Лоты" рядом. Кнопка
+               "Корзина" (new-cart-btn) выше остаётся точкой входа в
+               СОЗДАНИЕ (навигация 'carts/new'), эта — в СПИСОК ('carts'). -->
+          <button type="button" id="carts-list-btn" title="Корзины" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="list" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Корзины</span>
+          </button>
+          <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="trash-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Удалённые</span>
           </button>
-          <button type="button" id="select-mode-btn" title="Выбрать несколько" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="select-mode-btn" title="Выбрать несколько" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="list-checks" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Выбрать</span>
           </button>
-          <button type="button" id="refresh-orders" title="Обновить список" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="refresh-orders" title="Обновить список" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="refresh-cw" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Обновить</span>
           </button>
@@ -196,6 +209,7 @@ window.Screens.orders = {
     document.getElementById('new-cart-btn').addEventListener('click', () => navigateTo('carts/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
     document.getElementById('lots-btn').addEventListener('click', () => navigateTo('lots'));
+    document.getElementById('carts-list-btn').addEventListener('click', () => navigateTo('carts'));
     // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
     // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
     // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
