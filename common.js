@@ -181,77 +181,108 @@ function debounce(func, wait) {
  * нажать на ползунок и он сразу перескочет"). Нативный range в большинстве
  * браузеров и мобильном Telegram WebView перепрыгивает к точке клика при
  * тапе В ЛЮБОМ месте трека, не только за сам "бегунок" — это и есть
- * источник случайных нажатий. Перехватывает `mousedown`/`touchstart` ДО
- * начала перетаскивания и блокирует его (`preventDefault`), если точка
- * касания дальше `THUMB_GRAB_TOLERANCE_PX` от текущего положения бегунка —
- * дальнейшее движение пальца/курсора уже не долетает до слайдера, т.к.
- * сам "drag" так и не начался.
+ * источник случайных нажатий.
  *
- * **Единый источник правды с 07.09.2026** (репорт VASY на «Корзине»,
- * IMPLEMENTATION-PLAN-CART-UX-2.md §3, "ползунки долей в лоте не защищены
- * от случайного перетаскивания") — `collective-detail.js` больше НЕ несёт
- * собственную инлайн-копию (была оставлена так с 05.09.2026 намеренно,
- * "стабильный код, трогать не было причины" — решение пересмотрено: два
- * места с одной и той же логикой рискуют разойтись, если один поправить,
- * а другой забыть, что и произошло бы, доведи это исправление только сюда).
+ * **ПЕРЕСОБРАНО ЦЕЛИКОМ 07.09.2026** (репорт VASY, ВТОРОЙ РАЗ подряд —
+ * "ползунок не исправился" после версии на `preventDefault`+откат
+ * значения). Та версия полагалась на то, что `preventDefault()` на
+ * `touchstart` реально останавливает нативный прыжок — VASY живьём
+ * подтвердил, что этого недостаточно (вероятная причина: часть мобильных
+ * WebView, включая, видимо, встроенный браузер Telegram, обрабатывает
+ * прыжок бегунка на уровне рендеринга ОС/платформы, а не через обычный DOM
+ * `touchstart`, до которого JS вообще не успевает достучаться). Новый
+ * подход НЕ полагается на угадывание, среагирует ли платформа на
+ * `preventDefault` — он делает нативный трек физически некликабельным:
  *
- * **Второй слой защиты** (07.09.2026, тот же репорт) — `preventDefault()`
- * на `touchstart`/`mousedown` не везде надёжно останавливает нативный
- * "прыжок" бегунка: на части мобильных WebView (в т.ч. вероятно встроенный
- * браузер Telegram) `<input type="range">` рендерится нативным элементом
- * ОС, чей прыжок-к-точке-касания может произойти на уровне платформы раньше
- * или независимо от того, что видит JS-обработчик `touchstart`. Подстраховка:
- * запоминаем значение ДО начала жеста; если случай не распознан как захват
- * "за бегунок" (`captured=false`), а `input` всё равно сработал (значит,
- * прыжок случился, несмотря на `preventDefault`) — молча откатываем
- * значение обратно. Слушатель регистрируется ЗДЕСЬ, до того как вызывающий
- * код навешивает СВОЙ `input`-обработчик на тот же элемент — событие идёт
- * по слушателям в порядке регистрации, откат успевает произойти раньше, чем
- * чужой код прочитает `sliderEl.value`. Настоящий захват (палец/курсор
- * стартовал рядом с бегунком) не тронут — `captured` остаётся `true` на всё
- * время жеста, откат для него не срабатывает.
- *
- * **`gestureStarted`-гейт на откате, НАЙДЕНО прогоном e2e ДО деплоя** —
- * откат срабатывает ТОЛЬКО если ему предшествовал реальный
- * `mousedown`/`touchstart` НА ЭТОМ элементе; программная установка
- * `slider.value = X` + `dispatchEvent(new Event('input'))` БЕЗ такого
- * события (ровно то, как e2e симулирует движение слайдера —
- * `collective-live-diff-labels.spec.js`, Playwright's `.fill()` на `range`
- * не работает надёжно) откатом НЕ тронута. Без этого гейта первая версия
- * фикса откатывала бы ЛЮБОЕ программное изменение `.value` к значению на
- * момент создания элемента — ложный "успех" ревью, что находится именно
- * прогоном тестов, не чтением кода.
+ * 1. `sliderEl.style.pointerEvents = 'none'` — нативный `<input>` больше НЕ
+ *    получает ни одного pointer/touch/mouse-события. Тап в любую точку
+ *    трека буквально ничего не может сделать — некому его обработать.
+ * 2. Слайдер оборачивается в `position:relative`-контейнер, поверх кладётся
+ *    маленький невидимый квадрат-хитбокс (28×28px — с запасом больше
+ *    визуального "бегунка"), который следует за текущим положением бегунка
+ *    (`positionHit()`, пересчитывается на каждое изменение `.value`, включая
+ *    программное). ЕДИНСТВЕННЫЙ способ подвинуть значение теперь —
+ *    перетащить именно этот хитбокс (`pointerdown`/`pointermove` на нём,
+ *    `setPointerCapture` — жест не срывается, даже если палец уедет с
+ *    28×28 зоны). Значение по-прежнему читается/пишется через
+ *    `sliderEl.value` + событие `'input'` (`bubbles:true`) — весь
+ *    остальной код (который читает `slider.value` на `'input'`) не меняется
+ *    НИ СТРОКОЙ, включая `collective-live-diff-labels.spec.js`'s
+ *    программную симуляцию (`el.value=X; el.dispatchEvent(new
+ *    Event('input',{bubbles:true}))`) — она по-прежнему работает: программная
+ *    установка `.value` не идёт через хитбокс и ничем не блокируется.
+ * 3. Начальная позиция хитбокса ставится и синхронно (на случай, если
+ *    родитель уже видим), и повторно на следующий кадр
+ *    (`requestAnimationFrame`) — на новых карточках лота хитбокс вызывается
+ *    ДО того, как `.lot-body` снимает свой `hidden` (см. `CartLot.create`),
+ *    синхронный `getBoundingClientRect()` в этот момент даёт нулевую
+ *    ширину; без повторной попытки на следующем кадре хитбокс остался бы
+ *    "приклеен" к нулевой позиции до первого реального изменения значения.
  * @param {HTMLInputElement} sliderEl `<input type="range">`
  */
 function wireSliderThumbGuard(sliderEl) {
-    const THUMB_GRAB_TOLERANCE_PX = 14;
-    let captured = false;
-    let gestureStarted = false;
-    let valueBeforeGrab = sliderEl.value;
-    function isNearThumb(clientX) {
+    if (sliderEl.dataset.thumbGuardWired === '1') return; // не оборачивать дважды при повторном вызове
+    sliderEl.dataset.thumbGuardWired = '1';
+
+    let wrapper = sliderEl.parentElement;
+    if (!wrapper || !wrapper.classList.contains('thumb-guard-wrap')) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'thumb-guard-wrap relative';
+        sliderEl.parentNode.insertBefore(wrapper, sliderEl);
+        wrapper.appendChild(sliderEl);
+    }
+    sliderEl.style.pointerEvents = 'none';
+
+    const hit = document.createElement('div');
+    hit.className = 'thumb-guard-hit';
+    hit.style.cssText = 'position:absolute;top:50%;width:28px;height:28px;margin-top:-14px;margin-left:-14px;touch-action:none;cursor:grab;';
+    wrapper.appendChild(hit);
+
+    function positionHit() {
         const rect = sliderEl.getBoundingClientRect();
-        const min = parseFloat(sliderEl.min);
-        const max = parseFloat(sliderEl.max);
-        const percent = (parseFloat(sliderEl.value) - min) / (max - min);
-        const thumbX = rect.left + percent * rect.width;
-        return Math.abs(clientX - thumbX) <= THUMB_GRAB_TOLERANCE_PX;
+        if (rect.width === 0) return; // родитель временно скрыт (hidden) — не в layout, дадим шанс rAF ниже
+        const wrapRect = wrapper.getBoundingClientRect();
+        const min = parseFloat(sliderEl.min) || 0;
+        const max = parseFloat(sliderEl.max) || 100;
+        const percent = (parseFloat(sliderEl.value) - min) / (max - min || 1);
+        const x = (rect.left - wrapRect.left) + percent * rect.width;
+        hit.style.left = `${x}px`;
     }
-    function guardSliderGrab(e) {
-        const point = e.touches && e.touches[0] ? e.touches[0] : e;
-        valueBeforeGrab = sliderEl.value;
-        captured = isNearThumb(point.clientX);
-        gestureStarted = true;
-        if (!captured) e.preventDefault();
+    positionHit();
+    if (window.requestAnimationFrame) requestAnimationFrame(positionHit); // см. п.3 JSDoc — родитель мог быть ещё hidden синхронно
+    sliderEl.addEventListener('input', positionHit);
+
+    function valueFromClientX(clientX) {
+        const rect = sliderEl.getBoundingClientRect();
+        const min = parseFloat(sliderEl.min) || 0;
+        const max = parseFloat(sliderEl.max) || 100;
+        const step = parseFloat(sliderEl.step) || 1;
+        let percent = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+        percent = Math.max(0, Math.min(1, percent));
+        let raw = min + percent * (max - min);
+        raw = Math.round(raw / step) * step;
+        raw = Math.max(min, Math.min(max, raw));
+        const decimals = (String(step).split('.')[1] || '').length; // гасим погрешность плавающей точки на дробном step
+        return Number(raw.toFixed(decimals));
     }
-    function guardValueRevert() {
-        const shouldRevert = gestureStarted && !captured;
-        gestureStarted = false; // одно решение на один жест — не блокировать программные правки, случившиеся позже
-        if (!shouldRevert) return;
-        if (sliderEl.value !== valueBeforeGrab) sliderEl.value = valueBeforeGrab;
-    }
-    sliderEl.addEventListener('mousedown', guardSliderGrab);
-    sliderEl.addEventListener('touchstart', guardSliderGrab, { passive: false });
-    sliderEl.addEventListener('input', guardValueRevert);
+
+    let dragging = false;
+    hit.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        hit.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+    hit.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const newValue = valueFromClientX(e.clientX);
+        if (String(newValue) !== sliderEl.value) {
+            sliderEl.value = String(newValue);
+            sliderEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    });
+    function endDrag() { dragging = false; }
+    hit.addEventListener('pointerup', endDrag);
+    hit.addEventListener('pointercancel', endDrag);
 }
 
 /**

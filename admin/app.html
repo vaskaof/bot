@@ -9,7 +9,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=4"></script>
-  <script src="../common.js?v=21"></script>
+  <script src="../common.js?v=22"></script>
   <script src="router.js?v=14"></script>
   <script src="screens/_form-helpers.js?v=5"></script>
   <script src="screens/_sku-modal.js?v=14"></script>
@@ -55,7 +55,7 @@
   <!-- §6 Фаза E (IMPLEMENTATION-PLAN-CART-UX.md, 07.09.2026) — модалка
        "клиент не указан", тот же паттерн, что _delete-order-modal.js. -->
   <script src="screens/_cart-client-required-modal.js?v=1"></script>
-  <script src="screens/cart-new.js?v=12"></script>
+  <script src="screens/cart-new.js?v=14"></script>
   <!-- Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7, 07.09.2026) — список/
        карточка корзины, факт выкупа по корзине целиком. -->
   <script src="screens/carts.js?v=1"></script>
@@ -139,6 +139,20 @@
        ответ на репорт VASY "не вижу визуально, как произошло изменение". */
     @keyframes money-flash { from { background-color: #fde68a; } to { background-color: transparent; } }
     .money-flash { animation: money-flash 900ms ease-out; border-radius: 4px; }
+    /* Плавная шторка панели итогов «Корзины» (ИСПРАВЛЕНО 07.09.2026, репорт
+       VASY — "шторка должна работать свайпом и плавно, а не нажатием") —
+       высота #cart-summary-sheet теперь анимируемое число (px), которое
+       ставит JS (cart-new.js's setSummaryExpanded/drag-обработчики), не
+       hidden-класс. `.dragging` временно снимает transition во время
+       реального перетаскивания язычка — иначе высота "гонится" за пальцем
+       с опозданием на время transition вместо честного слежения 1:1. */
+    #cart-summary-sheet {
+      height: 0;
+      transition: height 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #cart-summary-sheet.dragging {
+      transition: none;
+    }
   </style>
 </head>
 

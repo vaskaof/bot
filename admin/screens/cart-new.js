@@ -86,19 +86,27 @@ window.Screens.cartNew = {
               </div>
               <span class="text-sm font-medium text-gray-700">Валюта корзины</span>
             </div>
-            <div class="flex-1 w-full flex items-center justify-between gap-2">
-              <select id="cart-currency-select" class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
-                <option value="Доллар">USD ($)</option>
-                <option value="Юань">CNY (¥)</option>
-                <option value="Евро">EUR (€)</option>
-                <option value="Фунт">GBP (£)</option>
-              </select>
-              <div class="flex items-center gap-1 text-[11px] text-gray-500">
-                Курс: <span id="cart-rate-display">—</span> ₽
-                <button id="cart-refresh-rate" title="Обновить курс" class="hover:text-indigo-600 transition-colors">
-                  <i data-lucide="refresh-cw" class="w-3 h-3"></i>
-                </button>
+            <div class="flex-1 w-full">
+              <div class="flex items-center justify-between gap-2">
+                <select id="cart-currency-select" class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
+                  <option value="Доллар">USD ($)</option>
+                  <option value="Юань">CNY (¥)</option>
+                  <option value="Евро">EUR (€)</option>
+                  <option value="Фунт">GBP (£)</option>
+                </select>
+                <div class="flex items-center gap-1 text-[11px] text-gray-500">
+                  Курс: <span id="cart-rate-display">—</span> ₽
+                  <button id="cart-refresh-rate" title="Обновить курс" class="hover:text-indigo-600 transition-colors">
+                    <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                  </button>
+                </div>
               </div>
+              <!-- E3, IMPLEMENTATION-PLAN-CART-UX-2.md §6, 07.09.2026 — курс
+                   меняется вместе с "Датой выкупа" (getRatesForDate), эта
+                   подпись показывает, на какую дату он реально взят, ДО
+                   сохранения. Пусто/скрыта, пока курс на сегодня (обычный
+                   случай — не загромождать экран без нужды). -->
+              <div id="cart-rate-date-caption" class="hidden text-[11px] text-right mt-0.5"></div>
             </div>
           </div>
 
@@ -279,7 +287,24 @@ window.Screens.cartNew = {
             </button>
           </div>
         </div>
-        <div id="cart-summary-sheet" class="hidden border-t border-emerald-100 px-4 py-3 max-h-[55vh] overflow-y-auto custom-scrollbar bg-white">
+        <!-- ИСПРАВЛЕНО 07.09.2026 (репорт VASY: "шторка должна работать
+             свайпом и плавно, а не нажатием") — было мгновенное display:none
+             ↔ display:block (классом hidden), теперь анимированная высота
+             (см. #cart-summary-sheet в <style> app.html — transition на
+             height, .dragging временно её отключает на время самого жеста
+             для честного слежения 1:1 за пальцем, см. JS ниже). Паддинг
+             (px-4 py-3) И верхняя граница (border-t) — на ОТДЕЛЬНОЙ
+             внутренней обёртке, не на самом #cart-summary-sheet: паддинг
+             при height:0 всё равно рисовался бы отдельной полоской (padding
+             не входит в height, overflow:hidden его не прячет); border-t —
+             тот же класс проблемы, НАЙДЕНО прогоном e2e ДО деплоя, не
+             чтением кода — Tailwind's preflight ставит box-sizing:border-box
+             глобально, из-за чего 1px верхней границы не давал computed
+             height уйти ниже 1px даже при height:0 в CSS, Playwright
+             (справедливо) считал панель "видимой" на 1px, e2e падал на
+             самой первой проверке toBeHidden(). -->
+        <div id="cart-summary-sheet" class="overflow-hidden bg-white">
+          <div class="border-t border-emerald-100 px-4 py-3 max-h-[55vh] overflow-y-auto custom-scrollbar">
           <div class="text-[11px] text-gray-500 inline-flex items-center gap-1 mb-2 pb-2 border-b border-gray-100">Средняя комиссия${helpIcon('Средняя комиссия', '<p>Read-only сводка — взвешенное среднее по уже введённым комиссиям заявок. Ничего не сохраняется отдельно и ни на что не влияет, комиссия по-прежнему считается только на позициях.</p>')}: <span id="cart-avg-commission">—</span></div>
 
           <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">По клиентам</div>
@@ -304,6 +329,7 @@ window.Screens.cartNew = {
             <div class="text-[11px] text-gray-500">Прогноз логистики</div>
             <div class="text-sm font-semibold text-gray-900"><span id="cs-forecast-rub">0.00</span> ₽</div>
           </div>
+          </div>
         </div>
       </div>
     `;
@@ -311,6 +337,7 @@ window.Screens.cartNew = {
     // --- Общие поля шапки / курс ---
     const currencySelect = document.getElementById('cart-currency-select');
     const rateDisplay = document.getElementById('cart-rate-display');
+    const rateDateCaptionEl = document.getElementById('cart-rate-date-caption');
     const dateInput = document.getElementById('cart-date-input');
     const totalRubDisplay = document.getElementById('cart-total-rub');
     const avgCommissionDisplay = document.getElementById('cart-avg-commission');
@@ -335,70 +362,79 @@ window.Screens.cartNew = {
     // 180deg — второй, избыточный сигнал того же состояния оставлен, он был
     // и раньше, менять незачем).
     const summaryToggleLabelEl = document.getElementById('cart-summary-toggle-label');
-    // Единая точка правды состояния "развёрнуто" — раньше жила только внутри
-    // обработчика клика по пилюле, вынесена в функцию 07.09.2026, чтобы
-    // "язычок"-свайп (ниже) не дублировал те же три строки второй раз.
-    //
-    // НАЙДЕНО ПРИ ЭТОЙ ЖЕ ПРАВКЕ (реальный баг, был в проде с 06.09.2026,
-    // не регресс этой сессии): стрелка НИКОГДА визуально не поворачивалась —
-    // `document.getElementById('cart-summary-chevron')`, закэшированный в
-    // переменную в момент вызова render() (задолго ДО `lucide.createIcons()`,
-    // которая вызывается ОДИН раз в самом конце render(), см. её JSDoc там),
-    // указывал на `<i data-lucide>`, которую lucide ЗАМЕНЯЕТ на новый `<svg>`
-    // при рендере — старая ссылка становится отсоединённым от DOM узлом,
-    // `.style.transform` на нём не имел вообще никакого видимого эффекта.
-    // Тот же паттерн (querySelector ПОСЛЕ createIcons()) уже верно применён
-    // в `_cart-position.js`/`_cart-lot.js` — здесь `document.getElementById`
-    // просто достаётся заново на каждый вызов, а не кэшируется один раз при
-    // рендере экрана (кэшировать нечего — сама подмена узла происходит
-    // ПОЗЖЕ, в этом же render(), кэш в любой момент до неё был бы стал).
+    // ИСПРАВЛЕНО 07.09.2026, ВТОРОЙ РАУНД (репорт VASY: "шторка должна
+    // работать свайпом и плавно, а не нажатием" — первая версия свайпа
+    // просто мгновенно переключала классом `hidden` при пересечении порога,
+    // без слежения за пальцем и без анимации). Теперь высота
+    // #cart-summary-sheet — управляемое JS число (px), не hidden-класс:
+    // `summaryExpanded` — источник правды состояния, `sheetOpenHeightPx()`
+    // измеряет РЕАЛЬНУЮ высоту содержимого (временно снимает инлайн-высоту,
+    // читает `scrollHeight`, возвращает как было — внутренний `max-h-[55vh]`
+    // на дочернем блоке уже сам ограничивает результат, второй раз ограничивать
+    // не нужно). CSS-переход (`transition: height`, admin/app.html) отвечает
+    // за анимацию тапа по пилюле/короткого тапа по язычку; во время
+    // РЕАЛЬНОГО перетаскивания языка переход временно выключается классом
+    // `.dragging` — иначе высота "гонится" за пальцем с опозданием на время
+    // transition, а не 1:1, что и ощущается как "не работает свайпом".
+    let summaryExpanded = false;
+    function sheetOpenHeightPx() {
+      const prevHeight = summarySheetEl.style.height;
+      summarySheetEl.style.height = 'auto';
+      const natural = summarySheetEl.scrollHeight;
+      summarySheetEl.style.height = prevHeight;
+      return natural;
+    }
     function setSummaryExpanded(expanded) {
-      summarySheetEl.classList.toggle('hidden', !expanded);
+      summaryExpanded = expanded;
+      summarySheetEl.style.height = expanded ? `${sheetOpenHeightPx()}px` : '0px';
       const chevronEl = document.getElementById('cart-summary-chevron');
       if (chevronEl) chevronEl.style.transform = expanded ? 'rotate(180deg)' : '';
       summaryToggleLabelEl.textContent = expanded ? 'Свернуть' : 'Подробнее';
     }
-    summaryToggleBtn.addEventListener('click', () => {
-      setSummaryExpanded(summarySheetEl.classList.contains('hidden'));
-    });
+    summaryToggleBtn.addEventListener('click', () => setSummaryExpanded(!summaryExpanded));
 
-    // "Язычок" для свайпа (07.09.2026, репорт VASY) — ухватить полоску за
-    // верхней границей панели и потянуть: вверх раскрывает свёрнутую панель,
-    // вниз сворачивает развёрнутую. Pointer Events (не отдельно touch/mouse)
-    // — единая обработка для тача И мыши/стилуса одним набором слушателей.
+    // "Язычок" для свайпа — ухватить полоску за верхней границей панели и
+    // потянуть: панель растёт/сжимается ВМЕСТЕ с пальцем в реальном времени
+    // (не по достижении порога), на отпускании "доезжает" (плавно, с
+    // transition) до ближайшего из двух состояний. Pointer Events (не
+    // отдельно touch/mouse) — единая обработка для тача И мыши/стилуса.
     // `setPointerCapture` — жест продолжает отслеживаться, даже если палец
     // уедет за пределы самой полоски (typical bottom-sheet drag handle).
-    // Порог в пикселях — гасит случайное дрожание пальца при обычном тапе
-    // (сам тап переключает панель через отдельный click ниже, не через
-    // порог движения).
     const dragHandleEl = document.getElementById('cart-summary-drag-handle');
-    const DRAG_TOGGLE_THRESHOLD_PX = 24;
     let dragStartY = null;
-    let dragActedThisGesture = false;
+    let dragBaseHeight = 0; // высота панели в момент начала жеста
+    let dragOpenHeight = 0; // высота полностью раскрытой панели (измеряется один раз на жест)
+    let dragMoved = false;  // жест реально сдвинул высоту — отличить от простого тапа (см. click ниже)
     dragHandleEl.addEventListener('pointerdown', (e) => {
       dragStartY = e.clientY;
-      dragActedThisGesture = false;
+      dragMoved = false;
+      dragBaseHeight = summarySheetEl.getBoundingClientRect().height;
+      dragOpenHeight = sheetOpenHeightPx();
+      summarySheetEl.classList.add('dragging'); // временно без transition — честное слежение 1:1 за пальцем
       dragHandleEl.setPointerCapture(e.pointerId);
     });
     dragHandleEl.addEventListener('pointermove', (e) => {
-      if (dragStartY === null || dragActedThisGesture) return;
-      const deltaY = e.clientY - dragStartY; // отрицательный — палец идёт вверх
-      const expanded = !summarySheetEl.classList.contains('hidden');
-      if (!expanded && deltaY < -DRAG_TOGGLE_THRESHOLD_PX) {
-        setSummaryExpanded(true);
-        dragActedThisGesture = true; // не переключать повторно за тот же жест при дальнейшем движении
-      } else if (expanded && deltaY > DRAG_TOGGLE_THRESHOLD_PX) {
-        setSummaryExpanded(false);
-        dragActedThisGesture = true;
-      }
+      if (dragStartY === null) return;
+      const deltaY = dragStartY - e.clientY; // положительное — палец идёт ВВЕРХ (раскрывает)
+      if (Math.abs(deltaY) > 3) dragMoved = true;
+      const newHeight = Math.max(0, Math.min(dragOpenHeight, dragBaseHeight + deltaY));
+      summarySheetEl.style.height = `${newHeight}px`;
     });
-    dragHandleEl.addEventListener('pointerup', () => { dragStartY = null; });
-    dragHandleEl.addEventListener('pointercancel', () => { dragStartY = null; });
-    // Короткий тап по язычку (без сдвига за порог) — тоже переключает, тот
-    // же UX, что кнопка-пилюля ниже, язычок ведь тоже часть панели.
+    function endSummaryDrag() {
+      if (dragStartY === null) return;
+      dragStartY = null;
+      summarySheetEl.classList.remove('dragging'); // возвращаем transition — доезжает плавно до ближайшего состояния
+      if (!dragMoved) return; // не двигали — это просто тап, решает click ниже
+      const currentHeight = summarySheetEl.getBoundingClientRect().height;
+      setSummaryExpanded(currentHeight >= dragOpenHeight * 0.35); // проехал больше трети хода — доезжаем до конца
+    }
+    dragHandleEl.addEventListener('pointerup', endSummaryDrag);
+    dragHandleEl.addEventListener('pointercancel', endSummaryDrag);
+    // Короткий тап по язычку (без реального сдвига) — тоже переключает, тот
+    // же UX, что кнопка-пилюля рядом, язычок ведь тоже часть панели.
     dragHandleEl.addEventListener('click', () => {
-      if (dragActedThisGesture) return; // жест уже переключил панель — не переключать второй раз
-      setSummaryExpanded(summarySheetEl.classList.contains('hidden'));
+      if (dragMoved) { dragMoved = false; return; } // жест уже применил своё решение выше — не переключать второй раз
+      setSummaryExpanded(!summaryExpanded);
     });
 
     // §5 D1 — "Свернуть все"/"Развернуть все".
@@ -614,34 +650,137 @@ window.Screens.cartNew = {
     document.querySelector('select[data-dict="statusDelivery"]').addEventListener('change', updateDeliveryLadderPreview);
     updateDeliveryLadderPreview();
 
-    async function refreshRate() {
+    // rateRequestSeq — ОБЩИЙ гвард от гонки между "Обновить курс" (кнопка)
+    // и сменой "Дата выкупа" (найдено ДВУМЯ раундами целевого ревью перед
+    // деплоем — первый раунд поставил гвард только внутри
+    // refreshRateForDate, второй нашёл, что refreshRate() тоже пишет
+    // currentRates/дёргает hideRateDateCaption() БЕЗ него: если запрос по
+    // дате уйдёт первым, а начальный refreshRate() на монтировании экрана
+    // ответит позже — курс и подпись "курс на DD.MM.YYYY" молча
+    // перезатирались бы текущим, хотя поле даты по-прежнему показывает
+    // выбранную дату). Общий на обе функции — какая бы ни завершилась
+    // последней ИЗ РЕАЛЬНО ЗАПУЩЕННЫХ, та и победит, независимо от того,
+    // какая из двух это была. `pendingRateRequests` — счётчик одновременно
+    // летящих запросов (ТРЕТИЙ раунд ревью): спиннер гасится, только когда
+    // ПОСЛЕДНИЙ из них завершился — иначе устаревший ответ мог погасить
+    // иконку, пока ещё летит более свежий запрос.
+    let rateRequestSeq = 0;
+    let pendingRateRequests = 0;
+
+    function beginRateSpin() {
+      pendingRateRequests++;
       const icon = document.getElementById('cart-refresh-rate').querySelector('svg');
       if (icon) icon.classList.add('animate-spin');
+    }
+    function endRateSpin() {
+      pendingRateRequests = Math.max(0, pendingRateRequests - 1);
+      if (pendingRateRequests > 0) return; // ещё летит другой запрос — рано гасить
+      const icon = document.getElementById('cart-refresh-rate').querySelector('svg');
+      if (icon) icon.classList.remove('animate-spin');
+    }
+
+    // Кнопка "Обновить курс" (иконка рядом с курсом) — сбрасывает кэш и
+    // читает ТЕКУЩИЙ курс, дата "Дата выкупа" здесь не участвует (§6 плана,
+    // Раунд 2 CART-UX-2, фаза E, 07.09.2026 — сознательно, ручное
+    // "обновить" всегда должно означать "самый свежий курс"). Курс по
+    // выбранной дате — отдельная связка ниже, на change у #cart-date-input.
+    async function refreshRate() {
+      const mySeq = ++rateRequestSeq;
+      beginRateSpin();
       try {
         const rates = await callServer('refreshRate');
+        if (mySeq !== rateRequestSeq) return; // устарел — курс/дата уже сменились снова
         if (rates && rates.finalRates) {
           currentRates = rates.finalRates;
           applyCurrentCurrencyRate();
+          hideRateDateCaption(); // "Обновить" всегда возвращает ТЕКУЩИЙ курс — подпись про дату больше не актуальна
         }
       } catch (error) {
+        if (mySeq !== rateRequestSeq) return; // устарел — не показывать ошибку поверх уже выигравшего более свежего запроса
         showSaveToast(false, `Не удалось обновить курсы валют: ${error.message}`);
       } finally {
-        if (icon) icon.classList.remove('animate-spin');
+        endRateSpin();
       }
     }
 
+    // @returns {boolean} применился ли курс ТЕКУЩЕЙ валюты корзины
     function applyCurrentCurrencyRate() {
       const rawRate = currentRates[currentCurrency];
-      if (rawRate === undefined || rawRate === '') return;
-      currentRate = parseFloat(rawRate.toString().replace(',', '.'));
-      if (isNaN(currentRate)) return;
+      if (rawRate === undefined || rawRate === '') return false;
+      const parsed = parseFloat(rawRate.toString().replace(',', '.'));
+      if (isNaN(parsed)) return false;
+      currentRate = parsed;
       rateDisplay.textContent = currentRate.toFixed(2);
       items.forEach((item) => item.onRateChanged());
       recomputeTotals();
+      return true;
+    }
+
+    function hideRateDateCaption() {
+      if (!rateDateCaptionEl) return;
+      rateDateCaptionEl.classList.add('hidden');
+      rateDateCaptionEl.textContent = '';
+    }
+
+    // E3 (§6 плана) — реальный дефект: <input type=date> отдаёт
+    // "YYYY-MM-DD", а parseRuDateToIso раньше понимала только "dd.MM.yyyy"
+    // -> курс по "Дате выкупа" молча не работал НИКОГДА, ни здесь, ни в
+    // order-new.js/lot-new.js. parseRuDateToIso расширена на бэкенде
+    // (принимает оба формата); здесь — сама связка: смена даты сразу
+    // подтягивает курс НА ЭТУ ДАТУ, чтобы менеджер видел его ДО сохранения,
+    // не постфактум в заказе. Гвард от гонки — rateRequestSeq выше.
+    async function refreshRateForDate() {
+      const isoDate = dateInput.value || null;
+      const mySeq = ++rateRequestSeq;
+      beginRateSpin();
+      try {
+        const result = await callServer('getRatesForDate', isoDate);
+        if (mySeq !== rateRequestSeq) return; // устарел — курс/дата уже сменились снова
+        if (!result || !result.finalRates) {
+          hideRateDateCaption();
+          return;
+        }
+        currentRates = result.finalRates;
+        // Backend (computeCrossRates) МОЖЕТ отдать finalRates без КОНКРЕТНО
+        // текущей валюты корзины (наценка/сырой курс на эту дату для неё не
+        // настроены/отсутствуют) — applyCurrentCurrencyRate тогда не трогает
+        // экран вообще (третий раунд ревью: раньше подпись "курс на ..."
+        // всё равно показывалась бы поверх СТАРОГО, не обновившегося курса).
+        const applied = applyCurrentCurrencyRate();
+        if (!applied) {
+          showSaveToast(false, `Для валюты "${currentCurrency}" нет курса на выбранную дату — показан прежний курс.`);
+          hideRateDateCaption();
+          return;
+        }
+        if (rateDateCaptionEl) {
+          if (!isoDate) {
+            // Поле "Дата выкупа" очищено (не то же самое, что "нет истории
+            // на эту дату" — дата вообще не задана), другая формулировка
+            // (найдено целевым ревью 07.09.2026 — раньше обе ветки делили
+            // один и тот же amber-текст про "нет истории").
+            hideRateDateCaption();
+          } else if (result.isFallback) {
+            rateDateCaptionEl.textContent = 'истории курса на эту дату нет, взят текущий';
+            rateDateCaptionEl.className = 'text-[11px] text-right mt-0.5 text-amber-600';
+            rateDateCaptionEl.classList.remove('hidden');
+          } else {
+            const [y, m, d] = result.rateDateUsed.split('-');
+            rateDateCaptionEl.textContent = `курс на ${d}.${m}.${y}`;
+            rateDateCaptionEl.className = 'text-[11px] text-right mt-0.5 text-gray-400';
+            rateDateCaptionEl.classList.remove('hidden');
+          }
+        }
+      } catch (error) {
+        if (mySeq !== rateRequestSeq) return;
+        showSaveToast(false, `Не удалось получить курс на дату: ${error.message}`);
+      } finally {
+        endRateSpin();
+      }
     }
 
     document.getElementById('cart-refresh-rate').addEventListener('click', refreshRate);
     currencySelect.addEventListener('change', (e) => { currentCurrency = e.target.value; applyCurrentCurrencyRate(); });
+    dateInput.addEventListener('change', refreshRateForDate);
     refreshRate();
 
     // searchClientStub/searchReleaseStub удалены (§5 D4, найдено вторым
