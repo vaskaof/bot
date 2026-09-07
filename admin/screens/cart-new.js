@@ -243,7 +243,17 @@ window.Screens.cartNew = {
            кнопка) — сама сетка больше не внутри кнопки, слушатель
            теперь только на пилюле #cart-summary-toggle. -->
       <div id="cart-summary-bar" class="fixed left-0 right-0 z-40 bg-emerald-50 border-t border-emerald-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-        <div class="px-4 py-2.5">
+        <!-- "Язычок" для свайпа (07.09.2026, репорт VASY: удобнее раскрывать
+             и сворачивать жестом, ухватив именно за границу панели, а не
+             только тапом по пилюле ниже). Виден ВСЕГДА (и свёрнуто, и
+             развёрнуто) — физическая верхняя граница панели всегда здесь
+             (fixed+bottom, высота растёт вверх при разворачивании, эта
+             полоска остаётся на месте). touch-none — жест внутри самого
+             язычка не должен ещё и скроллить страницу под ним. -->
+        <div id="cart-summary-drag-handle" class="w-full flex justify-center pt-1.5 pb-1 cursor-grab touch-none">
+          <div class="w-10 h-1.5 rounded-full bg-emerald-300"></div>
+        </div>
+        <div class="px-4 pb-2.5">
           <div class="grid grid-cols-2 gap-x-3 gap-y-0.5">
             <div class="text-[11px] text-gray-500">Итог корзины</div>
             <div class="text-[11px] text-gray-500 text-right">Осталось получить</div>
@@ -258,7 +268,14 @@ window.Screens.cartNew = {
           <div class="flex justify-center mt-1.5">
             <button type="button" id="cart-summary-toggle" class="px-3 py-1 rounded-full border border-emerald-300 bg-white text-emerald-700 text-[12px] font-medium inline-flex items-center gap-1">
               <span id="cart-summary-toggle-label">Подробнее</span>
-              <i data-lucide="chevron-up" id="cart-summary-chevron" class="w-3.5 h-3.5 transition-transform"></i>
+              <!-- ИСПРАВЛЕНО 07.09.2026 (репорт VASY — "стрелочка вверх,
+                   должна быть вниз") — базовая иконка была chevron-up
+                   (стрелка уже смотрела вверх в свёрнутом состоянии, хотя
+                   свёрнуто = "разверни вниз/потяни" по конвенции остального
+                   экрана: .position-chevron/.lot-chevron используют
+                   chevron-down как базу, поворот на 180deg только при
+                   развороте — здесь теперь та же конвенция). -->
+              <i data-lucide="chevron-down" id="cart-summary-chevron" class="w-3.5 h-3.5 transition-transform"></i>
             </button>
           </div>
         </div>
@@ -313,16 +330,75 @@ window.Screens.cartNew = {
     const csForecastRubEl = document.getElementById('cs-forecast-rub');
     const summaryToggleBtn = document.getElementById('cart-summary-toggle');
     const summarySheetEl = document.getElementById('cart-summary-sheet');
-    const summaryChevronEl = document.getElementById('cart-summary-chevron');
     // §4 C3 — пилюля вместо серого шеврона, подпись меняется на "Свернуть"
     // в раскрытом состоянии (сам шеврон, как и раньше, разворачивается на
     // 180deg — второй, избыточный сигнал того же состояния оставлен, он был
     // и раньше, менять незачем).
     const summaryToggleLabelEl = document.getElementById('cart-summary-toggle-label');
-    summaryToggleBtn.addEventListener('click', () => {
-      const expanded = summarySheetEl.classList.toggle('hidden') === false;
-      summaryChevronEl.style.transform = expanded ? 'rotate(180deg)' : '';
+    // Единая точка правды состояния "развёрнуто" — раньше жила только внутри
+    // обработчика клика по пилюле, вынесена в функцию 07.09.2026, чтобы
+    // "язычок"-свайп (ниже) не дублировал те же три строки второй раз.
+    //
+    // НАЙДЕНО ПРИ ЭТОЙ ЖЕ ПРАВКЕ (реальный баг, был в проде с 06.09.2026,
+    // не регресс этой сессии): стрелка НИКОГДА визуально не поворачивалась —
+    // `document.getElementById('cart-summary-chevron')`, закэшированный в
+    // переменную в момент вызова render() (задолго ДО `lucide.createIcons()`,
+    // которая вызывается ОДИН раз в самом конце render(), см. её JSDoc там),
+    // указывал на `<i data-lucide>`, которую lucide ЗАМЕНЯЕТ на новый `<svg>`
+    // при рендере — старая ссылка становится отсоединённым от DOM узлом,
+    // `.style.transform` на нём не имел вообще никакого видимого эффекта.
+    // Тот же паттерн (querySelector ПОСЛЕ createIcons()) уже верно применён
+    // в `_cart-position.js`/`_cart-lot.js` — здесь `document.getElementById`
+    // просто достаётся заново на каждый вызов, а не кэшируется один раз при
+    // рендере экрана (кэшировать нечего — сама подмена узла происходит
+    // ПОЗЖЕ, в этом же render(), кэш в любой момент до неё был бы стал).
+    function setSummaryExpanded(expanded) {
+      summarySheetEl.classList.toggle('hidden', !expanded);
+      const chevronEl = document.getElementById('cart-summary-chevron');
+      if (chevronEl) chevronEl.style.transform = expanded ? 'rotate(180deg)' : '';
       summaryToggleLabelEl.textContent = expanded ? 'Свернуть' : 'Подробнее';
+    }
+    summaryToggleBtn.addEventListener('click', () => {
+      setSummaryExpanded(summarySheetEl.classList.contains('hidden'));
+    });
+
+    // "Язычок" для свайпа (07.09.2026, репорт VASY) — ухватить полоску за
+    // верхней границей панели и потянуть: вверх раскрывает свёрнутую панель,
+    // вниз сворачивает развёрнутую. Pointer Events (не отдельно touch/mouse)
+    // — единая обработка для тача И мыши/стилуса одним набором слушателей.
+    // `setPointerCapture` — жест продолжает отслеживаться, даже если палец
+    // уедет за пределы самой полоски (typical bottom-sheet drag handle).
+    // Порог в пикселях — гасит случайное дрожание пальца при обычном тапе
+    // (сам тап переключает панель через отдельный click ниже, не через
+    // порог движения).
+    const dragHandleEl = document.getElementById('cart-summary-drag-handle');
+    const DRAG_TOGGLE_THRESHOLD_PX = 24;
+    let dragStartY = null;
+    let dragActedThisGesture = false;
+    dragHandleEl.addEventListener('pointerdown', (e) => {
+      dragStartY = e.clientY;
+      dragActedThisGesture = false;
+      dragHandleEl.setPointerCapture(e.pointerId);
+    });
+    dragHandleEl.addEventListener('pointermove', (e) => {
+      if (dragStartY === null || dragActedThisGesture) return;
+      const deltaY = e.clientY - dragStartY; // отрицательный — палец идёт вверх
+      const expanded = !summarySheetEl.classList.contains('hidden');
+      if (!expanded && deltaY < -DRAG_TOGGLE_THRESHOLD_PX) {
+        setSummaryExpanded(true);
+        dragActedThisGesture = true; // не переключать повторно за тот же жест при дальнейшем движении
+      } else if (expanded && deltaY > DRAG_TOGGLE_THRESHOLD_PX) {
+        setSummaryExpanded(false);
+        dragActedThisGesture = true;
+      }
+    });
+    dragHandleEl.addEventListener('pointerup', () => { dragStartY = null; });
+    dragHandleEl.addEventListener('pointercancel', () => { dragStartY = null; });
+    // Короткий тап по язычку (без сдвига за порог) — тоже переключает, тот
+    // же UX, что кнопка-пилюля ниже, язычок ведь тоже часть панели.
+    dragHandleEl.addEventListener('click', () => {
+      if (dragActedThisGesture) return; // жест уже переключил панель — не переключать второй раз
+      setSummaryExpanded(summarySheetEl.classList.contains('hidden'));
     });
 
     // §5 D1 — "Свернуть все"/"Развернуть все".

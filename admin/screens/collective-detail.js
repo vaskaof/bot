@@ -1046,31 +1046,16 @@ window.Screens.collectiveDetail = {
       const slider = card.querySelector('.units-slider');
 
       // 25.08.2026 (репорт VASY — "пальцем можно случайно нажать на ползунок
-      // и он сразу перескочет") — нативный <input type=range> в большинстве
-      // мобильных браузеров/WebView по умолчанию прыгает на позицию касания
-      // при ЛЮБОМ тапе по треку, не только при захвате самой точки — ровно
-      // то, что делает случайное касание при скролле списка опасным. Гасим
-      // этот прыжок: на нажатии/касании проверяем, что палец/курсор стартовал
-      // рядом с ТЕКУЩИМ положением точки (допуск ~её видимый радиус + чуть
-      // запаса), иначе preventDefault() — браузер тогда вообще не начинает
-      // жест, значение не меняется. Настоящее перетаскивание САМОЙ точки
-      // (после успешного захвата рядом с ней) не тронуто — работает штатно,
-      // дальнейшее движение пальца/курсора этим обработчиком не перехватывается.
-      const THUMB_GRAB_TOLERANCE_PX = 14;
-      function isNearThumb(clientX) {
-        const rect = slider.getBoundingClientRect();
-        const min = parseFloat(slider.min);
-        const max = parseFloat(slider.max);
-        const percent = (parseFloat(slider.value) - min) / (max - min);
-        const thumbX = rect.left + percent * rect.width;
-        return Math.abs(clientX - thumbX) <= THUMB_GRAB_TOLERANCE_PX;
-      }
-      function guardSliderGrab(e) {
-        const point = e.touches && e.touches[0] ? e.touches[0] : e;
-        if (!isNearThumb(point.clientX)) e.preventDefault();
-      }
-      slider.addEventListener('mousedown', guardSliderGrab);
-      slider.addEventListener('touchstart', guardSliderGrab, { passive: false });
+      // и он сразу перескочет") — было своей инлайн-копией здесь, 05.09.2026
+      // вынесено в общий `common.js:wireSliderThumbGuard` для НОВЫХ мест
+      // (`lot-new.js`/`cart-new.js`), эта копия была оставлена как есть
+      // "стабильный код, трогать не было причины". 07.09.2026 (репорт VASY
+      // на «Корзине» — та же защита не спасла от случайного перетаскивания
+      // на практике, общий хелпер усилен вторым слоем — откат значения, если
+      // `input` всё-таки сработал без подтверждённого захвата, см. её JSDoc
+      // в common.js) — переведено на общий хелпер, чтобы усиление
+      // автоматически коснулось и этого места тоже, а не разошлось с ним.
+      wireSliderThumbGuard(slider);
 
       slider.addEventListener('input', () => {
         const newUnits = parseFloat(slider.value);

@@ -185,14 +185,49 @@ function debounce(func, wait) {
  * начала перетаскивания и блокирует его (`preventDefault`), если точка
  * касания дальше `THUMB_GRAB_TOLERANCE_PX` от текущего положения бегунка —
  * дальнейшее движение пальца/курсора уже не долетает до слайдера, т.к.
- * сам "drag" так и не начался. `collective-detail.js` оставлен со своей
- * исходной инлайн-копией (стабильный, отдельно протестированный код,
- * трогать не было причины) — эта функция для НОВЫХ мест использования
- * (`lot-new.js`/`cart-new.js`), сама логика идентична.
+ * сам "drag" так и не начался.
+ *
+ * **Единый источник правды с 07.09.2026** (репорт VASY на «Корзине»,
+ * IMPLEMENTATION-PLAN-CART-UX-2.md §3, "ползунки долей в лоте не защищены
+ * от случайного перетаскивания") — `collective-detail.js` больше НЕ несёт
+ * собственную инлайн-копию (была оставлена так с 05.09.2026 намеренно,
+ * "стабильный код, трогать не было причины" — решение пересмотрено: два
+ * места с одной и той же логикой рискуют разойтись, если один поправить,
+ * а другой забыть, что и произошло бы, доведи это исправление только сюда).
+ *
+ * **Второй слой защиты** (07.09.2026, тот же репорт) — `preventDefault()`
+ * на `touchstart`/`mousedown` не везде надёжно останавливает нативный
+ * "прыжок" бегунка: на части мобильных WebView (в т.ч. вероятно встроенный
+ * браузер Telegram) `<input type="range">` рендерится нативным элементом
+ * ОС, чей прыжок-к-точке-касания может произойти на уровне платформы раньше
+ * или независимо от того, что видит JS-обработчик `touchstart`. Подстраховка:
+ * запоминаем значение ДО начала жеста; если случай не распознан как захват
+ * "за бегунок" (`captured=false`), а `input` всё равно сработал (значит,
+ * прыжок случился, несмотря на `preventDefault`) — молча откатываем
+ * значение обратно. Слушатель регистрируется ЗДЕСЬ, до того как вызывающий
+ * код навешивает СВОЙ `input`-обработчик на тот же элемент — событие идёт
+ * по слушателям в порядке регистрации, откат успевает произойти раньше, чем
+ * чужой код прочитает `sliderEl.value`. Настоящий захват (палец/курсор
+ * стартовал рядом с бегунком) не тронут — `captured` остаётся `true` на всё
+ * время жеста, откат для него не срабатывает.
+ *
+ * **`gestureStarted`-гейт на откате, НАЙДЕНО прогоном e2e ДО деплоя** —
+ * откат срабатывает ТОЛЬКО если ему предшествовал реальный
+ * `mousedown`/`touchstart` НА ЭТОМ элементе; программная установка
+ * `slider.value = X` + `dispatchEvent(new Event('input'))` БЕЗ такого
+ * события (ровно то, как e2e симулирует движение слайдера —
+ * `collective-live-diff-labels.spec.js`, Playwright's `.fill()` на `range`
+ * не работает надёжно) откатом НЕ тронута. Без этого гейта первая версия
+ * фикса откатывала бы ЛЮБОЕ программное изменение `.value` к значению на
+ * момент создания элемента — ложный "успех" ревью, что находится именно
+ * прогоном тестов, не чтением кода.
  * @param {HTMLInputElement} sliderEl `<input type="range">`
  */
 function wireSliderThumbGuard(sliderEl) {
     const THUMB_GRAB_TOLERANCE_PX = 14;
+    let captured = false;
+    let gestureStarted = false;
+    let valueBeforeGrab = sliderEl.value;
     function isNearThumb(clientX) {
         const rect = sliderEl.getBoundingClientRect();
         const min = parseFloat(sliderEl.min);
@@ -203,10 +238,20 @@ function wireSliderThumbGuard(sliderEl) {
     }
     function guardSliderGrab(e) {
         const point = e.touches && e.touches[0] ? e.touches[0] : e;
-        if (!isNearThumb(point.clientX)) e.preventDefault();
+        valueBeforeGrab = sliderEl.value;
+        captured = isNearThumb(point.clientX);
+        gestureStarted = true;
+        if (!captured) e.preventDefault();
+    }
+    function guardValueRevert() {
+        const shouldRevert = gestureStarted && !captured;
+        gestureStarted = false; // одно решение на один жест — не блокировать программные правки, случившиеся позже
+        if (!shouldRevert) return;
+        if (sliderEl.value !== valueBeforeGrab) sliderEl.value = valueBeforeGrab;
     }
     sliderEl.addEventListener('mousedown', guardSliderGrab);
     sliderEl.addEventListener('touchstart', guardSliderGrab, { passive: false });
+    sliderEl.addEventListener('input', guardValueRevert);
 }
 
 /**
