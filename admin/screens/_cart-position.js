@@ -111,20 +111,59 @@ window.CartPosition = {
         <div class="text-xs text-gray-500 shrink-0">≈ <span class="amount-rub-display">0.00</span> ₽</div>
       </div>
 
-      <!-- Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026 — замена
-           абстрактного слайдера-коэффициента прямым вводом суммы, VASY:
-           "отредактировать вручную долю"). Видна ТОЛЬКО когда заполнено
-           «Итог с сайта выкупа» (§4 C1, внутри липкой панели итогов), см.
-           её JSDoc в render(). Скрыта по умолчанию — не захламляет обычное
-           создание. -->
+      <!-- Читаемая выкладка расчёта (§3 B1, IMPLEMENTATION-PLAN-CART-UX-2.md,
+           07.09.2026 — заменила единственное read-only поле «Итог заявки с
+           учётом разницы», прямой ответ на репорт VASY: "не вижу визуально,
+           как произошло изменение, как это повлияло на комиссию и сумму по
+           каждому заказу"). Видна ТОЛЬКО когда заполнено «Итог с сайта
+           выкупа» (§4 C1, шапка корзины), см. её JSDoc в render(). Скрыта по
+           умолчанию — не захламляет обычное создание. Числа заполняются
+           renderReconciliationBreakdown() ниже (см. её в JS-части файла) —
+           чистая производная от уже посчитанных полей заявки, без нового
+           состояния (§3 B2). Ручная фиксация (§3 B1/B2, ИСПРАВЛЕНО
+           06.09.2026) осталась как есть — только спрятана за кнопкой «Задать
+           сумму вручную»: .manual-total-input/.manual-total-reset-btn
+           ОБЯЗАНЫ остаться теми же классами в DOM (их ищут
+           wireManualShareControl() и e2e), просто их контейнер теперь
+           дополнительно скрыт до клика по кнопке. НЕ использовать обратные
+           кавычки внутри этого HTML-комментария — он живёт внутри JS
+           template literal, обратная кавычка преждевременно закрывает
+           внешний литерал и рвёт синтаксис всего файла (см. JSDoc файла,
+           наступали на это трижды за сессию 07.09.2026). -->
       <div class="cost-coef-block hidden mb-2 pt-2 border-t border-gray-100">
-        <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
-          <span>Итог заявки с учётом разницы, ₽</span>
-          <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
+        <div class="text-[11px] font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1">Общие расходы корзины${helpIcon('Общие расходы корзины', '<p>«Итог с сайта выкупа» распределяется между заявками корзины — здесь видно, сколько добавилось именно этой, и как это изменило её комиссию и итог.</p>')}</div>
+        <div class="space-y-1 text-[12px] text-gray-600">
+          <div class="flex items-center justify-between">
+            <span>Своя сумма</span>
+            <span class="cc-own-sum font-medium text-gray-800">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="cc-diff-label">Доля разницы</span>
+            <span class="cc-diff-share font-medium text-gray-800">+0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between font-medium text-gray-800 pt-1 border-t border-gray-100">
+            <span>База заявки</span>
+            <span class="cc-base-total">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between pt-1 border-t border-gray-100">
+            <span class="cc-fee-label">Комиссия</span>
+            <span class="cc-fee-change font-medium text-gray-800">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between font-semibold text-gray-900">
+            <span>Клиент платит</span>
+            <span class="cc-total-change">0.00 ₽</span>
+          </div>
         </div>
-        <div class="flex items-center gap-1.5">
-          <input type="number" class="manual-total-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01" min="0">
-          <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+        <button type="button" class="manual-total-toggle-btn mt-1.5 text-[11px] text-indigo-600 font-medium">Задать сумму вручную</button>
+        <div class="manual-total-wrap hidden mt-1.5">
+          <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+            <span>Итог заявки с учётом разницы, ₽</span>
+            <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <input type="number" class="manual-total-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01" min="0">
+            <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+          </div>
         </div>
       </div>
 
@@ -235,13 +274,63 @@ window.CartPosition = {
       bodyEl: rowEl.querySelector('.position-body'),
       chevronEl: rowEl.querySelector('.position-chevron')
     };
-    // Ручная фиксация доли (§3 B1/B2) — контрол внутри coefBlockEl.
+    // Ручная фиксация доли (§3 B1/B2) — контрол внутри coefBlockEl (сам
+    // .manual-total-input сейчас на уровень глубже, внутри .manual-total-wrap
+    // — querySelector ищет по всему поддереву, ничего не меняет).
     item.manualShare = ctx.wireManualShareControl(item.coefBlockEl);
     item.manualShare.onChange(() => ctx.recomputeTotals());
     // §2 A3 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — плоский метод
     // на самой заявке, которым ctx.diffWeightFor(it) пользуется без знания
     // о внутреннем `manualShare` (тот же контракт нужен и лоту).
     item.getManualRub = () => item.manualShare.getManualRub();
+
+    // §3 B1 — кнопка «Задать сумму вручную» прячет/показывает ручной ввод,
+    // не удаляя его из DOM (см. комментарий в разметке выше — e2e ищет
+    // .manual-total-input по классу, но, как и любой Playwright `.fill()`,
+    // требует видимости, поэтому e2e-сценарии, которые реально вводят
+    // значение, сами кликают эту кнопку первой).
+    rowEl.querySelector('.manual-total-toggle-btn').addEventListener('click', () => {
+      rowEl.querySelector('.manual-total-wrap').classList.toggle('hidden');
+    });
+
+    // §3 B1/B2/B3 — читаемая выкладка расчёта. Ссылки на элементы внутри
+    // coefBlockEl, заполняются/подсвечиваются renderReconciliationBreakdown()
+    // ниже, вызываемой из updateTotalDisplay()/updateFromTotal() (оба —
+    // терминальные шаги связки Сумма↔%↔₽↔Итог, покрывают любой путь ввода).
+    const ccOwnSumEl = rowEl.querySelector('.cc-own-sum');
+    const ccDiffLabelEl = rowEl.querySelector('.cc-diff-label');
+    const ccDiffShareEl = rowEl.querySelector('.cc-diff-share');
+    const ccBaseTotalEl = rowEl.querySelector('.cc-base-total');
+    const ccFeeLabelEl = rowEl.querySelector('.cc-fee-label');
+    const ccFeeChangeEl = rowEl.querySelector('.cc-fee-change');
+    const ccTotalChangeEl = rowEl.querySelector('.cc-total-change');
+    // B2 — чистая производная от уже посчитанных полей, без нового
+    // состояния: "было" пересчитывается заново из СЫРОЙ базы (getTotalRub())
+    // и ТЕКУЩЕГО процента комиссии на каждый вызов, не хранится нигде между
+    // вызовами. Стрелка «было → стало» — только если реконсиляция реально
+    // сдвинула базу (>= 0.01 ₽, тот же допуск, что у остальных денежных
+    // сравнений экрана).
+    function renderReconciliationBreakdown() {
+      if (item.coefBlockEl.classList.contains('hidden')) return; // реконсиляция выключена — блок скрыт, считать нечего
+      const baseRaw = item.getTotalRub();
+      const base = item.getEffectiveBaseRub();
+      const diffShare = base - baseRaw;
+      const pct = parseFloat(item.feePercentEl.value) || 0;
+      const feeRaw = baseRaw * pct / 100;
+      const totalRaw = baseRaw + feeRaw;
+      const feeNow = parseFloat(item.feeRubEl.value) || 0;
+      const totalNow = parseFloat(item.totalPaymentEl.value) || 0;
+      const showArrow = Math.abs(base - baseRaw) >= 0.01;
+      const sharePercent = ctx.diffSharePercentFor(item);
+
+      ccOwnSumEl.textContent = `${baseRaw.toFixed(2)} ₽`;
+      ccDiffLabelEl.textContent = `Доля разницы (${ctx.diffSplitModeLabel()} · ${sharePercent.toFixed(1)}%)`;
+      setTextWithFlash(ccDiffShareEl, `${diffShare >= 0 ? '+' : ''}${diffShare.toFixed(2)} ₽`);
+      setTextWithFlash(ccBaseTotalEl, `${base.toFixed(2)} ₽`);
+      ccFeeLabelEl.textContent = `Комиссия ${pct.toFixed(2)}%`;
+      setTextWithFlash(ccFeeChangeEl, showArrow ? `${feeRaw.toFixed(2)} → ${feeNow.toFixed(2)} ₽` : `${feeNow.toFixed(2)} ₽`);
+      setTextWithFlash(ccTotalChangeEl, showArrow ? `${totalRaw.toFixed(2)} → ${totalNow.toFixed(2)} ₽` : `${totalNow.toFixed(2)} ₽`);
+    }
 
     // §5 D1 — сворачивание/разворачивание карточки. Новая заявка всегда
     // открыта (per план) — `.position-body` не скрыт по умолчанию в
@@ -271,6 +360,16 @@ window.CartPosition = {
       const parts = [client, product];
       if (amount > 0) parts.push(`${amount}${symbol}`);
       if (total > 0) parts.push(`платит ${total.toFixed(2)} ₽`);
+      // §3 B4 — свёрнутая карточка тоже должна показывать долю разницы, не
+      // только развёрнутая (репорт VASY: "не вижу визуально, как произошло
+      // изменение"). Видна ТОЛЬКО пока реконсиляция реально активна на этой
+      // заявке (reconciledShareRub !== null, тот же признак, что решает
+      // видимость самого coefBlockEl) — не показывать "0 ₽ общих" на каждой
+      // карточке, когда «Итог с сайта выкупа» вообще не заполнен.
+      if (item.reconciledShareRub !== null) {
+        const diffShare = item.getEffectiveBaseRub() - item.getTotalRub();
+        if (Math.abs(diffShare) >= 0.01) parts.push(`${diffShare >= 0 ? '+' : ''}${diffShare.toFixed(2)} ₽ общих`);
+      }
       item.summaryTextEl.textContent = parts.join(' · ');
     };
 
@@ -447,6 +546,7 @@ window.CartPosition = {
         item.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
       }
       item.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(base, feeRub);
+      renderReconciliationBreakdown(); // §3 B1/B2/B3 — терминальный шаг связки на пути "Сумма/Комиссия %/Комиссия ₽"
     }
     // Правка «Итога» вручную — выводит «Комиссия ₽»/«Комиссия %» обратно
     // (`updateFromTotalPayment`-эквивалент order-new.js).
@@ -457,6 +557,7 @@ window.CartPosition = {
       const percent = CartMoney.feePercentFromRub(base, feeRub);
       item.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
       item.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(base, feeRub);
+      renderReconciliationBreakdown(); // §3 B1/B2/B3 — терминальный шаг связки на пути "Итог"
       ctx.recomputeTotals();
     }
     function clampTotalOnBlur() {

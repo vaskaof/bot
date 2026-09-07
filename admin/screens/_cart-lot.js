@@ -71,18 +71,46 @@ window.CartLot = {
             <input type="number" class="lot-amount-input w-full bg-blue-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
           </div>
         </div>
-        <!-- Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) —
-             весь ЛОТ как ОДНА заявка корзины (НЕ путать со слайдерами
-             долей ВНУТРИ лота ниже — те остаются, §3 B4). Видна ТОЛЬКО
-             когда заполнено «Итог с сайта выкупа», см. её JSDoc в render(). -->
+        <!-- Читаемая выкладка расчёта лота КАК ОДНОЙ ЗАЯВКИ КОРЗИНЫ (§3 B1,
+             IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026 — тот же приём, что
+             на отдельной позиции, см. renderReconciliationBreakdown в
+             _cart-position.js, НЕ путать со слайдерами долей ВНУТРИ лота
+             ниже, §3 B5). Короче, чем на позиции — у лота целиком нет своей
+             «Комиссии»/«Итога» (те считаются на КАЖДОЙ его строке отдельно,
+             разные проценты у разных строк), только «Своя сумма»/«Доля
+             разницы»/«База лота». Видна ТОЛЬКО когда заполнено «Итог с
+             сайта выкупа», см. её JSDoc в render(). Ручная фиксация (§3
+             B1/B2) — .manual-total-input/.manual-total-reset-btn ОБЯЗАНЫ
+             остаться теми же классами (их ищут wireManualShareControl() и
+             e2e), просто спрятаны за кнопкой «Задать сумму вручную». НЕ
+             использовать обратные кавычки внутри этого HTML-комментария —
+             он живёт внутри JS template literal (см. JSDoc файла). -->
         <div class="cost-coef-block hidden mb-2">
-          <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
-            <span>Итог лота с учётом разницы, ₽</span>
-            <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
+          <div class="text-[11px] font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1">Общие расходы корзины${helpIcon('Общие расходы корзины', '<p>«Итог с сайта выкупа» распределяется между заявками корзины, лот целиком участвует как ОДНА заявка — здесь видно, сколько добавилось лоту.</p>')}</div>
+          <div class="space-y-1 text-[12px] text-gray-600 mb-1.5">
+            <div class="flex items-center justify-between">
+              <span>Своя сумма</span>
+              <span class="lc-own-sum font-medium text-gray-800">0.00 ₽</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="lc-diff-label">Доля разницы</span>
+              <span class="lc-diff-share font-medium text-gray-800">+0.00 ₽</span>
+            </div>
+            <div class="flex items-center justify-between font-medium text-gray-800 pt-1 border-t border-gray-100">
+              <span>База лота</span>
+              <span class="lc-base-total">0.00 ₽</span>
+            </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <input type="number" class="manual-total-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01" min="0">
-            <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+          <button type="button" class="manual-total-toggle-btn text-[11px] text-indigo-600 font-medium">Задать сумму вручную</button>
+          <div class="manual-total-wrap hidden mt-1.5">
+            <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+              <span>Итог лота с учётом разницы, ₽</span>
+              <span class="manual-mode-label text-[10px] font-medium text-gray-400">авто</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input type="number" class="manual-total-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01" min="0">
+              <button type="button" class="manual-total-reset-btn hidden shrink-0 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-[11px] whitespace-nowrap">Сбросить</button>
+            </div>
           </div>
         </div>
         <div class="mb-2">
@@ -119,6 +147,40 @@ window.CartLot = {
     const cartCoefBlockEl = wrapEl.querySelector('.cost-coef-block');
     const lotManualShare = ctx.wireManualShareControl(cartCoefBlockEl);
     lotManualShare.onChange(() => ctx.recomputeTotals());
+
+    // §3 B1 — кнопка «Задать сумму вручную» прячет/показывает ручной ввод,
+    // не удаляя его из DOM (тот же приём, что на отдельной позиции, см. её
+    // JSDoc в _cart-position.js за обоснованием e2e-видимости).
+    cartCoefBlockEl.querySelector('.manual-total-toggle-btn').addEventListener('click', () => {
+      cartCoefBlockEl.querySelector('.manual-total-wrap').classList.toggle('hidden');
+    });
+
+    // §3 B1 — читаемая выкладка расчёта лота КАК ОДНОЙ ЗАЯВКИ КОРЗИНЫ, см.
+    // JSDoc в разметке выше. rawTotalRub() — та же формула, что уже
+    // использует lotItem.getTotalRub ниже (объявлена здесь как отдельная
+    // функция, а не метод объекта, потому что нужна ДО того, как lotItem
+    // сконструирован — renderLotReconciliationBreakdown вызывается из
+    // setReconciledShareRub, метода lotItem, так что к моменту реального
+    // вызова lotItem уже существует, но текстуально этот блок стоит раньше).
+    const lcOwnSumEl = cartCoefBlockEl.querySelector('.lc-own-sum');
+    const lcDiffLabelEl = cartCoefBlockEl.querySelector('.lc-diff-label');
+    const lcDiffShareEl = cartCoefBlockEl.querySelector('.lc-diff-share');
+    const lcBaseTotalEl = cartCoefBlockEl.querySelector('.lc-base-total');
+    function rawTotalRub() {
+      const manualRub = lotManualShare.getManualRub();
+      return manualRub !== null ? manualRub : totalCostRub();
+    }
+    function renderLotReconciliationBreakdown() {
+      if (cartCoefBlockEl.classList.contains('hidden')) return; // реконсиляция выключена — блок скрыт, считать нечего
+      const baseRaw = rawTotalRub();
+      const base = effectivePoolRub();
+      const diffShare = base - baseRaw;
+      const sharePercent = ctx.diffSharePercentFor(lotItem);
+      lcOwnSumEl.textContent = `${baseRaw.toFixed(2)} ₽`;
+      lcDiffLabelEl.textContent = `Доля разницы (${ctx.diffSplitModeLabel()} · ${sharePercent.toFixed(1)}%)`;
+      setTextWithFlash(lcDiffShareEl, `${diffShare >= 0 ? '+' : ''}${diffShare.toFixed(2)} ₽`);
+      setTextWithFlash(lcBaseTotalEl, `${base.toFixed(2)} ₽`);
+    }
 
     // Ссылка на лот — та же кнопка "Найти", что на отдельной позиции
     // (resolveOrderProductLink), но БЕЗ привязки к конкретной строке —
@@ -214,8 +276,32 @@ window.CartLot = {
     // так и разбивкой "Итог с сайта выкупа" (МЕЖДУ заявками корзины) —
     // одна и та же функция, не второй дубль.
 
+    // §3 B4 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — строка сводки
+    // свёрнутой карточки лота, ОТДЕЛЕНА от updateSummary() ниже намеренно
+    // (найдено целевым ревью перед деплоем): план предлагал переиспользовать
+    // updateSummary() как lotItem.updateCardSummaryText, но updateSummary()
+    // сама зовёт ctx.recomputeTotals() — а cart-new.js's updateSummaryDisplay()
+    // вызывает it.updateCardSummaryText() КАК ЧАСТЬ ТОГО ЖЕ прохода
+    // (items.forEach), так что recomputeTotals() отсюда means бесконечную
+    // рекурсию (updateSummaryDisplay → updateCardSummaryText →
+    // recomputeTotals → updateSummaryDisplay → ...). renderSummaryText() —
+    // только текст, без пересчёта; updateSummary() (её собственные вызывающие
+    // — amountInput/roundingSelect/patchAllCostShares — им recomputeTotals()
+    // по-прежнему нужен) вызывает её же + recomputeTotals(). Доля "+N ₽
+    // общих" — доля разницы КОРЗИНЫ на лот целиком (НЕ доля ВНУТРИ лота
+    // между его строками — та уже видна на каждой строке, §3 B5), видна
+    // только пока «Итог с сайта выкупа» реконсилировал лот (reconciledPoolRub
+    // !== null).
+    function renderSummaryText() {
+      const parts = [`${lotRows.length} ${lotRows.length === 1 ? 'позиция' : 'позиций'}`, `Итого ${effectivePoolRub().toFixed(2)} ₽`];
+      if (reconciledPoolRub !== null) {
+        const diffShare = effectivePoolRub() - rawTotalRub();
+        if (Math.abs(diffShare) >= 0.01) parts.push(`${diffShare >= 0 ? '+' : ''}${diffShare.toFixed(2)} ₽ общих`);
+      }
+      summaryText.textContent = parts.join(' · ');
+    }
     function updateSummary() {
-      summaryText.textContent = `${lotRows.length} ${lotRows.length === 1 ? 'позиция' : 'позиций'} · Итого ${effectivePoolRub().toFixed(2)} ₽`;
+      renderSummaryText();
       ctx.recomputeTotals();
     }
 
@@ -227,6 +313,34 @@ window.CartLot = {
     // и сумма, уходящая в createLot, были бы неверны примерно в курс раз).
     function knownPriceRub(row) {
       return (parseFloat(row.knownPriceInputEl.value) || 0) * ctx.getCurrentRate();
+    }
+
+    // §3 B5 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — та же читаемая
+    // выкладка, что на карточке заявки корзины (renderReconciliationBreakdown,
+    // _cart-position.js), применённая к делению ВНУТРИ лота — БЕЗ
+    // переключателя режима (внутри лота деление остаётся слайдерами, §9 п.1
+    // плана). "Было" — своя цена (knownPriceRub) с ТЕКУЩИМ процентом
+    // комиссии, "стало" — уже реконсилированная база (row.costShareRub, её
+    // patchAllCostShares уже посчитала слайдером). Чистая производная, без
+    // нового состояния — тот же принцип, что на позиции (§3 B2).
+    function renderRowBreakdown(row) {
+      const baseRaw = knownPriceRub(row);
+      const base = row.costShareRub;
+      const diffShare = base - baseRaw;
+      const pct = parseFloat(row.feePercentEl.value) || 0;
+      const feeRaw = baseRaw * pct / 100;
+      const totalRaw = baseRaw + feeRaw;
+      const feeNow = parseFloat(row.feeRubEl.value) || 0;
+      const totalNow = parseFloat(row.totalPaymentEl.value) || 0;
+      const showArrow = Math.abs(base - baseRaw) >= 0.01;
+
+      row.rbOwnPriceEl.textContent = `${baseRaw.toFixed(2)} ₽`;
+      row.rbShareLabelEl.textContent = `Доля от пула лота (${row.costFractionLabelEl.textContent})`;
+      setTextWithFlash(row.rbShareEl, `${diffShare >= 0 ? '+' : ''}${diffShare.toFixed(2)} ₽`);
+      setTextWithFlash(row.costShareDisplayEl, `${base.toFixed(2)} ₽`);
+      row.rbFeeLabelEl.textContent = `Комиссия ${pct.toFixed(2)}%`;
+      setTextWithFlash(row.rbFeeChangeEl, showArrow ? `${feeRaw.toFixed(2)} → ${feeNow.toFixed(2)} ₽` : `${feeNow.toFixed(2)} ₽`);
+      setTextWithFlash(row.rbTotalChangeEl, showArrow ? `${totalRaw.toFixed(2)} → ${totalNow.toFixed(2)} ₽` : `${totalNow.toFixed(2)} ₽`);
     }
 
     // ИСПРАВЛЕНО 06.09.2026 (§2 A2) — пул берётся из effectivePoolRub(),
@@ -241,8 +355,8 @@ window.CartLot = {
       const shares = CartMoney.splitProportionallyClient(pool, costRows, roundingStep);
       lotRows.forEach((r) => {
         r.costShareRub = shares.get(r.id) || 0;
-        r.costShareDisplayEl.textContent = `${r.costShareRub.toFixed(2)} ₽`;
         if (document.activeElement !== r.feeRubEl) updateRowFeeRub(r);
+        else renderRowBreakdown(r); // §3 B5 — держим выкладку в курсе, даже пока менеджер печатает в "Комиссия ₽"
       });
       updateSummary();
     }
@@ -278,6 +392,7 @@ window.CartLot = {
         row.totalPaymentEl.value = total > 0 ? total.toFixed(2) : '';
       }
       row.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(row.costShareRub, feeRub);
+      renderRowBreakdown(row); // §3 B5 — терминальный шаг связки на пути "Сумма/Комиссия %/Комиссия ₽"
     }
     function updateRowFromTotal(row) {
       const feeRub = CartMoney.feeRubFromTotal(row.costShareRub, parseFloat(row.totalPaymentEl.value) || 0);
@@ -285,6 +400,7 @@ window.CartLot = {
       const percent = CartMoney.feePercentFromRub(row.costShareRub, feeRub);
       row.feePercentEl.value = percent > 0 ? percent.toFixed(2) : '';
       row.totalBreakdownEl.textContent = CartMoney.totalBreakdownText(row.costShareRub, feeRub);
+      renderRowBreakdown(row); // §3 B5 — терминальный шаг связки на пути "Итог"
       ctx.recomputeTotals();
     }
     function clampRowTotalOnBlur(row) {
@@ -336,7 +452,39 @@ window.CartLot = {
         <div class="text-[10px] text-gray-500">Доля в общих тратах</div>
         <div class="coef-fraction-label text-[11px] font-semibold text-indigo-600 mb-0.5">×1 — как у всех</div>
         <input type="range" min="0" max="2" step="0.25" value="1" class="cost-slider w-full">
-        <div class="text-right text-xs font-semibold text-gray-800 cost-share-display mt-0.5">0.00 ₽</div>
+        <!-- Читаемая выкладка расчёта строки (§3 B5, IMPLEMENTATION-PLAN-
+             CART-UX-2.md, 07.09.2026) — тот же приём, что на карточке
+             заявки корзины (§3 B1, _cart-position.js), но БЕЗ переключателя
+             режима: внутри лота деление остаётся слайдерами (см. §9 п.1
+             плана — сознательно не трогается этим раундом). rb-base несёт
+             класс cost-share-display — тот же элемент, что уже читает
+             e2e (cart-new.spec.js), просто теперь часть блока, а не
+             единственная строка. Заполняется renderRowBreakdown() ниже (JS-
+             часть файла) — НЕ использовать обратные кавычки внутри этого
+             HTML-комментария, он живёт внутри JS template literal (см.
+             JSDoc файла). -->
+        <div class="lot-row-breakdown mt-1 pt-1 border-t border-gray-100 text-[11px] text-gray-600 space-y-0.5">
+          <div class="flex items-center justify-between">
+            <span>Своя цена</span>
+            <span class="rb-own-price font-medium text-gray-800">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="rb-share-label">Доля от пула лота</span>
+            <span class="rb-share font-medium text-gray-800">+0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between font-medium text-gray-800">
+            <span>База позиции</span>
+            <span class="rb-base cost-share-display">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="rb-fee-label">Комиссия</span>
+            <span class="rb-fee-change font-medium text-gray-800">0.00 ₽</span>
+          </div>
+          <div class="flex items-center justify-between font-semibold text-gray-900">
+            <span>Клиент платит</span>
+            <span class="rb-total-change">0.00 ₽</span>
+          </div>
+        </div>
         <div class="mt-1.5 pt-1.5 border-t border-gray-200">
           <div class="text-[10px] text-gray-500">Доля веса/логистики</div>
           <div class="weight-fraction-label text-[11px] font-semibold text-teal-600 mb-0.5">×1 — как у всех</div>
@@ -402,6 +550,13 @@ window.CartLot = {
         costFractionLabelEl: rowEl.querySelector('.coef-fraction-label'),
         costShareDisplayEl: rowEl.querySelector('.cost-share-display'),
         costShareRub: 0,
+        // §3 B5 — читаемая выкладка строки, заполняется renderRowBreakdown().
+        rbOwnPriceEl: rowEl.querySelector('.rb-own-price'),
+        rbShareLabelEl: rowEl.querySelector('.rb-share-label'),
+        rbShareEl: rowEl.querySelector('.rb-share'),
+        rbFeeLabelEl: rowEl.querySelector('.rb-fee-label'),
+        rbFeeChangeEl: rowEl.querySelector('.rb-fee-change'),
+        rbTotalChangeEl: rowEl.querySelector('.rb-total-change'),
         weightCoefficient: 1,
         weightSliderEl: rowEl.querySelector('.weight-slider'),
         weightFractionLabelEl: rowEl.querySelector('.weight-fraction-label'),
@@ -575,15 +730,17 @@ window.CartLot = {
       // "Развернуть все" (render()). Лот уже сворачивался и до Фазы D
       // (свой summaryRow/body/chevron) — здесь только внешний доступ.
       setCollapsed: (collapsed) => setLotExpanded(!collapsed),
+      // §3 B4 — у лота ДО этой фазы updateCardSummaryText не было ВООБЩЕ
+      // (вызов в cart-new.js защищён `if (it.updateCardSummaryText)`) —
+      // переиспользует renderSummaryText() (см. её JSDoc выше за тем, почему
+      // НЕ саму updateSummary()).
+      updateCardSummaryText: renderSummaryText,
       onRateChanged: () => { amountSymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || ''; lotRows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || ''; }); patchAllCostShares(); },
       // СЫРАЯ база лота — то, что реально ввёл менеджер в «Общая стоимость
       // лота», ИЛИ ручная фиксация (§3 B1/B2) — используется в разбивке
       // разницы НА УРОВНЕ КОРЗИНЫ (тот же смысл, что basePrice позиции —
       // известная цена ДО реконсиляции).
-      getTotalRub: () => {
-        const manualRub = lotManualShare.getManualRub();
-        return manualRub !== null ? manualRub : totalCostRub();
-      },
+      getTotalRub: rawTotalRub,
       // РЕКОНСИЛИРОВАННАЯ база лота (§2 A3, ИСПРАВЛЕНО 06.09.2026) — для
       // отображения "Итого корзины"/"Средняя комиссия" наверху экрана.
       getEffectiveBaseRub: () => effectivePoolRub(),
@@ -607,6 +764,7 @@ window.CartLot = {
         if (shareRub === null) lotManualShare.reset();
         else lotManualShare.setAutoPreview(shareRub);
         patchAllCostShares();
+        renderLotReconciliationBreakdown(); // §3 B1 — читаемая выкладка лота КАК ОДНОЙ заявки корзины
       },
       coefBlockEl: cartCoefBlockEl,
       // §4 C1 — строка "по клиентам" даёт ОДНУ строку на КАЖДУЮ позицию

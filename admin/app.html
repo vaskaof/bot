@@ -9,7 +9,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=4"></script>
-  <script src="../common.js?v=19"></script>
+  <script src="../common.js?v=20"></script>
   <script src="router.js?v=14"></script>
   <script src="screens/_form-helpers.js?v=5"></script>
   <script src="screens/_sku-modal.js?v=14"></script>
@@ -50,12 +50,12 @@
        которое иначе стало бы третьим god-файлом (план §9 п.8). Порядок
        важен — обе зависят от _cart-money.js (CartMoney), cart-new.js
        зависит от обеих (CartPosition/CartLot). -->
-  <script src="screens/_cart-position.js?v=3"></script>
-  <script src="screens/_cart-lot.js?v=3"></script>
+  <script src="screens/_cart-position.js?v=4"></script>
+  <script src="screens/_cart-lot.js?v=4"></script>
   <!-- §6 Фаза E (IMPLEMENTATION-PLAN-CART-UX.md, 07.09.2026) — модалка
        "клиент не указан", тот же паттерн, что _delete-order-modal.js. -->
   <script src="screens/_cart-client-required-modal.js?v=1"></script>
-  <script src="screens/cart-new.js?v=10"></script>
+  <script src="screens/cart-new.js?v=11"></script>
   <!-- Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7, 07.09.2026) — список/
        карточка корзины, факт выкупа по корзине целиком. -->
   <script src="screens/carts.js?v=1"></script>
@@ -132,6 +132,13 @@
     #cart-summary-bar {
       bottom: var(--above-bottom-nav);
     }
+    /* Подсветка изменившихся денежных чисел (§3 B3, IMPLEMENTATION-PLAN-
+       CART-UX-2.md, 07.09.2026) — `setTextWithFlash` (common.js) добавляет
+       .money-flash на карточке заявки И на липкой панели итогов при любом
+       изменении «Доли разницы»/«Базы заявки»/«Комиссии»/«Итога» — прямой
+       ответ на репорт VASY "не вижу визуально, как произошло изменение". */
+    @keyframes money-flash { from { background-color: #fde68a; } to { background-color: transparent; } }
+    .money-flash { animation: money-flash 900ms ease-out; border-radius: 4px; }
   </style>
 </head>
 

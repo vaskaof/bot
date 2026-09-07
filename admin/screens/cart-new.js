@@ -832,6 +832,27 @@ window.Screens.cartNew = {
       return CartMoney.diffWeightFor(diffSplitMode, it.getManualRub ? it.getManualRub() : null, it.getTotalRub());
     }
 
+    // §3 B1 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — подпись "Доля
+    // разницы (по сумме · N%)" на карточке заявки: человеческое название
+    // текущего режима + доля ЭТОЙ заявки от общего пула ВЕСОВ (не от суммы
+    // разницы в рублях — то же число, что реально использует
+    // splitProportionallyClient внутри). normalizeDegenerateWeights — та же
+    // функция, что уже применяет recomputeSiteTotalReconciliation перед
+    // вызовом splitProportionallyClient, читает те же веса, что реально
+    // легли в основу текущей разбивки — не отдельный, рассинхронизирующийся
+    // расчёт.
+    function diffSplitModeLabel() {
+      return diffSplitMode === 'amount' ? 'по сумме' : 'поровну';
+    }
+    function diffSharePercentFor(it) {
+      if (items.length === 0) return 0;
+      const rows = CartMoney.normalizeDegenerateWeights(items.map((x) => ({ id: x.id, weight: diffWeightFor(x) })));
+      const totalWeight = rows.reduce((s, r) => s + r.weight, 0);
+      if (totalWeight <= 0) return 0;
+      const myRow = rows.find((r) => r.id === it.id);
+      return myRow ? (myRow.weight / totalWeight) * 100 : 0;
+    }
+
     function recomputeSiteTotalReconciliation(totalRub) {
       if (reconciling) return; // см. guard выше
       const raw = parseFloat(siteTotalInput.value);
@@ -904,7 +925,11 @@ window.Screens.cartNew = {
       // §2 A5 — вес заявки для payload'а costCoefficient (разбивка разницы
       // КОРЗИНЫ), используется getPayload() и позиции, и лота вместо
       // жёсткой "1" — см. их JSDoc/_cart-money.js.
-      diffWeightFor
+      diffWeightFor,
+      // §3 B1 — читаемая выкладка на карточке ("Доля разницы (по сумме ·
+      // N%)"), используется и позицией, и лотом целиком (НЕ строками ВНУТРИ
+      // лота — там своя, слайдерная разбивка без переключателя режима, §3 B5).
+      diffSplitModeLabel, diffSharePercentFor
     };
 
     function removeItem(id) {

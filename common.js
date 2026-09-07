@@ -210,6 +210,27 @@ function wireSliderThumbGuard(sliderEl) {
 }
 
 /**
+ * Пишет текст в узел И подсвечивает изменение коротким жёлтым миганием
+ * (§3 B3, IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026 — прямой ответ на
+ * репорт VASY "не вижу визуально, как произошло изменение"). Общий хелпер,
+ * не 4 копии на каждой денежной карточке «Корзины» — тот же принцип, что
+ * уже применён к `totalBreakdownText` в `_cart-money.js`.
+ * НЕ применять к `<input>` — анимация/`textContent` рассчитаны на текстовые
+ * узлы, значение поля ввода вообще не читается через `.textContent`.
+ * Не мигает, если текст не изменился (иначе каждый посторонний пересчёт
+ * сводки мигал бы числами, которые реально не поменялись).
+ * @param {HTMLElement} el
+ * @param {string} text
+ */
+function setTextWithFlash(el, text) {
+    if (!el || el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove('money-flash');
+    void el.offsetWidth; // рестарт CSS-анимации (без этого повторное добавление класса не сработает)
+    el.classList.add('money-flash');
+}
+
+/**
  * Экранирует HTML-теги для безопасного вывода пользовательских данных.
  * @param {string} unsafe Строка с потенциально опасными символами
  * @returns {string} Безопасная строка
