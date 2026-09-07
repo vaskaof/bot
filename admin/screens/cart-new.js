@@ -342,7 +342,7 @@ window.Screens.cartNew = {
                получить" до §4 C1: "Осталось получить" переехало в саму
                свёрнутую строку (самое действенное число), детали остались
                здесь. -->
-          <div class="grid grid-cols-2 gap-2 mb-3 pt-2 border-t border-gray-100">
+          <div class="grid grid-cols-2 gap-2 mb-1 pt-2 border-t border-gray-100">
             <div>
               <div class="text-[11px] text-gray-500">С клиентов</div>
               <div class="text-sm font-semibold text-gray-900"><span id="cs-client-rub">0.00</span> ₽</div>
@@ -351,6 +351,16 @@ window.Screens.cartNew = {
               <div class="text-[11px] text-gray-500">Уже оплачено</div>
               <div class="text-sm font-semibold text-gray-900"><span id="cs-paid-rub">0.00</span> ₽</div>
             </div>
+          </div>
+          <!-- §7 Фаза F — прогноз с учётом кредитов клиентов. Решение VASY
+               (§0.1 п.4 плана): кредит НЕ вычитается из "Осталось получить"
+               (та цифра — факт, не прогноз), он формируется только когда у
+               клиента нет других открытых заказов, значит с высокой
+               вероятностью уйдёт именно на этот. Строка скрыта, пока ни у
+               одного клиента корзины кредита нет — не занимать место
+               подсказкой, которая почти всегда неактуальна. -->
+          <div id="cs-credit-forecast-row" class="hidden text-[11px] text-emerald-700 mb-3">
+            С учётом кредитов клиентов — прогноз ≈ <b id="cs-remaining-with-credit" class="text-emerald-800">0.00</b> ₽
           </div>
 
           <div class="pt-2 border-t border-gray-100">
@@ -383,6 +393,9 @@ window.Screens.cartNew = {
     const csPaidRubEl = document.getElementById('cs-paid-rub');
     const csRemainingRubEl = document.getElementById('cs-remaining-rub');
     const csForecastRubEl = document.getElementById('cs-forecast-rub');
+    // §7 Фаза F.
+    const csCreditForecastRowEl = document.getElementById('cs-credit-forecast-row');
+    const csRemainingWithCreditEl = document.getElementById('cs-remaining-with-credit');
     const summaryToggleBtn = document.getElementById('cart-summary-toggle');
     const summarySheetEl = document.getElementById('cart-summary-sheet');
     // §4 C3 — пилюля вместо серого шеврона, подпись меняется на "Свернуть"
@@ -528,7 +541,11 @@ window.Screens.cartNew = {
         alreadyPaid: parseFloat(entity.alreadyPaidInputEl.value) || 0,
         isOwnPurchase: entity.ownPurchaseCheckboxEl.checked,
         product: entity.productOriginal || entity.productSearchEl.value.trim() || '',
-        commissionWarning
+        commissionWarning,
+        // §7 Фаза F — только подтверждённая идентичность (не ручной клиент,
+        // не свободный текст) даёт telegramId, по которому вообще имеет
+        // смысл спрашивать кредит/пул на сервере.
+        telegramId: entity.telegramId || ''
       };
     }
     // Один общий проход по ВСЕМ заявкам корзины — позиция даёт одну строку,
@@ -563,12 +580,46 @@ window.Screens.cartNew = {
     function groupRowsByClient(rows) {
       const byClient = new Map();
       rows.forEach((row) => {
-        const acc = byClient.get(row.key) || { label: row.label, mainSum: 0, alreadyPaid: 0 };
+        // telegramId одинаков для всех строк одного ключа (см. clientKeyFor —
+        // `tg:${telegramId}` сам построен из него), безопасно взять с первой.
+        const acc = byClient.get(row.key) || { label: row.label, mainSum: 0, alreadyPaid: 0, telegramId: row.telegramId || '' };
         acc.mainSum += row.mainSum;
         acc.alreadyPaid += row.alreadyPaid;
         byClient.set(row.key, acc);
       });
       return Array.from(byClient.values());
+    }
+
+    // §7 Фаза F — батч "кредит + свободный пул" по опознанным клиентам
+    // корзины (getClientsMoneyContext, ordersService.js). Кэш на время жизни
+    // экрана (клиент не меняет баланс за секунды оформления корзины —
+    // повторный запрос по уже известному telegramId был бы расточительством),
+    // дебаунс 500мс — не долбить сервер на каждое нажатие клавиши в поле
+    // суммы, только когда реально меняется НАБОР опознанных клиентов.
+    const clientMoneyCache = new Map(); // telegramId -> {creditRub, poolLeftoverRub}
+    let clientMoneyFetchTimer = null;
+    let clientMoneyFetchSignature = ''; // набор id, уже запланированный/в полёте — не задваивать тот же запрос
+    function scheduleClientMoneyContextFetch(byClient) {
+      const missingIds = Array.from(new Set(
+        byClient.filter((r) => r.telegramId && !clientMoneyCache.has(r.telegramId)).map((r) => r.telegramId)
+      ));
+      if (missingIds.length === 0) return;
+      const signature = missingIds.slice().sort().join(',');
+      if (signature === clientMoneyFetchSignature) return; // тот же набор уже в работе
+      clientMoneyFetchSignature = signature;
+      if (clientMoneyFetchTimer) clearTimeout(clientMoneyFetchTimer);
+      clientMoneyFetchTimer = setTimeout(async () => {
+        try {
+          const results = await callServer('getClientsMoneyContext', missingIds);
+          if (signal.aborted) return; // экран уже покинут — не трогать DOM
+          results.forEach((r) => clientMoneyCache.set(r.telegramId, { creditRub: r.creditRub, poolLeftoverRub: r.poolLeftoverRub }));
+          clientMoneyFetchSignature = '';
+          updateSummaryDisplay(); // перерисовать "по клиентам" уже со свежим кредитом/пулом
+        } catch (error) {
+          clientMoneyFetchSignature = ''; // сбой — не блокировать повторную попытку на следующее изменение набора
+          console.error('getClientsMoneyContext: не удалось получить контекст клиентов', error);
+        }
+      }, 500);
     }
 
     // `rows`/`billableRows`/`clientTotalRub` — переданы, а не пересчитаны
@@ -582,13 +633,26 @@ window.Screens.cartNew = {
       const forecastTotal = items
         .filter((it) => it.type === 'position')
         .reduce((s, it) => s + CartMoney.FORECAST_FIELD_KEYS.reduce((s2, key) => s2 + (parseFloat(it[key].value) || 0), 0), 0);
+      // §7 Фаза F — кредит/свободный пул на строку клиента, только если уже
+      // известны (кэш заполняется асинхронно, см. scheduleClientMoneyContextFetch
+      // ниже) и клиент опознан (telegramId). "внесено/осталось" — по этому же
+      // клиенту (mainSum/alreadyPaid уже сгруппированы), F3 плана.
       csByClientListEl.innerHTML = byClient.length
-        ? byClient.map((r) => `
-            <div class="flex items-center justify-between py-1 text-sm">
-              <span class="text-gray-600 truncate">${escapeHtmlClient(r.label)}</span>
-              <span class="font-medium text-gray-900 shrink-0 ml-2">${r.mainSum.toFixed(2)} ₽</span>
+        ? byClient.map((r) => {
+            const moneyCtx = r.telegramId ? clientMoneyCache.get(r.telegramId) : null;
+            const remaining = r.mainSum - r.alreadyPaid;
+            return `
+            <div class="py-1.5 border-b border-gray-50 last:border-0">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600 truncate">${escapeHtmlClient(r.label)}</span>
+                <span class="font-medium text-gray-900 shrink-0 ml-2">${r.mainSum.toFixed(2)} ₽</span>
+              </div>
+              ${r.alreadyPaid > 0.004 ? `<div class="text-[11px] text-gray-400">внесено ${r.alreadyPaid.toFixed(2)} ₽ · осталось ${remaining.toFixed(2)} ₽</div>` : ''}
+              ${moneyCtx && moneyCtx.creditRub > 0.004 ? `<div class="text-[11px] text-emerald-600">кредит ${moneyCtx.creditRub.toFixed(2)} ₽ — вероятно закроет часть этого заказа</div>` : ''}
+              ${moneyCtx && moneyCtx.poolLeftoverRub > 0.004 ? `<div class="text-[11px] text-gray-400">в свободном пуле ${moneyCtx.poolLeftoverRub.toFixed(2)} ₽ — ждут довнесения по другим заказам</div>` : ''}
             </div>
-          `).join('')
+          `;
+          }).join('')
         : '<div class="text-sm text-gray-400 py-1">Пока нет заявок.</div>';
 
       // "Уже оплачено"/"Осталось получить" — ТОЛЬКО реальные клиенты (см.
@@ -596,9 +660,27 @@ window.Screens.cartNew = {
       // клиентов": личная покупка — не долг клиента, не считать её оплату/
       // остаток в эти цифры.
       const totalPaid = billableRows.reduce((s, r) => s + r.alreadyPaid, 0);
+      const remainingRub = clientTotalRub - totalPaid;
       csPaidRubEl.textContent = totalPaid.toFixed(2);
-      csRemainingRubEl.textContent = (clientTotalRub - totalPaid).toFixed(2);
+      csRemainingRubEl.textContent = remainingRub.toFixed(2);
       csForecastRubEl.textContent = forecastTotal.toFixed(2);
+
+      // §7 Фаза F4 (решение VASY §0.1 п.4) — кредит НЕ вычтен из
+      // "Осталось получить" выше, показан отдельной прогнозной строкой.
+      // Пул сюда намеренно не входит (F4/F5) — только справочная строка на
+      // клиенте, в расчёт не берётся нигде.
+      const totalCreditRub = byClient.reduce((s, r) => {
+        const moneyCtx = r.telegramId ? clientMoneyCache.get(r.telegramId) : null;
+        return s + (moneyCtx ? moneyCtx.creditRub : 0);
+      }, 0);
+      if (totalCreditRub > 0.004) {
+        csCreditForecastRowEl.classList.remove('hidden');
+        csRemainingWithCreditEl.textContent = Math.max(0, remainingRub - totalCreditRub).toFixed(2);
+      } else {
+        csCreditForecastRowEl.classList.add('hidden');
+      }
+
+      scheduleClientMoneyContextFetch(byClient);
     }
 
     // Русское множественное число ("1 заказ", "2 заказа", "5 заказов") —
