@@ -16,9 +16,9 @@
  * на "+ Добавить позицию", получает готовый item-объект с тем же
  * интерфейсом, что был у `addPositionItem` раньше (getTotalRub/
  * getEffectiveBaseRub/getCommissionRub/getCostCoefficient/getClientRow/
- * getPayload/setReconciledShareRub/setCollapsed/onRateChanged/
- * validateCommissionGate/updateCardSummaryText), кладёт его в свой массив
- * `items`.
+ * getUnresolvedClientRows/getPayload/setReconciledShareRub/setCollapsed/
+ * onRateChanged/validateCommissionGate/updateCardSummaryText), кладёт его
+ * в свой массив `items`.
  *
  * `ctx` — единственный канал связи с состоянием экрана, которым владеет
  * cart-new.js (не глобальные переменные, не второй источник правды):
@@ -549,6 +549,37 @@ window.CartPosition = {
     // счётчик с лотами) — используется только как фолбэк-ключ группировки
     // для клиента без telegramId/username, см. clientKeyFor в cart-new.js.
     item.getClientRow = () => ctx.collectClientRow(item, `pos${id}`);
+    // §6 Фаза E — клиент не выбран И не отмечено «Личный заказ». Тот же
+    // критерий "пусто", что уже использует clientKeyFor (cart-new.js) для
+    // группировки "по клиентам" (`__empty__`) — раньше это была ТОЛЬКО
+    // мягкая подсказка в модалке проверки перед сохранением (§5 D5),
+    // теперь `saveCart()` блокирует сохранение целиком, пока по каждой
+    // такой заявке не сделан явный выбор (см. `_cart-client-required-
+    // modal.js`). `markOwnPurchase()` — применяет выбор "Личный заказ":
+    // ставит чекбокс и эмулирует его 'change' (та же логика скрытия
+    // client-row/обновления сводки, что при ручном клике менеджера).
+    item.getUnresolvedClientRows = () => {
+      // НЕ читаем clientSearchEl.value.trim() как признак "клиент есть" —
+      // (найдено целевым ревью перед деплоем 07.09.2026) менеджер мог
+      // напечатать текст в поиск и не выбрать ни один результат из
+      // выпадашки/не открыть "+ Ввести вручную" — telegramId/manualClientData
+      // тогда остаются пустыми, а payload всё равно уйдёт БЕЗ реального
+      // плательщика (getPayload читает те же telegramId/manualClientData, не
+      // сырой текст поля). Это ровно тот тихий баг, который Фаза E должна
+      // закрывать — свободный текст здесь достаточен только для мягкой
+      // группировки "по клиентам" (clientKeyFor в cart-new.js), не для этого
+      // блокирующего гейта.
+      const hasClient = item.ownPurchaseCheckboxEl.checked || !!item.telegramId || !!item.manualClientData;
+      if (hasClient) return [];
+      return [{
+        id: `pos${id}`,
+        label: item.productOriginal || item.productSearchEl.value.trim() || 'товар не указан',
+        markOwnPurchase: () => {
+          item.ownPurchaseCheckboxEl.checked = true;
+          item.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));
+        }
+      }];
+    };
     // Валидация комиссионного гейта перед сохранением — вызывается из
     // saveCart() на КАЖДОЙ позиции (см. §2.1 плана), не здесь.
     // «Личный заказ» исключён из гейта — тот же принцип, что order-new.js's

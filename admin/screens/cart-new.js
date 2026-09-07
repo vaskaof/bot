@@ -177,6 +177,7 @@ window.Screens.cartNew = {
 
         ${ManualClientModal.html()}
         ${SkuModal.html()}
+        ${ClientRequiredModal.html()}
       </main>
 
       <!-- Липкая нижняя панель итогов (§4 C1, IMPLEMENTATION-PLAN-CART-UX.md,
@@ -351,6 +352,17 @@ window.Screens.cartNew = {
         if (it.type === 'position') rows.push(it.getClientRow());
         else rows.push(...it.getClientRows());
       });
+      return rows;
+    }
+
+    // §6 Фаза E — заявки (и строки внутри лота), у которых не выбран
+    // клиент и не отмечено «Личный заказ». Общий проход по items, тем же
+    // принципом, что allEntityRows() — каждая сущность даёт 0..N записей
+    // через свой собственный getUnresolvedClientRows() (позиция — 0 или 1,
+    // лот — по одной на каждую пустую строку внутри).
+    function collectUnresolvedClientRows() {
+      const rows = [];
+      items.forEach((it) => { if (it.getUnresolvedClientRows) rows.push(...it.getUnresolvedClientRows()); });
       return rows;
     }
     function groupRowsByClient(rows) {
@@ -837,6 +849,11 @@ window.Screens.cartNew = {
     // --- Сохранение ---
     const saveBtn = document.getElementById('save-cart-btn');
     let saving = false;
+    // §6 Фаза E — одна модалка на весь экран, инициализируется один раз
+    // (тот же приём, что ManualClientModal/SkuModal, `_ensureHelpModal` в
+    // common.js) — `init()` вешает слушатели на кнопки модалки, повторный
+    // вызов на каждое сохранение задвоил бы их.
+    const clientRequiredModal = ClientRequiredModal.init();
 
     function buildPayload() {
       const siteTotal = parseFloat(siteTotalInput.value);
@@ -869,6 +886,30 @@ window.Screens.cartNew = {
         ? !(it.productOriginal || it.productSearchEl.value).trim()
         : (it.hasMissingProduct() || !it.hasPositions()));
       if (missingProduct) { showSaveToast(false, 'У каждой позиции (в том числе внутри лота) должен быть указан товар.'); return; }
+
+      // §6 Фаза E — пустой клиент без «Личного заказа» раньше тихо уходил
+      // на сервер (репорт плана "заявка тихо уходит с пустым клиентом").
+      // Блокируем ДО отправки, требуем явный выбор по КАЖДОЙ такой заявке
+      // (и по каждой пустой строке внутри лота отдельно — см.
+      // getUnresolvedClientRows). «На продаже» этой фазой не реализуется
+      // (статус ещё не существует, план §6/NEXT-SESSION-PROMPT-ON-SALE.md)
+      // — модалка сегодня предлагает только «Личный заказ», второй вариант
+      // виден, но заблокирован. ВАЖНО: этот шаг — ДО комиссионного гейта
+      // ниже, чтобы заявки, переведённые в «Личный заказ», сразу были
+      // исключены из проверки комиссии (тот же принцип, что уже применяется
+      // к изначально отмеченным вручную «Личный заказ» заявкам).
+      const unresolvedClientRows = collectUnresolvedClientRows();
+      if (unresolvedClientRows.length) {
+        const resolutions = await clientRequiredModal.open(unresolvedClientRows.map(({ id, label }) => ({ id, label })));
+        if (!resolutions) return; // «Вернуться к правке» — сохранение прервано целиком
+        const byId = new Map(unresolvedClientRows.map((r) => [r.id, r]));
+        resolutions.forEach((res) => {
+          if (res.kind === 'own') {
+            const row = byId.get(res.id);
+            if (row) row.markOwnPurchase();
+          }
+        });
+      }
 
       // Ручная фиксация доли (§3 B3) — если реконсиляция активна И ВСЕ
       // заявки зафиксированы вручную, splitProportionally кладёт остаток

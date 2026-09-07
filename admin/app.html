@@ -50,9 +50,12 @@
        которое иначе стало бы третьим god-файлом (план §9 п.8). Порядок
        важен — обе зависят от _cart-money.js (CartMoney), cart-new.js
        зависит от обеих (CartPosition/CartLot). -->
-  <script src="screens/_cart-position.js?v=1"></script>
-  <script src="screens/_cart-lot.js?v=1"></script>
-  <script src="screens/cart-new.js?v=8"></script>
+  <script src="screens/_cart-position.js?v=2"></script>
+  <script src="screens/_cart-lot.js?v=2"></script>
+  <!-- §6 Фаза E (IMPLEMENTATION-PLAN-CART-UX.md, 07.09.2026) — модалка
+       "клиент не указан", тот же паттерн, что _delete-order-modal.js. -->
+  <script src="screens/_cart-client-required-modal.js?v=1"></script>
+  <script src="screens/cart-new.js?v=9"></script>
   <style>
     body {
       background-color: #f3f4f9;

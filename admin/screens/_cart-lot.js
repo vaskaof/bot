@@ -12,9 +12,9 @@
  * `cart-new.js` вызывает `CartLot.create(ctx)` на "+ Добавить лот",
  * получает готовый lotItem-объект с тем же интерфейсом, что был у
  * `addLotItem` раньше (getTotalRub/getEffectiveBaseRub/getCommissionRub/
- * getCostCoefficient/getClientRows/getPayload/setReconciledShareRub/
- * setCollapsed/onRateChanged/validateCommissionGates/hasPositions/
- * hasMissingProduct), кладёт его в свой массив `items`.
+ * getCostCoefficient/getClientRows/getUnresolvedClientRows/getPayload/
+ * setReconciledShareRub/setCollapsed/onRateChanged/validateCommissionGates/
+ * hasPositions/hasMissingProduct), кладёт его в свой массив `items`.
  *
  * `ctx` — тот же контракт, что у `_cart-position.js`: `items`, `itemsList`,
  * `nextItemId()`, `getCurrentRate()`, `getCurrentCurrency()`,
@@ -612,6 +612,27 @@ window.CartLot = {
       // лота, lotRowSeq свой на каждый лот) — иначе два лота с "Позиция 1"
       // оба дали бы одинаковый фолбэк-ключ.
       getClientRows: () => lotRows.map((r) => ctx.collectClientRow(r, `lot${id}-row${r.id}`)),
+      // §6 Фаза E — тот же критерий "пусто", что на отдельной позиции
+      // (см. её JSDoc в _cart-position.js), применённый к КАЖДОЙ строке
+      // лота отдельно (лот может содержать и клиентские, и «личные»
+      // строки одновременно — та же граница, что уже проведена для
+      // "С клиентов"/"Осталось получить" в updateSummaryDisplay).
+      // НЕ читаем r.clientSearchEl.value.trim() как признак "клиент есть" —
+      // тот же реальный баг, что найден целевым ревью на отдельной позиции
+      // (см. её JSDoc в _cart-position.js) — свободный текст без выбора из
+      // выпадашки/"+ Ввести вручную" оставляет telegramId/manualClientData
+      // пустыми, а getPayload() уйдёт без реального плательщика.
+      getUnresolvedClientRows: () => lotRows
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => !r.ownPurchaseCheckboxEl.checked && !r.telegramId && !r.manualClientData)
+        .map(({ r, idx }) => ({
+          id: `lot${id}-row${r.id}`,
+          label: `Лот · позиция ${idx + 1} · ${r.productOriginal || r.productSearchEl.value.trim() || 'товар не указан'}`,
+          markOwnPurchase: () => {
+            r.ownPurchaseCheckboxEl.checked = true;
+            r.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));
+          }
+        })),
       hasPositions: () => lotRows.length > 0,
       hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
       // Слияние «Новый заказ»→«Корзина» (05.09.2026) — вызывается из
