@@ -522,6 +522,12 @@ window.Screens.cartNew = {
     // "панель показывает согласованную сумму из этих же полей").
     function clientKeyFor(entity, uidHint) {
       if (entity.ownPurchaseCheckboxEl.checked) return '__own__';
+      // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — своя группа,
+      // ДО проверки telegramId/raw ниже. Без этой ветки on_sale-заявка
+      // (telegramId/manualClientData пусты, поиск клиента пуст) попала бы в
+      // '__empty__' — ту же группу, что настоящие нерешённые заявки, и
+      // ложно словила бы предупреждение "без клиента" в сводке ниже.
+      if (entity.onSale) return '__on_sale__';
       if (entity.telegramId) return `tg:${entity.telegramId}`;
       if (entity.manualClientData && entity.manualClientData.username) return `manual:${entity.manualClientData.username}`;
       const raw = entity.clientSearchEl.value.trim();
@@ -538,6 +544,9 @@ window.Screens.cartNew = {
     }
     function clientLabelFor(entity) {
       if (entity.ownPurchaseCheckboxEl.checked) return 'Личный заказ';
+      // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — та же метка в
+      // разбивке "по клиентам"/сводке перед сохранением, что «Личный заказ».
+      if (entity.onSale) return 'На продаже';
       if (entity.manualClientData) return entity.manualClientData.name || entity.manualClientData.username || 'Клиент (вручную)';
       if (entity.name || entity.username) return entity.name || entity.username;
       return entity.clientSearchEl.value.trim() || 'Без клиента';
@@ -561,6 +570,10 @@ window.Screens.cartNew = {
         mainSum: parseFloat(entity.totalPaymentEl.value) || 0,
         alreadyPaid: parseFloat(entity.alreadyPaidInputEl.value) || 0,
         isOwnPurchase: entity.ownPurchaseCheckboxEl.checked,
+        // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — та же
+        // семантика "платить некому", что «Личный заказ», для billableRows
+        // ниже (сколько реально должны заплатить клиенты).
+        isOnSale: !!entity.onSale,
         product: entity.productOriginal || entity.productSearchEl.value.trim() || '',
         commissionWarning,
         // §7 Фаза F — только подтверждённая идентичность (не ручной клиент,
@@ -1091,7 +1104,7 @@ window.Screens.cartNew = {
       // (allEntityRows), не по заявкам — лот может содержать И клиентские, И
       // личные строки одновременно, на уровне заявки такое не отфильтровать.
       const rows = allEntityRows();
-      const billableRows = rows.filter((r) => !r.isOwnPurchase);
+      const billableRows = rows.filter((r) => !r.isOwnPurchase && !r.isOnSale);
       const clientTotalRub = billableRows.reduce((s, r) => s + r.mainSum, 0);
       csClientRubEl.textContent = clientTotalRub.toFixed(2);
 
@@ -1425,23 +1438,22 @@ window.Screens.cartNew = {
       // на сервер (репорт плана "заявка тихо уходит с пустым клиентом").
       // Блокируем ДО отправки, требуем явный выбор по КАЖДОЙ такой заявке
       // (и по каждой пустой строке внутри лота отдельно — см.
-      // getUnresolvedClientRows). «На продаже» этой фазой не реализуется
-      // (статус ещё не существует, план §6/NEXT-SESSION-PROMPT-ON-SALE.md)
-      // — модалка сегодня предлагает только «Личный заказ», второй вариант
-      // виден, но заблокирован. ВАЖНО: этот шаг — ДО комиссионного гейта
-      // ниже, чтобы заявки, переведённые в «Личный заказ», сразу были
-      // исключены из проверки комиссии (тот же принцип, что уже применяется
-      // к изначально отмеченным вручную «Личный заказ» заявкам).
+      // getUnresolvedClientRows). «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md,
+      // 08.09.2026) — второй рабочий выбор наряду с «Личный заказ». ВАЖНО:
+      // этот шаг — ДО комиссионного гейта ниже, чтобы заявки, переведённые в
+      // «Личный заказ»/«На продаже», сразу были исключены из проверки
+      // комиссии (тот же принцип, что уже применяется к изначально
+      // отмеченным вручную «Личный заказ» заявкам).
       const unresolvedClientRows = collectUnresolvedClientRows();
       if (unresolvedClientRows.length) {
         const resolutions = await clientRequiredModal.open(unresolvedClientRows.map(({ id, label }) => ({ id, label })));
         if (!resolutions) return; // «Вернуться к правке» — сохранение прервано целиком
         const byId = new Map(unresolvedClientRows.map((r) => [r.id, r]));
         resolutions.forEach((res) => {
-          if (res.kind === 'own') {
-            const row = byId.get(res.id);
-            if (row) row.markOwnPurchase();
-          }
+          const row = byId.get(res.id);
+          if (!row) return;
+          if (res.kind === 'own') row.markOwnPurchase();
+          else if (res.kind === 'on_sale') row.markOnSale();
         });
       }
 

@@ -13,20 +13,18 @@
  * getUnresolvedClientRows()`, см. их JSDoc в `_cart-position.js`/
  * `_cart-lot.js`) и требует явного решения по каждой.
  *
- * **«На продаже» в этой фазе НЕ реализуется** — статус ещё не существует
- * (`NEXT-SESSION-PROMPT-ON-SALE.md`, план §6). Кнопка присутствует в
- * разметке (менеджер видит, что вариант задуман), но заблокирована —
- * подсказка «скоро». Единственный рабочий выбор сегодня — «Личный заказ
- * (на менеджера)». Когда статус «На продаже» появится — эта кнопка
- * разблокируется здесь же, интерфейс модалки уже рассчитан на второй выбор
- * (не менять форму, только снять `disabled`).
+ * **«На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md, 08.09.2026)** — второй
+ * рабочий выбор, статус существует. Не `isOwnPurchase`/`client_kind='own'`
+ * — заявка уходит с `statusOrder:'На продаже'`, признаётся расходом сразу
+ * (`costService.syncCogsRecognition`), клиент назначается позже правкой
+ * того же заказа.
  *
  * Использование:
  *   root.innerHTML = `...основной контент... ${ClientRequiredModal.html()}`;
  *   const modal = ClientRequiredModal.init();
  *   const resolutions = await modal.open(rows); // rows: {id, label}[]
  *   if (!resolutions) return; // отменено — сохранение прервано целиком
- *   // resolutions: {id, kind:'own'}[] — на сегодня kind всегда 'own'
+ *   // resolutions: {id, kind:'own'|'on_sale'}[]
  */
 window.ClientRequiredModal = {
   html() {
@@ -80,7 +78,7 @@ window.ClientRequiredModal = {
           <div class="text-sm text-gray-800 mb-2 truncate">${escapeHtmlClient(r.label)}</div>
           <div class="flex gap-2">
             <button type="button" data-kind="own" class="client-required-choice-btn flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Личный заказ (на менеджера)</button>
-            <button type="button" data-kind="on_sale" disabled title="Статус «На продаже» ещё не реализован" class="client-required-choice-btn flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-300 cursor-not-allowed">На продаже — скоро</button>
+            <button type="button" data-kind="on_sale" class="client-required-choice-btn flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">На продаже</button>
           </div>
         </div>
       `).join('');

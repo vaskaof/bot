@@ -392,6 +392,13 @@ window.CartPosition = {
       ctx.updateSummaryDisplay(); // §4 C1 — метка "Личный заказ" в разбивке "по клиентам"
     });
 
+    // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2, 08.09.2026) —
+    // внутренний флаг, НЕ чекбокс на карточке (единственный путь сюда —
+    // выбор в `ClientRequiredModal`, см. `markOnSale()` ниже). Намеренно НЕ
+    // `isOwnPurchase`/`client_kind='own'` — статус заказа сам себе маркер
+    // «расход без клиента», см. план §2.6.
+    item.onSale = false;
+
     // Ручная фиксация доли — блок скрыт, пока не заполнено «Итог с сайта
     // выкупа» (см. recomputeSiteTotalReconciliation в render()), контрол
     // (`item.manualShare`) уже подключён выше сразу после конструирования
@@ -658,7 +665,7 @@ window.CartPosition = {
     // существующее поле+событие 'input' (ту же цепочку, что менеджер
     // запускает вручную), не пишет в fee-поля напрямую в обход неё —
     // иначе разошлось бы со связкой Сумма/Комиссия%/Комиссия₽/Итог.
-    item.getFeeTargets = () => (item.ownPurchaseCheckboxEl.checked ? [] : [{
+    item.getFeeTargets = () => ((item.ownPurchaseCheckboxEl.checked || item.onSale) ? [] : [{
       getBaseRub: () => item.getEffectiveBaseRub(),
       setFeePercent: (percent) => {
         item.feePercentEl.value = percent.toFixed(2);
@@ -690,7 +697,7 @@ window.CartPosition = {
       // закрывать — свободный текст здесь достаточен только для мягкой
       // группировки "по клиентам" (clientKeyFor в cart-new.js), не для этого
       // блокирующего гейта.
-      const hasClient = item.ownPurchaseCheckboxEl.checked || !!item.telegramId || !!item.manualClientData;
+      const hasClient = item.ownPurchaseCheckboxEl.checked || item.onSale || !!item.telegramId || !!item.manualClientData;
       if (hasClient) return [];
       return [{
         id: `pos${id}`,
@@ -698,27 +705,43 @@ window.CartPosition = {
         markOwnPurchase: () => {
           item.ownPurchaseCheckboxEl.checked = true;
           item.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));
+        },
+        // «На продаже» — тот же эффект на карточке, что «Личный заказ»
+        // (скрыть строку клиента, обновить сводку), но БЕЗ чекбокса и БЕЗ
+        // `isOwnPurchase` в payload (см. `item.onSale` выше).
+        markOnSale: () => {
+          item.onSale = true;
+          rowEl.querySelector('.client-row').classList.add('hidden');
+          item.clientDropdownEl.classList.remove('active');
+          ctx.updateSummaryDisplay();
         }
       }];
     };
     // Валидация комиссионного гейта перед сохранением — вызывается из
     // saveCart() на КАЖДОЙ позиции (см. §2.1 плана), не здесь.
-    // «Личный заказ» исключён из гейта — тот же принцип, что order-new.js's
-    // `!ownPurchaseCheckbox.checked && !commissionGate.validate()` (Э6/D-10):
-    // сервер (ordersService.createOrder) сам никогда не требует причину для
-    // client_kind='own' (F-35), гейтить это на клиенте было бы регрессией.
-    item.validateCommissionGate = () => item.ownPurchaseCheckboxEl.checked || item.commissionGate.validate();
+    // «Личный заказ»/«На продаже» исключены из гейта — тот же принцип, что
+    // order-new.js's `!ownPurchaseCheckbox.checked && !commissionGate.validate()`
+    // (Э6/D-10): сервер (ordersService.createOrder) сам никогда не требует
+    // причину для client_kind='own' (F-35) ИЛИ statusOrder='На продаже'
+    // (IMPLEMENTATION-PLAN-ON-SALE.md §3.5) — гейтить это на клиенте было бы
+    // регрессией.
+    item.validateCommissionGate = () => item.ownPurchaseCheckboxEl.checked || item.onSale || item.commissionGate.validate();
     item.getPayload = () => {
       const bookingSumRub = parseFloat(item.feeRubEl.value) || 0;
       const alreadyPaidRub = parseFloat(item.alreadyPaidInputEl.value) || 0;
       const booking = CartMoney.computeBookingFields(bookingSumRub, alreadyPaidRub);
       return {
-        client: item.ownPurchaseCheckboxEl.checked
+        client: (item.ownPurchaseCheckboxEl.checked || item.onSale)
           ? { telegramId: '', username: '', name: '' }
           : (item.manualClientData
             ? { telegramId: '', username: item.manualClientData.username, name: item.manualClientData.name }
             : { telegramId: item.telegramId || '', username: item.username, name: item.name }),
         isOwnPurchase: item.ownPurchaseCheckboxEl.checked,
+        // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — statusOrder,
+        // НЕ isOwnPurchase. Пусто, если не отмечено — createCart/createOrder
+        // ведут себя как раньше (не задаём "" вместо undefined намеренно,
+        // сервер сам решает дефолт статуса).
+        ...(item.onSale ? { statusOrder: 'На продаже' } : {}),
         productOriginal: item.productOriginal || item.productSearchEl.value,
         amount: item.amountInputEl.value,
         // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) — служебные

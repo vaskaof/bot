@@ -570,6 +570,10 @@ window.CartLot = {
         notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox')
       };
       if (row.knownPriceCurrencySymbolEl) row.knownPriceCurrencySymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
+      // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — тот же
+      // внутренний флаг, что на отдельной позиции корзины (_cart-position.js),
+      // не чекбокс, единственный путь — `ClientRequiredModal`.
+      row.onSale = false;
       lotRows.push(row);
 
       // Комиссионный гейт Э6/D-10 на позиции лота — тот же приём, что на
@@ -786,13 +790,21 @@ window.CartLot = {
       // пустыми, а getPayload() уйдёт без реального плательщика.
       getUnresolvedClientRows: () => lotRows
         .map((r, idx) => ({ r, idx }))
-        .filter(({ r }) => !r.ownPurchaseCheckboxEl.checked && !r.telegramId && !r.manualClientData)
+        .filter(({ r }) => !r.ownPurchaseCheckboxEl.checked && !r.onSale && !r.telegramId && !r.manualClientData)
         .map(({ r, idx }) => ({
           id: `lot${id}-row${r.id}`,
           label: `Лот · позиция ${idx + 1} · ${r.productOriginal || r.productSearchEl.value.trim() || 'товар не указан'}`,
           markOwnPurchase: () => {
             r.ownPurchaseCheckboxEl.checked = true;
             r.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));
+          },
+          // «На продаже» — тот же эффект, что на отдельной позиции корзины
+          // (см. _cart-position.js), БЕЗ isOwnPurchase в payload.
+          markOnSale: () => {
+            r.onSale = true;
+            r.rowEl.querySelector('.client-row').classList.add('hidden');
+            r.clientDropdownEl.classList.remove('active');
+            ctx.updateSummaryDisplay();
           }
         })),
       hasPositions: () => lotRows.length > 0,
@@ -807,7 +819,7 @@ window.CartLot = {
       // если применимо) — тот же уровень, что item.getEffectiveBaseRub() у
       // отдельной позиции. «Личный заказ»-строки исключены.
       getFeeTargets: () => lotRows
-        .filter((r) => !r.ownPurchaseCheckboxEl.checked)
+        .filter((r) => !r.ownPurchaseCheckboxEl.checked && !r.onSale)
         .map((r) => ({
           getBaseRub: () => r.costShareRub,
           setFeePercent: (percent) => {
@@ -820,7 +832,7 @@ window.CartLot = {
       // позиции (§2.1).
       // «Личный заказ» исключён из гейта на КАЖДОЙ позиции лота — то же
       // обоснование, что у отдельной позиции (item.validateCommissionGate).
-      validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.commissionGate.validate()),
+      validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.onSale || r.commissionGate.validate()),
       getPayload: () => ({
         // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) лота целиком —
         // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа», см.
@@ -838,12 +850,17 @@ window.CartLot = {
           roundingStep: roundingSelect.value
         },
         positions: lotRows.map((r) => ({
-          client: r.ownPurchaseCheckboxEl.checked
+          client: (r.ownPurchaseCheckboxEl.checked || r.onSale)
             ? { telegramId: '', username: '', name: '' }
             : (r.manualClientData
               ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
               : { telegramId: r.telegramId || '', username: r.username, name: r.name }),
           isOwnPurchase: r.ownPurchaseCheckboxEl.checked,
+          // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) —
+          // `lotsService.createLot` уже прокидывает `position.statusOrder` в
+          // `ordersService.createOrder` как есть (см. её JSDoc), доп. правка
+          // backend'а не нужна.
+          ...(r.onSale ? { statusOrder: 'На продаже' } : {}),
           productOriginal: r.productOriginal || r.productSearchEl.value,
           costCoefficient: r.costCoefficient,
           knownPriceRub: knownPriceRub(r),
