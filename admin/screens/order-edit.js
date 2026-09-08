@@ -1225,7 +1225,7 @@ window.Screens.orderEdit = {
       purchaseLinkInput.value = details.purchaseLink || '';
       document.getElementById('own-purchase-checkbox').checked = !!details.isOwnPurchase;
 
-      document.querySelector('select[data-dict="statusDelivery"]').value = details.statusDelivery;
+      FormHelpers.setDictionaryValue('select[data-dict="statusDelivery"]', details.statusDelivery);
       // §H (12.08.2026) исходно рисовала только снимок с сервера при загрузке,
       // не обновляясь при смене select до сохранения — сознательный компромисс
       // на тот момент ("не дублируем позиционную таблицу на фронте"). VASY
@@ -1242,7 +1242,7 @@ window.Screens.orderEdit = {
         const ladder = computeDeliveryLadderPosition(statusDeliverySelect.value);
         deliveryLadderEl.innerHTML = buildDeliveryLadder(ladder, statusDeliverySelect.value, {});
       });
-      document.querySelector('select[data-dict="statusOrder"]').value = details.statusOrder;
+      FormHelpers.setDictionaryValue('select[data-dict="statusOrder"]', details.statusOrder);
 
       // Списание (Э8, M8.1) — тот же приём, что delivery-ladder выше:
       // снимок с сервера на загрузке + пересчёт на 'change', не дублируем
@@ -1276,9 +1276,9 @@ window.Screens.orderEdit = {
       updateWriteoffBanner();
       statusOrderSelect.addEventListener('change', updateWriteoffBanner);
 
-      document.querySelector('select[data-dict="purchaseChannel"]').value = details.purchaseChannel;
-      document.querySelector('select[data-dict="purchaseAccount"]').value = details.purchaseAccount;
-      document.querySelector('select[data-dict="cargo"]').value = details.cargo;
+      FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', details.purchaseChannel);
+      FormHelpers.setDictionaryValue('select[data-dict="purchaseAccount"]', details.purchaseAccount);
+      FormHelpers.setDictionaryValue('select[data-dict="cargo"]', details.cargo);
 
       dateInput.value = details.dateOrder;
       dateReceivedInput.value = details.dateReceived;

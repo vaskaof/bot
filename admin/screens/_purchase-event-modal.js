@@ -16,6 +16,22 @@
  * догадываться о WAC"), показываются текстом как есть, персистентно внутри
  * модалки (не toast — 4-секундного окна мало, чтобы менеджер успел прочитать
  * и решить, что делать: сначала внести конвертацию или уменьшить сумму).
+ *
+ * ГЕЙТ ПОВТОРНОГО ВЫКУПА (аудит долгов 08.09.2026). 02.09.2026 заказ 61989A
+ * получил два одинаковых факта выкупа с разницей 27 секунд: модалка после
+ * успеха оставляла поля заполненными и разблокировала кнопку, второй клик
+ * списал кошелёк ещё раз (21 274,13 ₸) и удвоил «Товар в пути». Чинится
+ * тремя независимыми слоями, чтобы не полагаться на один:
+ *   1. после успеха поля чистятся — повторный клик по кнопке упирается в
+ *      обычную валидацию «должно быть больше нуля», а не списывает тенге
+ *      второй раз теми же числами;
+ *   2. `getOrderPurchaseSummary` на открытии + перед сабмитом — менеджер
+ *      видит, что по заказу уже записано, и подтверждает осознанно;
+ *   3. серверный гейт в `costService.recordPurchaseEvent` (требует
+ *      `confirmedRepeatPurchase`) — страховка от гонки/обхода формы.
+ * Порог «сколько уже слишком» намеренно не зашит: реальный выкуп законно
+ * превышает сумму заказа за счёт налога/доставки магазина (у 61989A — 56.93 $
+ * против 45.93 $). Показываем цифры, решает человек.
  */
 window.PurchaseEventModal = {
   html() {
@@ -57,6 +73,7 @@ window.PurchaseEventModal = {
               <label class="text-xs font-medium text-gray-500 mb-1 block">Примечание (необязательно)</label>
               <input type="text" id="pe-note-input" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" maxlength="300">
             </div>
+            <div id="pe-already" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 space-y-1"></div>
             <div id="pe-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2"></div>
             <div id="pe-result" class="hidden text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1"></div>
           </div>
@@ -75,6 +92,10 @@ window.PurchaseEventModal = {
    */
   init({ onRecorded } = {}) {
     let currentOrderId = null;
+    // Свод уже записанных фактов выкупа по открытому заказу
+    // (`getOrderPurchaseSummary`). null — ещё не загружен/не удалось;
+    // тогда подтверждение не показываем, серверный гейт всё равно поймает.
+    let currentSummary = null;
 
     function close() {
       document.getElementById('purchase-event-modal').classList.add('hidden');
@@ -84,6 +105,36 @@ window.PurchaseEventModal = {
     function resetFeedback() {
       document.getElementById('pe-error').classList.add('hidden');
       document.getElementById('pe-result').classList.add('hidden');
+    }
+
+    /** Плашка «по заказу уже записано» — видна, только если события реально есть. */
+    function renderAlready() {
+      const el = document.getElementById('pe-already');
+      if (!currentSummary || currentSummary.count === 0) {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+        return;
+      }
+      const orderLine = currentSummary.orderAmountInCurrency > 0
+        ? `<div>Сумма самого заказа: ${currentSummary.orderAmountInCurrency.toFixed(2)} (${currentSummary.orderCurrency})</div>`
+        : '';
+      el.innerHTML = `
+        <div><b>По этому заказу факт выкупа уже записан.</b></div>
+        <div>Событий: ${currentSummary.count}, на ${currentSummary.totalAmountInCurrency.toFixed(2)} валюты / ${currentSummary.totalCostActualRub.toFixed(2)} ₽</div>
+        ${orderLine}
+        <div>Новая запись спишет тенге ещё раз — это нормально для докупки, но не для повторного клика.</div>
+      `;
+      el.classList.remove('hidden');
+    }
+
+    /** Best-effort — сбой чтения витрины не должен мешать записать факт выкупа. */
+    async function refreshSummary() {
+      try {
+        currentSummary = await callServer('getOrderPurchaseSummary', currentOrderId);
+      } catch {
+        currentSummary = null;
+      }
+      renderAlready();
     }
 
     function showError(message) {
@@ -106,17 +157,24 @@ window.PurchaseEventModal = {
       el.classList.remove('hidden');
     }
 
-    function open(orderId, defaultCurrency) {
-      currentOrderId = orderId;
-      resetFeedback();
-      document.getElementById('purchase-event-order-id').textContent = `Заказ ID: ${orderId}`;
-      document.getElementById('pe-currency-select').value = defaultCurrency || 'Доллар';
+    function clearInputs() {
       document.getElementById('pe-amount-input').value = '';
       document.getElementById('pe-kzt-input').value = '';
       document.getElementById('pe-note-input').value = '';
+    }
+
+    function open(orderId, defaultCurrency) {
+      currentOrderId = orderId;
+      currentSummary = null;
+      resetFeedback();
+      document.getElementById('pe-already').classList.add('hidden');
+      document.getElementById('purchase-event-order-id').textContent = `Заказ ID: ${orderId}`;
+      document.getElementById('pe-currency-select').value = defaultCurrency || 'Доллар';
+      clearInputs();
       document.getElementById('purchase-event-modal').classList.remove('hidden');
       document.getElementById('purchase-event-modal').classList.add('flex');
       if (window.lucide) window.lucide.createIcons();
+      refreshSummary();
     }
 
     document.getElementById('purchase-event-modal-close').addEventListener('click', close);
@@ -133,14 +191,38 @@ window.PurchaseEventModal = {
       if (!(amountInCurrency > 0)) { showError('«Количество к валюте» должно быть больше нуля.'); return; }
       if (!(kztDebited > 0)) { showError('«Списано тенге» должно быть больше нуля.'); return; }
 
+      // Гейт повторного выкупа — подтверждение с числами ДО списания
+      // кошелька (см. заголовок файла). `confirmedRepeatPurchase` уходит на
+      // сервер только если менеджер подтвердил осознанно.
+      const isRepeat = !!(currentSummary && currentSummary.count > 0);
+      if (isRepeat) {
+        const willBeTotal = currentSummary.totalAmountInCurrency + amountInCurrency;
+        const orderLine = currentSummary.orderAmountInCurrency > 0
+          ? `\nСумма самого заказа: ${currentSummary.orderAmountInCurrency.toFixed(2)} ${currentSummary.orderCurrency}.`
+          : '';
+        const proceed = await showConfirmModal(
+          `По заказу ${currentOrderId} уже записано ${currentSummary.count} факт(а) выкупа ` +
+          `на ${currentSummary.totalAmountInCurrency.toFixed(2)} валюты (${currentSummary.totalCostActualRub.toFixed(2)} ₽).\n` +
+          `После этой записи станет ${willBeTotal.toFixed(2)} валюты.${orderLine}\n\n` +
+          `Записать ещё один факт выкупа и списать тенге повторно?`,
+          { confirmLabel: 'Записать повторно', danger: true }
+        );
+        if (!proceed) return;
+      }
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Записываю...';
       try {
         const result = await callServer('recordPurchaseEvent', {
           orderId: currentOrderId, currency, amountInCurrency, kztDebited,
-          note: note || undefined
+          note: note || undefined,
+          confirmedRepeatPurchase: isRepeat || undefined
         });
         showResult(result);
+        // Поля чистятся сразу после успеха — именно их сохранение вместе с
+        // разблокированной кнопкой дало двойное списание 02.09.2026.
+        clearInputs();
+        await refreshSummary();
         if (onRecorded) onRecorded(result);
       } catch (error) {
         // Гейты движка (нет конвертации / не хватает тенге) — намеренные,

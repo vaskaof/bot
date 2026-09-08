@@ -73,6 +73,43 @@ window.FormHelpers = {
   },
 
   /**
+   * Ставит в справочный `<select>` значение, которого может НЕ БЫТЬ в
+   * справочнике, не теряя его (аудит долгов 08.09.2026).
+   *
+   * Зачем: `populateSelect` строит `<option>` строго из справочника. Обычное
+   * `select.value = x` для отсутствующего `x` браузер молча превращает в
+   * `selectedIndex = -1` и `.value === ''` — форма сохраняется с ПУСТЫМ
+   * значением, менеджер об этом не узнаёт. Ровно так терялся статус
+   * «На продаже» (его не завели в `dictionary_values`, см.
+   * migrations/…_seed-on-sale-status-order.js), и ровно так потеряется любое
+   * историческое значение, которое когда-то было в справочнике, а потом
+   * оттуда исчезло (снятая почта выкупа, переименованный канал).
+   *
+   * Значение из данных заказа — источник истины сильнее справочника, поэтому
+   * недостающее подставляем отдельной опцией с пометкой, а не молча теряем.
+   * Опция вставляется ПЕРЕД «+ Добавить своё значение…» (та всегда последняя,
+   * см. wireDictionarySelect), поэтому вставка идёт перед последним потомком,
+   * а не в конец.
+   * @param {string} selector CSS-селектор `<select>`
+   * @param {string} value Значение из данных (может быть пустым — тогда просто плейсхолдер)
+   */
+  setDictionaryValue(selector, value) {
+    const select = document.querySelector(selector);
+    if (!select) return;
+    const wanted = (value === null || value === undefined) ? '' : value.toString();
+    select.value = wanted;
+    if (wanted === '' || select.value === wanted) return;
+
+    const option = document.createElement('option');
+    option.value = wanted;
+    option.textContent = `${wanted} (нет в справочнике)`;
+    const addOption = select.querySelector(`option[value="${DICT_ADD_NEW_VALUE}"]`);
+    if (addOption) select.insertBefore(option, addOption);
+    else select.appendChild(option);
+    select.value = wanted;
+  },
+
+  /**
    * Универсальный обработчик тэг-переключателей Да/Нет. Состояние хранится
    * в data-value контейнера.
    */
