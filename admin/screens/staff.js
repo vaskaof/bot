@@ -18,6 +18,13 @@
  * клиентов, известных только по "Заказы") отфильтрованы — непригодны для
  * staff.telegram_id. Ручной ввод остаётся доступен ("Ввести Telegram ID
  * вручную") для сотрудников, ещё не открывавших бота.
+ *
+ * Журнал изменений менеджеров (IMPLEMENTATION-PLAN-STAFF-AUDIT-LOG.md,
+ * 08.09.2026) — вторая вкладка ВНУТРИ уже существующей панели
+ * `staff-report-panel` (не новый экран/маршрут, решение согласовано
+ * 05.09.2026). `getEntityAuditLog` — admin-only на сервере
+ * (`MANAGER_EXCLUDED_METHODS`), эта вкладка не имеет смысла для менеджера
+ * даже в теории — тот же принцип, что «Отчёт по менеджерам».
  */
 window.Screens = window.Screens || {};
 window.Screens.staff = {
@@ -56,15 +63,36 @@ window.Screens.staff = {
           <button type="button" id="staff-add-save-btn" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Добавить</button>
         </div>
 
-        <!-- Отчёт по менеджерам (Фаза 2, roles/RBAC, M2.6) -->
+        <!-- Отчёт по менеджерам (Фаза 2, roles/RBAC, M2.6) + Журнал изменений
+             (IMPLEMENTATION-PLAN-STAFF-AUDIT-LOG.md, 08.09.2026) — две
+             вкладки одной панели, не два экрана. -->
         <div id="staff-report-panel" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
-          <div class="text-sm font-semibold text-gray-900 mb-2">Отчёт по менеджерам</div>
           <div class="flex gap-1.5 mb-3">
-            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="7">7 дней</button>
-            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="30">30 дней</button>
-            <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="90">90 дней</button>
+            <button type="button" id="staff-panel-tab-report" class="staff-panel-tab-btn text-xs px-3 py-1.5 rounded-lg font-medium">Отчёт по менеджерам</button>
+            <button type="button" id="staff-panel-tab-audit" class="staff-panel-tab-btn text-xs px-3 py-1.5 rounded-lg font-medium">Журнал изменений</button>
           </div>
-          <div id="staff-report-body" class="space-y-2"></div>
+
+          <div id="staff-report-tab">
+            <div class="flex gap-1.5 mb-3">
+              <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="7">7 дней</button>
+              <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="30">30 дней</button>
+              <button type="button" class="report-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="90">90 дней</button>
+            </div>
+            <div id="staff-report-body" class="space-y-2"></div>
+          </div>
+
+          <div id="staff-audit-tab" class="hidden">
+            <div class="flex gap-1.5 mb-3">
+              <button type="button" class="audit-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="7">7 дней</button>
+              <button type="button" class="audit-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="30">30 дней</button>
+              <button type="button" class="audit-period-btn text-xs px-3 py-1.5 rounded-full font-medium" data-days="90">90 дней</button>
+            </div>
+            <select id="audit-manager-filter" class="w-full px-3 py-2 mb-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+              <option value="">Все менеджеры</option>
+            </select>
+            <div id="staff-audit-body" class="space-y-2"></div>
+            <button type="button" id="staff-audit-load-more-btn" class="hidden w-full mt-2 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 font-medium">Показать ещё</button>
+          </div>
         </div>
 
         <div id="staff-list" class="space-y-2"></div>
@@ -83,6 +111,10 @@ window.Screens.staff = {
     const staffTelegramIdInput = document.getElementById('staff-add-telegram-id');
     const staffNameInput = document.getElementById('staff-add-name');
     let selectedTelegramId = '';
+    // Журнал изменений менеджеров — переиспользует уже загруженный список
+    // персонала (load() ниже) для дропдауна-фильтра и подписи актёра по
+    // telegram_id, не делает второй getStaffList.
+    let staffItems = [];
 
     staffManualToggleBtn.addEventListener('click', () => {
       staffTelegramIdInput.classList.remove('hidden');
@@ -121,10 +153,13 @@ window.Screens.staff = {
     }, { signal });
 
     let reportDays = 30;
+    let activePanelTab = 'report'; // 'report' | 'audit'
     document.getElementById('staff-report-toggle-btn').addEventListener('click', () => {
       const panel = document.getElementById('staff-report-panel');
       panel.classList.toggle('hidden');
-      if (!panel.classList.contains('hidden')) loadReport(reportDays);
+      if (!panel.classList.contains('hidden')) {
+        if (activePanelTab === 'report') loadReport(reportDays); else loadAuditLog({ reset: true });
+      }
     }, { signal });
 
     document.querySelectorAll('.report-period-btn').forEach((btn) => {
@@ -141,6 +176,155 @@ window.Screens.staff = {
       });
     }
     renderPeriodButtons();
+
+    // --- Вкладки панели (Отчёт по менеджерам / Журнал изменений) ---
+    function renderTabButtons() {
+      document.getElementById('staff-panel-tab-report').className =
+        `staff-panel-tab-btn text-xs px-3 py-1.5 rounded-lg font-medium ${activePanelTab === 'report' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`;
+      document.getElementById('staff-panel-tab-audit').className =
+        `staff-panel-tab-btn text-xs px-3 py-1.5 rounded-lg font-medium ${activePanelTab === 'audit' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`;
+      document.getElementById('staff-report-tab').classList.toggle('hidden', activePanelTab !== 'report');
+      document.getElementById('staff-audit-tab').classList.toggle('hidden', activePanelTab !== 'audit');
+    }
+    renderTabButtons();
+
+    document.getElementById('staff-panel-tab-report').addEventListener('click', () => {
+      activePanelTab = 'report';
+      renderTabButtons();
+      loadReport(reportDays);
+    }, { signal });
+    document.getElementById('staff-panel-tab-audit').addEventListener('click', () => {
+      activePanelTab = 'audit';
+      renderTabButtons();
+      loadAuditLog({ reset: true });
+    }, { signal });
+
+    // --- Журнал изменений (IMPLEMENTATION-PLAN-STAFF-AUDIT-LOG.md) ---
+    let auditDays = 30;
+    let auditManagerFilter = '';
+    let auditBeforeId = null; // курсор "показать ещё" — id последней уже показанной строки
+    // Целевое ревью перед деплоем (08.09.2026, находка §7) — гонка двух
+    // параллельных loadAuditLog (двойной клик "Показать ещё", или смена
+    // периода/фильтра, пока предыдущий запрос ещё летит): без токена ответ
+    // устаревшего запроса дописывается/перезаписывает поверх уже отрисованного
+    // свежего состояния. Монотонно растущий токен — тот же принцип, что
+    // requestId у форм записи (frontend-contract.md), только для чтения.
+    let auditRequestToken = 0;
+
+    /** Заполняет дропдаун-фильтр списком уже загруженного персонала (load() ниже) — второй getStaffList не нужен. */
+    function populateAuditManagerFilter(items) {
+      const select = document.getElementById('audit-manager-filter');
+      const current = select.value;
+      select.innerHTML = '<option value="">Все менеджеры</option>' +
+        items.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
+      select.value = current;
+    }
+
+    function renderAuditPeriodButtons() {
+      document.querySelectorAll('.audit-period-btn').forEach((btn) => {
+        const active = parseInt(btn.dataset.days, 10) === auditDays;
+        btn.className = `audit-period-btn text-xs px-3 py-1.5 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`;
+      });
+    }
+    renderAuditPeriodButtons();
+
+    document.querySelectorAll('.audit-period-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        auditDays = parseInt(btn.dataset.days, 10);
+        loadAuditLog({ reset: true });
+      }, { signal });
+    });
+
+    document.getElementById('audit-manager-filter').addEventListener('change', (e) => {
+      auditManagerFilter = e.target.value;
+      loadAuditLog({ reset: true });
+    }, { signal });
+
+    document.getElementById('staff-audit-load-more-btn').addEventListener('click', (e) => {
+      // Guard против двойного клика/повторного события ДО того, как
+      // loadAuditLog успела проставить disabled=true (та же вторая линия
+      // защиты, что везде в проекте для форм записи, frontend-contract.md) —
+      // здесь для чтения, чтобы не задвоить страницу пагинации.
+      if (e.currentTarget.disabled) return;
+      loadAuditLog({ reset: false });
+    }, { signal });
+
+    /** Человекочитаемые подписи полей — заказ/каталог/платежи (AUDITED_ORDER_FIELDS на backend). */
+    const AUDIT_FIELD_LABELS = {
+      statusOrder: 'Статус заказа', statusDelivery: 'Статус доставки',
+      bookingSum: 'Бронь/комиссия', mainSum: 'Осталось к оплате',
+      currency: 'Валюта', amount: 'Количество к валюте',
+      taxiKzSum: 'Такси КЗ', sdekSum: 'Стоимость СДЭК', taxiRfSum: 'Такси РФ',
+      taxiRfSendSum: 'Такси (отправка)', shippingRfSum: 'Отправка', taxiRfReceiveSum: 'Такси (получение)',
+      clientType: 'Тип клиента', managerId: 'Менеджер',
+      original: 'Название (Выпуск)', shortName: 'Короткое название', brand: 'Бренд', character: 'Персонаж', series: 'Серия',
+      merge: 'Слияние',
+      payment_recorded: 'Платёж записан', credit_released: 'Кредит освобождён', credit_refunded: 'Кредит списан'
+    };
+    const AUDIT_ENTITY_LABELS = { order: 'Заказ', sku: 'Каталог', client_payment: 'Платёж' };
+
+    function auditActorName(telegramId) {
+      if (!telegramId) return '—';
+      const staffMember = staffItems.find((s) => s.telegramId === telegramId);
+      return staffMember ? (staffMember.name || telegramId) : telegramId;
+    }
+
+    async function loadAuditLog({ reset }) {
+      renderAuditPeriodButtons();
+      const body = document.getElementById('staff-audit-body');
+      const loadMoreBtn = document.getElementById('staff-audit-load-more-btn');
+      const myToken = ++auditRequestToken;
+      if (reset) {
+        auditBeforeId = null;
+        body.innerHTML = '<div class="text-center text-sm text-gray-400 py-4">Загрузка...</div>';
+      }
+      loadMoreBtn.disabled = true;
+      let result;
+      try {
+        result = await callServer('getEntityAuditLog', {
+          days: auditDays,
+          managerId: auditManagerFilter || undefined,
+          beforeId: auditBeforeId || undefined
+        });
+      } catch (error) {
+        if (myToken !== auditRequestToken) return; // устаревший запрос — новый уже в работе/отрисован
+        body.innerHTML = `<div class="text-center text-sm text-red-500 py-4">${escapeHtmlClient(error.message || 'Не удалось загрузить журнал.')}</div>`;
+        loadMoreBtn.classList.add('hidden');
+        loadMoreBtn.disabled = false;
+        return;
+      }
+      // Ответ устаревшего запроса (двойной клик "Показать ещё"/смена периода
+      // или фильтра, пока предыдущий запрос ещё летит) — отбрасываем, не
+      // трогаем DOM/auditBeforeId, чтобы не задвоить строки и не перезаписать
+      // уже отрисованное состояние более свежего запроса.
+      if (myToken !== auditRequestToken) return;
+      loadMoreBtn.disabled = false;
+      const rowsHtml = result.rows.map((r) => `
+        <div class="py-2 border-t border-gray-100 first:border-0 first:pt-0 ${r.isPriority ? 'bg-amber-50 -mx-4 px-4 rounded-lg' : ''}">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">${escapeHtmlClient(AUDIT_ENTITY_LABELS[r.entityType] || r.entityType)}</span>
+            <span class="text-xs font-medium text-gray-800">${escapeHtmlClient(r.entityId || '—')}</span>
+            ${r.mergeGroupId ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">слияние</span>' : ''}
+            ${r.isPriority ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">деньги</span>' : ''}
+          </div>
+          <div class="text-sm text-gray-700 mt-0.5">
+            <span class="text-gray-500">${escapeHtmlClient(AUDIT_FIELD_LABELS[r.field] || r.field)}:</span>
+            ${r.oldValue ? `<span class="text-gray-400 line-through">${escapeHtmlClient(r.oldValue)}</span> → ` : ''}<span class="font-medium">${escapeHtmlClient(r.newValue || '—')}</span>
+          </div>
+          <div class="text-[11px] text-gray-400 mt-0.5">${escapeHtmlClient(auditActorName(r.actorTelegramId))} · ${new Date(r.createdAt).toLocaleString('ru-RU')}</div>
+        </div>
+      `).join('');
+
+      if (reset) {
+        body.innerHTML = result.rows.length === 0
+          ? '<div class="text-center text-sm text-gray-400 py-4">За этот период изменений нет.</div>'
+          : rowsHtml;
+      } else {
+        body.insertAdjacentHTML('beforeend', rowsHtml);
+      }
+      auditBeforeId = result.rows.length > 0 ? result.rows[result.rows.length - 1].id : auditBeforeId;
+      loadMoreBtn.classList.toggle('hidden', !result.hasMore);
+    }
 
     function money(n) {
       return (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -238,6 +422,8 @@ window.Screens.staff = {
         listEl.innerHTML = `<div class="text-center text-sm text-red-500 py-10">${escapeHtmlClient(error.message || 'Не удалось загрузить список.')}</div>`;
         return;
       }
+      staffItems = items;
+      populateAuditManagerFilter(items);
 
       if (items.length === 0) {
         listEl.innerHTML = '';
