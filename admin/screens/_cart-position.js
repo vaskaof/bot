@@ -649,6 +649,22 @@ window.CartPosition = {
     };
     item.getCommissionRub = () => parseFloat(item.feeRubEl.value) || 0;
     item.getCostCoefficient = () => (item.manualShare.getManualRub() !== null ? 0 : 1);
+    // G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) — точка входа
+    // для обратного пересчёта «Получить с клиентов, ₽» с уровня корзины
+    // (cart-new.js). Позиция — ОДНА клиентская заявка (в отличие от лота,
+    // где заявок несколько — см. её JSDoc). «Личный заказ» исключён — тот
+    // же критерий, что уже использует billableRows/updateSummaryDisplay
+    // (платить некому). setFeePercent проставляет значение через УЖЕ
+    // существующее поле+событие 'input' (ту же цепочку, что менеджер
+    // запускает вручную), не пишет в fee-поля напрямую в обход неё —
+    // иначе разошлось бы со связкой Сумма/Комиссия%/Комиссия₽/Итог.
+    item.getFeeTargets = () => (item.ownPurchaseCheckboxEl.checked ? [] : [{
+      getBaseRub: () => item.getEffectiveBaseRub(),
+      setFeePercent: (percent) => {
+        item.feePercentEl.value = percent.toFixed(2);
+        item.feePercentEl.dispatchEvent(new Event('input'));
+      }
+    }]);
     // §4 C1 — строка "по клиентам" липкой панели итогов. uidHint (`id`,
     // из ctx.nextItemId() — глобально уникален на всю корзину, общий
     // счётчик с лотами) — используется только как фолбэк-ключ группировки

@@ -68,8 +68,13 @@ window.Screens.cartNew = {
       <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Новая корзина</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
-      <button id="save-cart-btn" title="Создать корзину" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+      <button id="save-cart-btn" title="Создать корзину" class="relative p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="save" class="w-6 h-6"></i>
+        <!-- G2 (§8 плана, 08.09.2026) — пока "Итог с сайта выкупа" пуст,
+             разница между реальным чеком и суммой заявок не разнесена по
+             заявкам. НЕ блокирует сохранение (подсказка, не гейт) —
+             видимость переключает updateSiteTotalBadge() ниже. -->
+        <span id="cart-site-total-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500"></span>
       </button>
     `;
     document.getElementById('back-btn').addEventListener('click', () => history.back());
@@ -350,6 +355,22 @@ window.Screens.cartNew = {
             <div>
               <div class="text-[11px] text-gray-500">Уже оплачено</div>
               <div class="text-sm font-semibold text-gray-900"><span id="cs-paid-rub">0.00</span> ₽</div>
+            </div>
+          </div>
+
+          <!-- G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) —
+               обратный пересчёт: менеджер вводит желаемую сумму "Получить
+               с клиентов", экран подбирает ЕДИНЫЙ % комиссии на ВСЕ
+               клиентские заявки (позиции и строки лота, кроме "Личного
+               заказа") и проставляет его через уже существующие
+               updateFeeRub-цепочки. Кнопка "Применить", НЕ live-режим —
+               случайный промежуточный ввод иначе тихо перетирал бы уже
+               вручную выставленные проценты на отдельных заявках. -->
+          <div class="pt-2 pb-1 border-t border-gray-100">
+            <div class="text-[11px] text-gray-500 mb-1 inline-flex items-center gap-1">Получить с клиентов, ₽${helpIcon('Получить с клиентов', '<p>Желаемая итоговая сумма по ВСЕМ клиентским заявкам корзины (кроме «Личный заказ»). По кнопке «Применить» экран подбирает единый % комиссии на все эти заявки так, чтобы их сумма дала введённое число, и проставляет его — как если бы вы вписали процент на каждой заявке вручную.</p>')}</div>
+            <div class="flex items-center gap-2">
+              <input type="number" id="cart-desired-total-input" class="flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
+              <button type="button" id="cart-apply-desired-total-btn" class="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[12px] font-medium hover:bg-indigo-700 transition-colors">Применить</button>
             </div>
           </div>
           <!-- §7 Фаза F — прогноз с учётом кредитов клиентов. Решение VASY
@@ -729,6 +750,12 @@ window.Screens.cartNew = {
       if (lastSiteDiff.active && Math.abs(lastSiteDiff.diffRub) >= 0.01) {
         warnings.push(`расхождение с итогом сайта выкупа: ${lastSiteDiff.diffRub > 0 ? '+' : ''}${lastSiteDiff.diffRub.toFixed(2)} ₽`);
       }
+      // G2 (§8 плана) — мягкая подсказка, не гейт (сохранение не
+      // блокируется), тот же критерий "пусто", что и точка на кнопке
+      // сохранения (updateSiteTotalBadge).
+      if (!(parseFloat(siteTotalInput.value) > 0)) {
+        warnings.push('итог с сайта выкупа не заполнен — разница не разнесена');
+      }
       if (warnings.length) {
         lines.push('', '⚠ Проверьте перед созданием:');
         warnings.forEach((w) => lines.push(`• ${w}`));
@@ -1074,6 +1101,7 @@ window.Screens.cartNew = {
       if (showDiffBadge) {
         csSiteDiffEl.textContent = `≠ сайт: ${lastSiteDiff.diffRub > 0 ? '+' : ''}${lastSiteDiff.diffRub.toFixed(2)} ₽`;
       }
+      updateSiteTotalBadge(); // G2 — та же точка эмиссии, что остальная сводка
 
       // rows уже посчитаны выше — передаём дальше, не считаем allEntityRows()
       // второй раз в updateSummaryPanelDetails (найдено тем же ревью).
@@ -1120,6 +1148,15 @@ window.Screens.cartNew = {
     // пересчёт комиссии/итога (позиция) или строк внутри лота (A2).
     const siteTotalInput = document.getElementById('cart-site-total-input');
     const siteTotalDiffEl = document.getElementById('cart-site-total-diff');
+
+    // G2 (§8 плана) — точка на кнопке сохранения, пока «Итог с сайта
+    // выкупа» пуст (разница не разнесена по заявкам). Вызывается из
+    // updateSummaryDisplay (тот же общий проход, что и остальная сводка) +
+    // один раз на монтировании экрана (siteTotalInput стартует пустым).
+    const siteTotalBadgeEl = document.getElementById('cart-site-total-badge');
+    function updateSiteTotalBadge() {
+      siteTotalBadgeEl.classList.toggle('hidden', parseFloat(siteTotalInput.value) > 0);
+    }
 
     // Правило деления разницы (§2 A2, IMPLEMENTATION-PLAN-CART-UX-2.md,
     // 07.09.2026, решение VASY §0.1 п.1) — сохраняется в localStorage, НЕ в
@@ -1226,6 +1263,44 @@ window.Screens.cartNew = {
       updateSummaryDisplay();
     }
     siteTotalInput.addEventListener('input', () => recomputeTotals());
+
+    // G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) — обратный
+    // пересчёт «Получить с клиентов, ₽». Собирает ВСЕ клиентские заявки
+    // (позиции и строки лота — каждая своей getFeeTargets(), см. их JSDoc
+    // в _cart-position.js/_cart-lot.js), кроме «Личный заказ» (getFeeTargets
+    // сама возвращает [] для них). Один % комиссии на все сразу — линейное
+    // уравнение (percent один, база известна) решается одной формулой, без
+    // итераций: Σ(base_i × (1+p/100)) = желаемыйИтог ⇒
+    // p = (желаемыйИтог / Σbase_i − 1) × 100.
+    const desiredTotalInput = document.getElementById('cart-desired-total-input');
+    const applyDesiredTotalBtn = document.getElementById('cart-apply-desired-total-btn');
+    function feeTargetsForDesiredTotal() {
+      return items.flatMap((it) => (it.getFeeTargets ? it.getFeeTargets() : []));
+    }
+    function applyDesiredClientTotal() {
+      const desiredTotalRub = parseFloat(desiredTotalInput.value);
+      if (!(desiredTotalRub > 0)) { showSaveToast(false, 'Введите желаемую сумму больше нуля.'); return; }
+      const targets = feeTargetsForDesiredTotal();
+      const sumBaseRub = targets.reduce((s, t) => s + (t.getBaseRub() || 0), 0);
+      // Вырожденный случай (план §8) — нет ни одной клиентской заявки с
+      // известной базой (пусто/все «Личный заказ»/все базы по нулям) —
+      // тихий no-op с тостом, не деление на ноль.
+      if (sumBaseRub <= 0) { showSaveToast(false, 'Нет клиентских заявок для пересчёта.'); return; }
+      const feePercent = (desiredTotalRub / sumBaseRub - 1) * 100;
+      // Желаемая сумма меньше стоимости позиций — потребовала бы
+      // отрицательную комиссию (продажа в минус), сами fee*-функции
+      // (_cart-money.js) обрежут итоговую комиссию₽ в 0, но показывать
+      // отрицательный процент на карточках было бы вводящим в заблуждение
+      // — отказ вместо тихого искажения.
+      if (feePercent < 0) {
+        showSaveToast(false, `Сумма меньше стоимости заявок (${sumBaseRub.toFixed(2)} ₽) — комиссия не может быть отрицательной.`);
+        return;
+      }
+      targets.forEach((t) => t.setFeePercent(feePercent));
+      recomputeTotals();
+      showSaveToast(true, `Комиссия ${feePercent.toFixed(2)}% применена ко всем клиентским заявкам (${targets.length}).`);
+    }
+    applyDesiredTotalBtn.addEventListener('click', applyDesiredClientTotal);
 
     const itemsList = document.getElementById('cart-items-list');
 

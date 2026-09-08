@@ -797,6 +797,24 @@ window.CartLot = {
         })),
       hasPositions: () => lotRows.length > 0,
       hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
+      // G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) — та же точка
+      // входа, что на отдельной позиции (см. её JSDoc в _cart-position.js),
+      // здесь на уровне КАЖДОЙ строки лота (не лота целиком) — лот содержит
+      // несколько разных клиентских заявок, обратный пересчёт комиссии
+      // должен затронуть каждую по отдельности, тем же принципом, что уже
+      // применяют getClientRows/getUnresolvedClientRows выше. База —
+      // `r.costShareRub` (уже реконсилированная патчем patchAllCostShares,
+      // если применимо) — тот же уровень, что item.getEffectiveBaseRub() у
+      // отдельной позиции. «Личный заказ»-строки исключены.
+      getFeeTargets: () => lotRows
+        .filter((r) => !r.ownPurchaseCheckboxEl.checked)
+        .map((r) => ({
+          getBaseRub: () => r.costShareRub,
+          setFeePercent: (percent) => {
+            r.feePercentEl.value = percent.toFixed(2);
+            r.feePercentEl.dispatchEvent(new Event('input'));
+          }
+        })),
       // Слияние «Новый заказ»→«Корзина» (05.09.2026) — вызывается из
       // saveCart() перед отправкой, тот же принцип, что на отдельной
       // позиции (§2.1).
