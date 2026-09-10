@@ -5,6 +5,14 @@
  * Здесь — только то, что технически нужно ДО первого обращения к серверу.
  */
 const APP_CONFIG = {
-  GAS_API_URL: 'https://api.dreamdool.ru',
+  // Основной адрес + резервный (Волна 1, п.2 — см. память
+  // reference_bot_knopka_availability_infra). Резервный — ngrok-туннель на
+  // ДРУГОМ провайдере, не на shared-IP Cloudflare, поэтому не подвержен той
+  // же блокировке диапазона 188.114.96.0/22. callServer пробует его только
+  // при СЕТЕВОМ сбое основного (не при HTTP-ошибке) — см. common.js.
+  API_URLS: [
+    'https://api.dreamdool.ru',
+    'https://cloning-handset-crayon.ngrok-free.dev'
+  ],
   TIMEZONE: 'Europe/Moscow'
 };

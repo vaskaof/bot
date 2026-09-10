@@ -5,7 +5,8 @@
  * но ДО скрипта конкретной страницы.
  */
 
-const GAS_API_URL = APP_CONFIG.GAS_API_URL;
+const API_URLS = APP_CONFIG.API_URLS;
+const GAS_API_URL = API_URLS[0]; // основной адрес, для обратной совместимости
 
 /**
  * Единая обёртка над fetch() к GAS API. При СЕТЕВОМ сбое (обрыв соединения,
@@ -23,10 +24,18 @@ const GAS_API_URL = APP_CONFIG.GAS_API_URL;
  *    телефона не проходит проверку" — на десктопе просто не попал в окно
  *    рестарта). Старого окна ретраев (3 попытки/1.1 сек) хватало против (1),
  *    но не хватало пережить (2) — увеличено до 5 попыток/~10 сек.
- * В обоих случаях сам бэкенд отрабатывает штатно — это разовая заминка на
- * клиенте. НЕ повторяет вызов, если сервер ответил (в том числе с ошибкой
- * success:false) — это осознанный ответ, а не сбой связи, повторять его
- * нельзя (может задублировать запись).
+ * 3) Основной домен недоступен на сети клиента целиком (DNS-фильтр вроде
+ *    FortiGuard, либо РФ-ограничения на shared-IP диапазон Cloudflare
+ *    188.114.96.0/22 — см. память reference_bot_knopka_availability_infra,
+ *    Волна 1 плана 09-10.09.2026). Это НЕ временная заминка — retry по тому
+ *    же адресу здесь бессмыслен, нужен другой адрес целиком. После того как
+ *    ретраи по основному (`API_URLS[0]`) исчерпаны, пробуем по очереди
+ *    остальные адреса из `API_URLS` (резервный — ngrok-туннель на другом
+ *    провайдере, не подвержен той же блокировке).
+ * В обоих случаях (1 и 2) сам бэкенд отрабатывает штатно — это разовая
+ * заминка на клиенте. НЕ повторяет вызов ни на одном адресе, если сервер
+ * ответил (в том числе с ошибкой success:false) — это осознанный ответ, а
+ * не сбой связи, повторять его нельзя (может задублировать запись).
  */
 /**
  * 18.08.2026 (репорт VASY о новых бета-клиентах, "Доступ не подтверждён: не
@@ -55,7 +64,7 @@ function callServer(methodName, ...args) {
         return Promise.reject(new Error(TELEGRAM_CONTEXT_MISSING_MESSAGE));
     }
 
-    const doFetch = () => fetch(GAS_API_URL, {
+    const doFetch = (url) => fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ method: methodName, args: args, initData: initData })
@@ -63,15 +72,31 @@ function callServer(methodName, ...args) {
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    async function withRetries() {
+    // Ретраи по одному адресу — переживают временную заминку (перезапуск
+    // после деплоя, редирект GAS). Отдельно от перехода на следующий адрес
+    // в API_URLS (см. withRetries) — тот отвечает за случай, когда адрес
+    // недоступен целиком, а не временно.
+    async function withRetriesOnUrl(url) {
         const delaysMs = [0, 500, 1500, 3000, 5000]; // 1-я попытка сразу, потом 4 повтора с растущей паузой (~10 сек)
         let lastError;
         for (const delay of delaysMs) {
             if (delay > 0) await sleep(delay);
             try {
-                return await doFetch();
+                return await doFetch(url);
             } catch (networkError) {
                 lastError = networkError;
+            }
+        }
+        throw lastError;
+    }
+
+    async function withRetries() {
+        let lastError;
+        for (const url of API_URLS) {
+            try {
+                return await withRetriesOnUrl(url);
+            } catch (networkError) {
+                lastError = networkError; // исчерпали ретраи на этом адресе — пробуем следующий
             }
         }
         throw lastError;
