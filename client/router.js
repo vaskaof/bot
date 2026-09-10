@@ -106,12 +106,50 @@ function renderRoute(context) {
 }
 
 /**
+ * Переносит `?deeplink=...` из query-строки в `location.hash` — порт
+ * одноимённой функции `admin/router.js` (31.08.2026, «Напоминания 2.0», Р2.3),
+ * теперь и для клиента (10.09.2026, шаг A плана IMPLEMENTATION-PLAN-BOT-
+ * NOTIFICATIONS.md — первые в проекте клиентские deep-link кнопки в
+ * Telegram-сообщениях, `config.clientDeepLink` на бэкенде).
+ *
+ * Путь приходит в query, а НЕ в хэше, потому что Telegram при открытии Mini
+ * App дописывает свой `tgWebAppData=...` во фрагмент документа — якорёный
+ * регекс `matchRoute` (`^order-details\/([^/]+)$`) после этого не матчит
+ * переданный маршрут и молча падает на экран по умолчанию. Query-строку
+ * Telegram не трогает.
+ *
+ * `history.replaceState`, НЕ `location.replace(url)` — это статический SPA
+ * без серверного роутинга: полная навигация перезагрузила бы документ (заново
+ * скачала CDN-скрипты, сбросила уже идущий initClientAccess). Шага в history
+ * не остаётся — «Назад» с открытого по ссылке заказа не возвращает на тот же
+ * `?deeplink=` по кругу.
+ */
+function _resolveIncomingDeepLink() {
+  const search = window.location.search || '';
+  if (search.indexOf('deeplink=') === -1) return;
+
+  // Свой разбор, без URLSearchParams — тот же приём, что в admin/router.js
+  // (проект сознательно держит клиентский код на минимуме современных API).
+  const pairs = search.replace(/^\?/, '').split('&');
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    if (eq === -1) continue;
+    if (decodeURIComponent(pair.slice(0, eq)) !== 'deeplink') continue;
+    const value = decodeURIComponent(pair.slice(eq + 1).replace(/\+/g, ' '));
+    if (value) history.replaceState(null, '', window.location.pathname + '#/' + value);
+    return;
+  }
+}
+
+/**
  * Запускает SPA-шелл: initClientAccess() ОДИН раз за открытие приложения —
  * не на каждый переход между экранами, как было раньше (см. PROJECT_STATE.md
  * 02.08.2026, ADR-0004). Дальше — только смена экрана по hashchange, без
  * повторных обращений к серверу за контекстом.
  */
 function startClientRouter() {
+  _resolveIncomingDeepLink();
+
   // Нижняя навигация — <button data-nav-key="..."> (НЕ <a href>). Telegram
   // WebView в некоторых клиентах перехватывает клики по <a href="#...">
   // как полноценный переход/перезагрузку контейнера мини-аппа, даже когда
