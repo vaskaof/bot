@@ -99,6 +99,14 @@ function callServer(methodName, ...args) {
                 lastError = networkError; // исчерпали ретраи на этом адресе — пробуем следующий
             }
         }
+        // Волна 1, п.3 (10.09.2026) — помечаем: запрос не дошёл ДО СЕРВЕРА ни
+        // по одному из API_URLS (включая уже задеплоенный резервный адрес).
+        // Отличает "сеть/провайдер блокирует" от "сервер ответил ошибкой"
+        // (см. .then(response => ...) ниже — там response.success===false
+        // бросает обычный Error, БЕЗ этой пометки — это осознанный ответ
+        // сервера, не сбой связи). Только этот флаг решает, показывать ли
+        // инструкцию по смене DNS на экране отказа (_showAccessDeniedScreen).
+        lastError.isNetworkFailure = true;
         throw lastError;
     }
 
@@ -122,12 +130,37 @@ function callServer(methodName, ...args) {
  * `#debug-init-data` внутри (см. client/app.html, admin/app.html).
  * @private
  */
+/**
+ * Волна 1, п.3 (10.09.2026) — отличает "сервер ответил ошибкой" от "запрос
+ * вообще не дошёл до сервера" и во втором случае показывает пошаговую
+ * инструкцию смены DNS по платформе вместо голого `Failed to fetch`.
+ * Разметка блока (`<details>` Android/iOS/Windows) зашита СТАТИЧЕСКИ в HTML
+ * каждой из 3 точек входа (`app.html`, `admin/app.html`, `client/app.html`)
+ * под id `network-diagnostic-block`, изначально `hidden` — эта функция
+ * только переключает видимость (`error.isNetworkFailure`, ставится
+ * `callServer`'s `withRetries` при исчерпании ВСЕХ адресов `API_URLS`), тот
+ * же приём `classList.toggle('hidden')`, что уже используют
+ * `debug-init-data`/`debug-tg-exists`. Текст согласован с VASY 10.09.2026,
+ * см. IMPLEMENTATION-PLAN-ROLES-AND-NOTIFICATIONS.md §1, п.3.
+ * @private
+ */
+function _toggleNetworkDiagnostic(error) {
+    const block = document.getElementById('network-diagnostic-block');
+    if (!block) return; // страница не подключила разметку — не должно происходить на 3 точках входа
+    if (error && error.isNetworkFailure) {
+        block.classList.remove('hidden');
+    } else {
+        block.classList.add('hidden');
+    }
+}
+
 function _showAccessDeniedScreen(accessDeniedScreen, error) {
     accessDeniedScreen.classList.remove('hidden');
     accessDeniedScreen.classList.add('flex');
     const debugText = document.getElementById('debug-init-data');
     debugText.textContent = 'Ошибка: ' + error.message;
     console.error('Ошибка проверки доступа:', error);
+    _toggleNetworkDiagnostic(error);
 
     const retryBtn = document.getElementById('access-denied-retry-btn');
     if (retryBtn) retryBtn.addEventListener('click', () => location.reload());

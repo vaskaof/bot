@@ -6,27 +6,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Кнопка</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=5"></script>
-  <script src="common.js?v=14"></script>
+  <script src="config.js?v=20260910155740"></script>
+  <script src="common.js?v=20260910155740"></script>
   <style>
     body {
       background-color: #f3f4f9;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: #9ca3af;
       font-size: 14px;
       text-align: center;
-      padding: 0 24px;
+      padding: 24px;
+    }
+    .hidden { display: none; }
+    /* Волна 1, п.3 (10.09.2026) — см. #network-diagnostic-block ниже. */
+    #network-diagnostic-block {
+      text-align: left;
+      max-width: 320px;
+      width: 100%;
+      margin-top: 16px;
+      color: #374151;
+    }
+    #network-diagnostic-block p.headline {
+      font-weight: 600;
+      color: #111827;
+      font-size: 14px;
+      margin: 0 0 8px;
+    }
+    #network-diagnostic-block details {
+      margin-top: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+    #network-diagnostic-block summary {
+      cursor: pointer;
+      font-weight: 500;
+      color: #111827;
+      font-size: 12px;
+    }
+    #network-diagnostic-block p {
+      font-size: 12px;
+      color: #6b7280;
+      margin: 6px 0 0;
     }
   </style>
 </head>
 
 <body>
   <div id="entry-status">Загрузка...</div>
+
+  <!-- Волна 1, п.3 (10.09.2026) — показывается ТОЛЬКО когда запрос не дошёл
+       до сервера (`error.isNetworkFailure`, common.js's
+       `_toggleNetworkDiagnostic`), не при обычном отказе в доступе. Текст/
+       шаги согласованы с VASY 10.09.2026, см. admin/app.html и
+       client/app.html — та же разметка, здесь без Tailwind. -->
+  <div id="network-diagnostic-block" class="hidden">
+    <p class="headline">Похоже, запрос не дошёл до сервера — это не ошибка приложения.</p>
+    <p>Вероятная причина — провайдер, роутер или Wi-Fi блокируют доступ. Попробуйте сначала мобильный интернет вместо Wi-Fi. Не помогло — смените DNS на устройстве:</p>
+    <details>
+      <summary>Android</summary>
+      <p>Настройки → Сеть и интернет → Приватный DNS → Имя хоста провайдера → <code>dns.google</code> (или <code>1dot1dot1dot1.cloudflare-dns.com</code>).</p>
+    </details>
+    <details>
+      <summary>iOS</summary>
+      <p>Настройки → Wi-Fi → значок (i) у своей сети → Настроить DNS → Вручную → добавить <code>1.1.1.1</code> и <code>8.8.8.8</code>.</p>
+    </details>
+    <details>
+      <summary>Windows</summary>
+      <p>Параметры → Сеть и Интернет → Wi-Fi/Ethernet → Свойства оборудования → Изменить назначение серверов DNS → Вручную → IPv4 основной <code>1.1.1.1</code>, дополнительный <code>8.8.8.8</code> (нужны права администратора).</p>
+    </details>
+  </div>
 
   <script>
     // Единственная точка входа Mini App. Определяет роль через getUserContext
@@ -44,8 +99,19 @@
           window.location.replace('client/app.html#/news');
         }
       } catch (error) {
-        document.getElementById('entry-status').textContent =
-          'Не удалось определить доступ. Откройте панель через кнопку в чате бота ещё раз.\n(' + error.message + ')';
+        // Волна 1, п.3 (10.09.2026) — сеть/провайдер блокируют запрос
+        // (`error.isNetworkFailure`, callServer's withRetries) — отдельный
+        // дружелюбный текст + инструкция вместо голого "Failed to fetch"
+        // внутри скобок. Обычный отказ в доступе (сервер ответил) — текст
+        // без изменений.
+        if (error && error.isNetworkFailure) {
+          document.getElementById('entry-status').textContent =
+            'Не удалось подключиться к серверу — похоже, сеть или провайдер блокируют доступ.';
+        } else {
+          document.getElementById('entry-status').textContent =
+            'Не удалось определить доступ. Откройте панель через кнопку в чате бота ещё раз.\n(' + error.message + ')';
+        }
+        _toggleNetworkDiagnostic(error);
         console.error('Ошибка getUserContext:', error);
       }
     })();

@@ -25,6 +25,19 @@ if errorlevel 1 (
 echo All tests passed.
 
 echo.
+echo ==========================================
+echo 0.5 Stamping deploy version (Волна 1, п.1)
+echo ==========================================
+node "%~dp0stamp-version.js"
+if errorlevel 1 (
+    echo.
+    echo STAMPING FAILED - see output above.
+    echo DEPLOY STOPPED.
+    pause
+    exit /b 1
+)
+
+echo.
 set /p "COMMIT_MSG=Describe your changes: "
 git add -A
 git commit -m "%COMMIT_MSG%" > "%TEMP%\fe_commit_out.txt" 2>&1

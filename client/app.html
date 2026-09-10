@@ -8,18 +8,18 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="../config.js?v=5"></script>
-  <script src="policyText.js?v=3"></script>
-  <script src="../common.js?v=25"></script>
-  <script src="router.js?v=4"></script>
-  <script src="screens/orders.js?v=11"></script>
-  <script src="screens/order-details.js?v=11"></script>
-  <script src="screens/news.js?v=5"></script>
-  <script src="screens/wishlist.js?v=12"></script>
-  <script src="screens/questions.js?v=7"></script>
-  <script src="screens/contests.js?v=10"></script>
-  <script src="screens/profile.js?v=10"></script>
-  <script src="screens/policy.js?v=1"></script>
+  <script src="../config.js?v=20260910155740"></script>
+  <script src="policyText.js?v=20260910155740"></script>
+  <script src="../common.js?v=20260910155740"></script>
+  <script src="router.js?v=20260910155740"></script>
+  <script src="screens/orders.js?v=20260910155740"></script>
+  <script src="screens/order-details.js?v=20260910155740"></script>
+  <script src="screens/news.js?v=20260910155740"></script>
+  <script src="screens/wishlist.js?v=20260910155740"></script>
+  <script src="screens/questions.js?v=20260910155740"></script>
+  <script src="screens/contests.js?v=20260910155740"></script>
+  <script src="screens/profile.js?v=20260910155740"></script>
+  <script src="screens/policy.js?v=20260910155740"></script>
   <style>
     body {
       background-color: #f3f4f9;
@@ -98,6 +98,26 @@
       <button type="button" id="access-denied-retry-btn" class="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">Обновить страницу</button>
       <button type="button" id="access-denied-details-toggle" class="mt-3 text-xs text-gray-400 underline block mx-auto">Показать технические детали</button>
       <p id="debug-init-data" class="hidden mt-2 text-left" style="font-family: monospace; font-size: 11px; word-break: break-all;"></p>
+      <!-- Волна 1, п.3 (10.09.2026) — показывается ТОЛЬКО когда запрос не
+           дошёл до сервера (`error.isNetworkFailure`, common.js's
+           `_toggleNetworkDiagnostic`), не при обычном отказе в доступе.
+           Текст/шаги согласованы с VASY 10.09.2026. -->
+      <div id="network-diagnostic-block" class="hidden mt-4 text-left">
+        <p class="text-sm font-semibold text-gray-900">Похоже, запрос не дошёл до сервера — это не ошибка приложения.</p>
+        <p class="text-xs text-gray-500 mt-1">Вероятная причина — провайдер, роутер или Wi-Fi блокируют доступ. Попробуйте сначала мобильный интернет вместо Wi-Fi. Не помогло — смените DNS на устройстве:</p>
+        <details class="mt-2 border border-gray-200 rounded-lg p-2">
+          <summary class="text-xs font-medium text-gray-700 cursor-pointer">Android</summary>
+          <p class="text-xs text-gray-500 mt-1">Настройки → Сеть и интернет → Приватный DNS → Имя хоста провайдера → <code>dns.google</code> (или <code>1dot1dot1dot1.cloudflare-dns.com</code>).</p>
+        </details>
+        <details class="mt-2 border border-gray-200 rounded-lg p-2">
+          <summary class="text-xs font-medium text-gray-700 cursor-pointer">iOS</summary>
+          <p class="text-xs text-gray-500 mt-1">Настройки → Wi-Fi → значок (i) у своей сети → Настроить DNS → Вручную → добавить <code>1.1.1.1</code> и <code>8.8.8.8</code>.</p>
+        </details>
+        <details class="mt-2 border border-gray-200 rounded-lg p-2">
+          <summary class="text-xs font-medium text-gray-700 cursor-pointer">Windows</summary>
+          <p class="text-xs text-gray-500 mt-1">Параметры → Сеть и Интернет → Wi-Fi/Ethernet → Свойства оборудования → Изменить назначение серверов DNS → Вручную → IPv4 основной <code>1.1.1.1</code>, дополнительный <code>8.8.8.8</code> (нужны права администратора).</p>
+        </details>
+      </div>
     </div>
   </div>
 
