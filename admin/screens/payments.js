@@ -412,12 +412,12 @@ window.Screens.payments = {
 
         ${currentRollup.priorityAmount > 0.01 ? `
           <div class="bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3">
-            <div class="text-[11px] text-amber-700">Приоритетная оплата сейчас (new-model, кросс-заказно)</div>
+            <div class="text-[11px] text-amber-700">К доплате сейчас (new-model, кросс-заказно)</div>
             <div class="flex items-baseline gap-2">
               <div class="text-2xl font-bold text-amber-700">${money(currentRollup.priorityAmount)} ₽</div>
               <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(currentRollup.priorityStage))}</div>
             </div>
-            <p class="text-[11px] text-amber-600 mt-1">Именно эта сумма обязательна клиенту ПРЯМО СЕЙЧАС, чтобы разблокировать следующий тир — тир считается покрытым только когда профинансирован ЦЕЛИКОМ по всем открытым new-model заказам клиента сразу.</p>
+            <p class="text-[11px] text-amber-600 mt-1">Уже с учётом остатка в пуле (см. карточку "Свободный остаток" ниже) — это то, чего клиенту РЕАЛЬНО не хватает, чтобы разблокировать следующий тир, а не вся сумма тира целиком. Тир считается покрытым только когда профинансирован ЦЕЛИКОМ по всем открытым new-model заказам клиента сразу.</p>
           </div>
         ` : ''}
 
