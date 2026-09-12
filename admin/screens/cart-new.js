@@ -305,7 +305,15 @@ window.Screens.cartNew = {
         <div id="cart-summary-drag-handle" class="w-full flex justify-center py-3.5 cursor-grab touch-none">
           <div class="w-10 h-1.5 rounded-full bg-emerald-300"></div>
         </div>
-        <div class="px-4 pb-2.5">
+        <!-- Паддинги/отступы сжаты 12.09.2026 (репорт VASY: максимально
+             уменьшить высоту свёрнутой панели без потери качества) —
+             pb-2.5→pb-1.5, mt-1.5→mt-1, кнопка-пилюля py-1→py-0.5. Сам
+             язычок-хват (#cart-summary-drag-handle выше) НЕ трогаем — его
+             py-3.5 — намеренный фикс реального бага промаха пальцем
+             08.09.2026, сокращать обратно = вернуть тот баг. Главный выигрыш
+             вертикали на время ввода — не здесь, а в
+             .cart-summary-bar-hidden (см. ниже, autohide на фокусе поля). -->
+        <div class="px-4 pb-1.5">
           <div class="grid grid-cols-2 gap-x-3 gap-y-0.5">
             <div class="text-[11px] text-gray-500">Итог корзины</div>
             <div class="text-[11px] text-gray-500 text-right">Осталось получить</div>
@@ -317,8 +325,8 @@ window.Screens.cartNew = {
               <span id="cs-site-diff" class="hidden px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium"></span>
             </div>
           </div>
-          <div class="flex justify-center mt-1.5">
-            <button type="button" id="cart-summary-toggle" class="px-3 py-1 rounded-full border border-emerald-300 bg-white text-emerald-700 text-[12px] font-medium inline-flex items-center gap-1">
+          <div class="flex justify-center mt-1">
+            <button type="button" id="cart-summary-toggle" class="px-3 py-0.5 rounded-full border border-emerald-300 bg-white text-emerald-700 text-[12px] font-medium inline-flex items-center gap-1">
               <span id="cart-summary-toggle-label">Подробнее</span>
               <!-- ВТОРОЕ ИСПРАВЛЕНИЕ 08.09.2026 (репорт VASY после первого
                    фикса 07.09.2026 — направление оказалось обратным его
@@ -433,6 +441,9 @@ window.Screens.cartNew = {
     const csRemainingWithCreditEl = document.getElementById('cs-remaining-with-credit');
     const summaryToggleBtn = document.getElementById('cart-summary-toggle');
     const summarySheetEl = document.getElementById('cart-summary-sheet');
+    // Автоскрытие на время ввода (12.09.2026) — см. её wiring ниже, сразу
+    // после setSummaryExpanded.
+    const cartSummaryBarEl = document.getElementById('cart-summary-bar');
     // §4 C3 — пилюля вместо серого шеврона, подпись меняется на "Свернуть"
     // в раскрытом состоянии (сам шеврон, как и раньше, разворачивается на
     // 180deg — второй, избыточный сигнал того же состояния оставлен, он был
@@ -468,6 +479,42 @@ window.Screens.cartNew = {
       summaryToggleLabelEl.textContent = expanded ? 'Свернуть' : 'Подробнее';
     }
     summaryToggleBtn.addEventListener('click', () => setSummaryExpanded(!summaryExpanded));
+
+    // Автоскрытие панели итогов, когда реально открыта клавиатура
+    // (12.09.2026, репорт VASY: на телефоне при заполнении строки заявки
+    // выезжает клавиатура, и без того маленькое вертикальное пространство
+    // сжимается ещё сильнее панелью итогов, менеджер теряет из вида
+    // редактируемую строку). Панель НЕ становится несвёрнутой/не-липкой
+    // насовсем (это вернуло бы регресс, ради которого её вообще сделали
+    // sticky — "итог терялся при скролле", §4 C1) — она автоматически
+    // уезжает за нижний край экрана ровно на время, пока клавиатура
+    // реально занимает экран, и возвращается сама, без действия менеджера.
+    //
+    // Триггер — `window.visualViewport` (высота ВИДИМОЙ области, не
+    // layout-вьюпорта), НЕ фокус поля: связывать скрытие с самим `focus`
+    // сначала казалось проще, но `.fill()` в e2e (`cart-new.spec.js`) тоже
+    // фокусирует поле и НЕ снимает фокус после — панель осталась бы
+    // скрытой (transform уводит её за экран) в момент, когда тест тут же
+    // проверяет её boundingBox (§4 C1 тест "не перекрывает нижнюю
+    // навигацию") — сломало бы уже прошедший живую проверку сценарий.
+    // Настоящей клавиатуры в headless-браузере тестов нет —
+    // `visualViewport.height` там не сжимается, поэтому это же условие
+    // само по себе никогда не срабатывает под e2e, никакого мока не нужно.
+    // `vvMaxHeight` — самая большая высота, увиденная за экран (не разовый
+    // снимок при рендере) — переживает поворот экрана/смену высоты адресной
+    // строки мобильного браузера без ложного срабатывания. Порог 120px —
+    // заведомо больше типичной "дрожи" панелей браузера, заведомо меньше
+    // высоты даже самой маленькой экранной клавиатуры.
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      let vvMaxHeight = vv.height;
+      const handleViewportResize = () => {
+        vvMaxHeight = Math.max(vvMaxHeight, vv.height);
+        const keyboardOpen = vvMaxHeight - vv.height > 120;
+        cartSummaryBarEl.classList.toggle('cart-summary-bar-hidden', keyboardOpen);
+      };
+      vv.addEventListener('resize', handleViewportResize, { signal });
+    }
 
     // "Язычок" для свайпа — ухватить полоску за верхней границей панели и
     // потянуть: панель растёт/сжимается ВМЕСТЕ с пальцем в реальном времени

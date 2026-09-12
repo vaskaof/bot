@@ -56,7 +56,12 @@ window.CartPosition = {
   create(ctx, prefillClient) {
     const id = ctx.nextItemId();
     const rowEl = document.createElement('div');
-    rowEl.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3';
+    // Левый акцент-бордер (12.09.2026, репорт VASY — своя уникальная полоса
+    // для "Позиции", по аналогии с уже существующей у "Лота", см.
+    // _cart-lot.js). Sky, не indigo — Лот уже занял indigo (см. её же
+    // комментарий), обе заявки корзины теперь визуально различимы с первого
+    // взгляда на список, не только по текстовой метке "Позиция"/"Лот".
+    rowEl.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-sky-400 p-3 mb-3';
     rowEl.innerHTML = `
       <!-- §5 D1 — сворачивание заполненной карточки в одну строку (тот же
            приём, что уже есть у лота — .lot-summary-row/.lot-body/

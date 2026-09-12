@@ -31,7 +31,9 @@ window.CartLot = {
     // Левый акцент-бордер (5.3, репорт VASY 05.09.2026) — визуально
     // отличает "Лот" (несколько позиций как ОДНА заявка) от обычной
     // "Позиции" на этом же экране (та же indigo-палитра, что уже у
-    // иконки "boxes" ниже).
+    // иконки "boxes" ниже). С 12.09.2026 "Позиция" получила свою полосу
+    // (sky, см. _cart-position.js) — обе заявки теперь различимы своим
+    // цветом, indigo здесь по-прежнему только у "Лота".
     wrapEl.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-indigo-400 mb-3 overflow-visible';
     wrapEl.innerHTML = `
       <div class="lot-summary-row flex items-center justify-between p-3 cursor-pointer">
