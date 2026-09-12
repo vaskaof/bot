@@ -123,6 +123,7 @@ window.Screens.cartNew = {
                   <option value="Юань">CNY (¥)</option>
                   <option value="Евро">EUR (€)</option>
                   <option value="Фунт">GBP (£)</option>
+                  <option value="Тенге">KZT (₸)</option>
                 </select>
                 <div class="flex items-center gap-1 text-[11px] text-gray-500">
                   Курс: <span id="cart-rate-display">—</span> ₽

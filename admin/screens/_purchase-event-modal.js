@@ -59,6 +59,12 @@ window.PurchaseEventModal = {
                 <option value="Юань">CNY (¥)</option>
                 <option value="Евро">EUR (€)</option>
                 <option value="Фунт">GBP (£)</option>
+                <!-- Волна 6, находка 2 (12.09.2026) — без этой опции open(orderId,
+                     'Тенге') тихо обнулял бы выбор (найдено /code-review medium
+                     перед деплоем): select.value='Тенге' на отсутствующей опции
+                     браузер тихо превращает в ''. Тот же класс бага, что уже
+                     чинили в order-edit.js этим же раундом. -->
+                <option value="Тенге">KZT (₸)</option>
               </select>
             </div>
             <div>

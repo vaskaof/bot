@@ -248,6 +248,11 @@ window.Screens.orderNew = {
                   <option value="Юань">CNY (¥)</option>
                   <option value="Евро">EUR (€)</option>
                   <option value="Фунт">GBP (£)</option>
+                  <!-- Волна 6, находка 2 (12.09.2026, найдено /code-review medium) —
+                       "Дублировать заказ" (order-edit.js) шлёт сюда dupCurrency
+                       заказа, созданного в cart-new.js, и может быть "Тенге";
+                       без опции select.value='Тенге' тихо станет ''. -->
+                  <option value="Тенге">KZT (₸)</option>
                 </select>
                 <input type="number" id="amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
               </div>

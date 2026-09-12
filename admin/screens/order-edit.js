@@ -340,6 +340,12 @@ window.Screens.orderEdit = {
                   <option value="Юань">CNY (¥)</option>
                   <option value="Евро">EUR (€)</option>
                   <option value="Фунт">GBP (£)</option>
+                  <!-- Волна 6, находка 2 (12.09.2026) — без этой опции редактирование
+                       уже созданного в корзине заказа в Тенге молча обнулило бы
+                       поле "Валюта" (select.value='X' на отсутствующей опции
+                       браузер тихо превращает в '', тот же класс бага, что уже
+                       чинили у справочных dropdown'ов, см. FormHelpers.setDictionaryValue). -->
+                  <option value="Тенге">KZT (₸)</option>
                 </select>
                 <input type="number" id="amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
               </div>

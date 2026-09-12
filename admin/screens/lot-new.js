@@ -71,6 +71,10 @@ window.Screens.lotNew = {
                   <option value="Юань">CNY (¥)</option>
                   <option value="Евро">EUR (€)</option>
                   <option value="Фунт">GBP (£)</option>
+                  <!-- Волна 6, находка 2 (12.09.2026, найдено /code-review medium) —
+                       'lots/new' реально достижим (orders.js -> 'lots-btn' ->
+                       lots.js -> 'add-lot-btn'/'add-cart-btn'). -->
+                  <option value="Тенге">KZT (₸)</option>
                 </select>
                 <input type="number" id="lot-amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
               </div>
@@ -231,7 +235,7 @@ window.Screens.lotNew = {
     // Евро/Фунт) — тот же принцип, что $→₽ калькулятор "Веса" в order-new.js
     // (сама валюта нигде не отправляется/не хранится, только конвертирует
     // на клиенте ДО отправки RUB-суммы).
-    const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£' };
+    const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£', 'Тенге': '₸' };
     function updateAllCurrencySymbolLabels() {
       const symbol = CURRENCY_SYMBOLS[currentCurrency] || '';
       rows.forEach((r) => { if (r.knownPriceCurrencySymbolEl) r.knownPriceCurrencySymbolEl.textContent = symbol; });
