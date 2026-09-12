@@ -168,6 +168,31 @@ window.Screens.cartNew = {
               <input type="number" id="cart-site-total-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00 — в валюте корзины, необязательно" step="0.01">
               <div id="cart-site-total-diff" class="hidden text-[11px] text-gray-500 mt-1.5"></div>
 
+              <!-- «Скидка» (12.09.2026, решение VASY) — удобство ввода:
+                   менеджер часто знает СУММУ скидки/купона с чека, а не
+                   готовый итог. Ввод здесь ВЫЧИСЛЯЕТ и подставляет "Итог с
+                   сайта выкупа" (известная сумма позиций минус скидка) —
+                   односторонняя связь, обратно поле НЕ обновляется (при
+                   прямом вводе "Итога" сумма скидки уже видна в подписи
+                   выше по тексту через знак разницы). -->
+              <input type="number" id="cart-discount-input" class="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none mt-1.5" placeholder="Скидка/купон, в валюте корзины — необязательно" step="0.01">
+
+              <!-- Алерт «Скидка → кому уходит разница» (12.09.2026, решение
+                   VASY: НЕ постоянный тумблер, а явное подтверждение прямо
+                   на месте в момент, когда сумма уходит в минус). Видно
+                   ТОЛЬКО когда разница отрицательна (скидка, не общие
+                   расходы) — см. recomputeSiteTotalReconciliation. -->
+              <div id="cart-discount-recipient-alert" class="hidden mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <div class="text-[12px] text-amber-800 mb-2">
+                  Скидка <b id="cart-discount-recipient-amount">0.00 ₽</b> — кому уходит разница?
+                </div>
+                <div class="flex gap-2">
+                  <button type="button" id="cart-discount-client-btn" class="flex-1 px-3 py-1.5 text-[12px] rounded-lg border border-gray-200 bg-white text-gray-600">Клиенту (снизить цены заявок)</button>
+                  <button type="button" id="cart-discount-self-btn" class="flex-1 px-3 py-1.5 text-[12px] rounded-lg border border-gray-200 bg-white text-gray-600">Себе (цены не менять)</button>
+                </div>
+                <input type="text" id="cart-discount-reason-input" class="hidden w-full bg-white rounded-lg px-2 py-1.5 text-[12px] border border-gray-200 outline-none mt-2" placeholder="Причина скидки (необязательно)" maxlength="200">
+              </div>
+
               <!-- Правило деления разницы (§2 A1, IMPLEMENTATION-PLAN-
                    CART-UX-2.md, 07.09.2026, решение VASY §0.1 п.1 —
                    менеджер выбирает сам, явным вопросом). Видно только
@@ -1233,6 +1258,7 @@ window.Screens.cartNew = {
       // что backend's knownBasesSum) — не реконсилированную, иначе разница
       // считалась бы от уже сдвинутого числа.
       const rawTotalRub = items.reduce((s, it) => s + (it.getTotalRub() || 0), 0);
+      lastKnownTotalRub = rawTotalRub; // «Скидка»-поле выше читает это же значение
       recomputeSiteTotalReconciliation(rawTotalRub);
     }
 
@@ -1258,6 +1284,46 @@ window.Screens.cartNew = {
     // пересчёт комиссии/итога (позиция) или строк внутри лота (A2).
     const siteTotalInput = document.getElementById('cart-site-total-input');
     const siteTotalDiffEl = document.getElementById('cart-site-total-diff');
+
+    // «Скидка/общие расходы» (12.09.2026, решение VASY) — см. разметку
+    // выше за полным обоснованием UX. `discountRecipient` сбрасывается в
+    // null КАЖДЫЙ раз, когда разница перестаёт быть скидкой (стала
+    // положительной/пустой/поле очищено) — старый выбор не должен
+    // "утекать" в новую ситуацию молча.
+    const discountInputEl = document.getElementById('cart-discount-input');
+    const discountAlertEl = document.getElementById('cart-discount-recipient-alert');
+    const discountAmountLabelEl = document.getElementById('cart-discount-recipient-amount');
+    const discountClientBtnEl = document.getElementById('cart-discount-client-btn');
+    const discountSelfBtnEl = document.getElementById('cart-discount-self-btn');
+    const discountReasonInputEl = document.getElementById('cart-discount-reason-input');
+    let discountRecipient = null;
+    // Последняя известная СЫРАЯ сумма позиций в ₽ (то же значение, что
+    // recomputeTotals передаёт в recomputeSiteTotalReconciliation) — нужна
+    // полю "Скидка" для пересчёта в валюту, без повторного суммирования
+    // items здесь же (единственный источник — recomputeTotals).
+    let lastKnownTotalRub = 0;
+
+    function updateDiscountRecipientButtons() {
+      discountClientBtnEl.classList.toggle('bg-indigo-600', discountRecipient === 'client');
+      discountClientBtnEl.classList.toggle('text-white', discountRecipient === 'client');
+      discountClientBtnEl.classList.toggle('bg-white', discountRecipient !== 'client');
+      discountClientBtnEl.classList.toggle('text-gray-600', discountRecipient !== 'client');
+      discountSelfBtnEl.classList.toggle('bg-indigo-600', discountRecipient === 'self');
+      discountSelfBtnEl.classList.toggle('text-white', discountRecipient === 'self');
+      discountSelfBtnEl.classList.toggle('bg-white', discountRecipient !== 'self');
+      discountSelfBtnEl.classList.toggle('text-gray-600', discountRecipient !== 'self');
+      discountReasonInputEl.classList.toggle('hidden', discountRecipient === null);
+    }
+    discountClientBtnEl.addEventListener('click', () => { discountRecipient = 'client'; recomputeTotals(); });
+    discountSelfBtnEl.addEventListener('click', () => { discountRecipient = 'self'; recomputeTotals(); });
+
+    discountInputEl.addEventListener('input', () => {
+      const discountValue = parseFloat(discountInputEl.value);
+      if (!(discountValue >= 0) || currentRate <= 0) return; // курс ещё не пришёл/мусорный ввод — no-op, не портим "Итог"
+      const knownSumCurrency = lastKnownTotalRub / currentRate;
+      siteTotalInput.value = (knownSumCurrency - discountValue).toFixed(2);
+      recomputeTotals();
+    });
 
     // G2 (§8 плана) — точка на кнопке сохранения, пока «Итог с сайта
     // выкупа» пуст (разница не разнесена по заявкам). Вызывается из
@@ -1304,7 +1370,33 @@ window.Screens.cartNew = {
     // Сама формула — в screens/_cart-money.js (чистая функция, unit-тесты,
     // §10 плана), здесь только тонкая обёртка под DOM-заявку.
     function diffWeightFor(it) {
+      // ИСПРАВЛЕНО 12.09.2026 (Волна 7 п.2, «Размножить на клиентов» —
+      // найдено при разборе корзины) — размноженная позиция УЖЕ не
+      // участвует в разнице на СЕРВЕРЕ (её getPayload() шлёт N строк с
+      // costCoefficient:0 каждая) и её собственный getEffectiveBaseRub()
+      // всегда возвращает сырую сумму (setReconciledShareRub — no-op для
+      // неё, см. _cart-position.js). Но ЭТА обёртка (используется и для
+      // ПРЕДПРОСМОТРА реконсиляции на экране) до этой правки продолжала
+      // давать ей ненулевой вес — предпросмотр показывал, что часть
+      // разницы «досталась» размноженной позиции, хотя реально (и на
+      // сервере, и в её же getEffectiveBaseRub) эта доля туда не попадала:
+      // остальные (настоящие) заявки экрана получали БОЛЬШЕ, чем показывал
+      // предпросмотр. Деньги были верны и раньше (сервер уже считал
+      // правильно) — расходилась именно картинка на экране с тем, что
+      // реально сохранится.
+      if (it.isMultiplied) return 0;
       return CartMoney.diffWeightFor(diffSplitMode, it.getManualRub ? it.getManualRub() : null, it.getTotalRub());
+    }
+
+    // ИСПРАВЛЕНО 12.09.2026 (найдено code-review перед деплоем) — та же
+    // проверка "заявка вне разницы намеренно", что уже внутри diffWeightFor
+    // выше, но как отдельный булев признак — normalizeDegenerateWeights
+    // (_cart-money.js) должна ЗНАТЬ, что вес 0 у этой заявки не значит
+    // "ещё не заполнена", иначе A4-нормализация размажет разницу и на неё
+    // тоже (расхождение с cartsService.createCart, которая с этого же
+    // раунда исключает зафиксированные из нормализации).
+    function diffIsFixed(it) {
+      return !!it.isMultiplied || (it.getManualRub ? it.getManualRub() !== null && it.getManualRub() !== undefined : false);
     }
 
     // §3 B1 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — подпись "Доля
@@ -1321,7 +1413,7 @@ window.Screens.cartNew = {
     }
     function diffSharePercentFor(it) {
       if (items.length === 0) return 0;
-      const rows = CartMoney.normalizeDegenerateWeights(items.map((x) => ({ id: x.id, weight: diffWeightFor(x) })));
+      const rows = CartMoney.normalizeDegenerateWeights(items.map((x) => ({ id: x.id, weight: diffWeightFor(x), fixed: diffIsFixed(x) })));
       const totalWeight = rows.reduce((s, r) => s + r.weight, 0);
       if (totalWeight <= 0) return 0;
       const myRow = rows.find((r) => r.id === it.id);
@@ -1332,15 +1424,17 @@ window.Screens.cartNew = {
       if (reconciling) return; // см. guard выше
       const raw = parseFloat(siteTotalInput.value);
       const active = raw > 0;
-      items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.toggle('hidden', !active); });
-      diffSplitRowEl.classList.toggle('hidden', !active);
 
       reconciling = true;
       try {
         if (!active) {
           lastSiteDiff = { active: false, diffRub: 0 };
           siteTotalDiffEl.classList.add('hidden');
+          discountAlertEl.classList.add('hidden');
+          diffSplitRowEl.classList.add('hidden');
+          items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.add('hidden'); });
           items.forEach((it) => it.setReconciledShareRub(null));
+          discountRecipient = null;
           return;
         }
 
@@ -1348,23 +1442,58 @@ window.Screens.cartNew = {
         const diffRub = poolRub - totalRub;
         lastSiteDiff = { active: true, diffRub };
         siteTotalDiffEl.classList.remove('hidden');
+
+        // «Скидка/общие расходы» (12.09.2026, решение VASY) — единая
+        // механика на оба знака (см. cartsService.createCart JSDoc):
+        // `+` общие расходы (прежнее поведение, без изменений), `-`
+        // скидка — теперь ставит явный вопрос о получателе (алерт ниже),
+        // не тихий тумблер.
+        const isDiscount = diffRub < -0.01;
+        // Д10 — мягкое предупреждение о «слишком хорошей» скидке (>30% от
+        // известной суммы позиций), не блокирует, просто дописывается в
+        // ту же подпись.
+        const bigDiscountWarning = isDiscount && totalRub > 0 && Math.abs(diffRub) > totalRub * 0.3
+          ? ' ⚠️ Скидка больше 30% от суммы позиций — проверьте итог с сайта.'
+          : '';
         siteTotalDiffEl.textContent = Math.abs(diffRub) < 0.01
           ? 'Совпадает с суммой позиций.'
-          : `Расходится с суммой позиций на ${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`;
+          : (isDiscount
+            ? `Скидка: ${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.${bigDiscountWarning}`
+            : `Общие расходы: +${diffRub.toFixed(2)} ₽ — разница делится по долям ниже.`);
         diffAmountEl.textContent = `${diffRub > 0 ? '+' : ''}${diffRub.toFixed(2)} ₽`;
 
-        // A4, вырожденный случай (ни у одной неручной заявки не введена
-        // сумма в режиме 'amount', либо все заявки зафиксированы вручную)
-        // — normalizeDegenerateWeights пересобирает веса в 1, молча, см.
-        // её JSDoc в _cart-money.js.
-        const rows = CartMoney.normalizeDegenerateWeights(
-          items.map((it) => ({ id: it.id, weight: diffWeightFor(it), basePrice: it.getTotalRub() }))
-        );
-        const shares = splitProportionallyClient(poolRub, rows, 1);
-        items.forEach((it) => {
-          const shareRub = shares.get(it.id) || 0;
-          it.setReconciledShareRub(shareRub);
-        });
+        discountAlertEl.classList.toggle('hidden', !isDiscount);
+        if (isDiscount) {
+          discountAmountLabelEl.textContent = `${diffRub.toFixed(2)} ₽`;
+          updateDiscountRecipientButtons();
+        } else {
+          discountRecipient = null; // положительная разница/пусто — вопрос о получателе не имеет смысла
+          discountReasonInputEl.classList.add('hidden');
+        }
+
+        // Путь "себе" (§ решение VASY 12.09.2026) — цены заявок НЕ
+        // трогаются вообще, слайдеры/режим деления скрыты (нечего делить
+        // на экране — сервер тоже пропускает блок реконсиляции целиком).
+        const selfMode = isDiscount && discountRecipient === 'self';
+        diffSplitRowEl.classList.toggle('hidden', selfMode);
+        items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.toggle('hidden', selfMode); });
+
+        if (selfMode) {
+          items.forEach((it) => it.setReconciledShareRub(null));
+        } else {
+          // A4, вырожденный случай (ни у одной неручной заявки не введена
+          // сумма в режиме 'amount', либо все заявки зафиксированы вручную)
+          // — normalizeDegenerateWeights пересобирает веса в 1, молча, см.
+          // её JSDoc в _cart-money.js.
+          const rows = CartMoney.normalizeDegenerateWeights(
+            items.map((it) => ({ id: it.id, weight: diffWeightFor(it), basePrice: it.getTotalRub(), fixed: diffIsFixed(it) }))
+          );
+          const shares = splitProportionallyClient(poolRub, rows, 1);
+          items.forEach((it) => {
+            const shareRub = shares.get(it.id) || 0;
+            it.setReconciledShareRub(shareRub);
+          });
+        }
       } finally {
         reconciling = false;
       }
@@ -1599,7 +1728,28 @@ window.Screens.cartNew = {
         // «Итог с сайта выкупа» (доп. раунд 05.09.2026) — необязательно,
         // undefined если поле пустое (cartsService.createCart трактует это
         // как «не указано», ровно прежнее поведение без разбивки разницы).
-        totalAmountInCurrency: siteTotal > 0 ? siteTotal : undefined
+        totalAmountInCurrency: siteTotal > 0 ? siteTotal : undefined,
+        // «Скидка/общие расходы» (12.09.2026, решение VASY) —
+        // discountRecipient уходит на сервер ТОЛЬКО когда разница реально
+        // была скидкой (см. save-гейт выше — без выбора получателя
+        // сохранение уже заблокировано), иначе undefined (обратная
+        // совместимость, прежний путь "клиенту"/без изменений вообще).
+        // Гейт "реально была скидка" — тот же, что у discountRecipient
+        // ниже: текст причины, оставшийся в поле от прошлого ввода после
+        // того, как менеджер переиграл сумму и разница перестала быть
+        // скидкой, не должен молча уйти на сервер как будто скидка была.
+        discountReason: (lastSiteDiff.active && lastSiteDiff.diffRub < -0.01) ? (discountReasonInputEl.value.trim() || undefined) : undefined,
+        discountRecipient: (lastSiteDiff.active && lastSiteDiff.diffRub < -0.01) ? discountRecipient : undefined,
+        // Сумма В ВАЛЮТЕ (не ₽) — та же величина, что показана в алерте.
+        // ИСПРАВЛЕНО 13.09.2026 (code-review перед деплоем, находка №2) —
+        // сервер теперь считает эту сумму САМ (курс + известные цены, та
+        // же формула, что и путь "клиенту") и полностью игнорирует
+        // присланное здесь значение — оставлено чисто для наглядности сети
+        // (то же число, что уже показано в алерте) и на случай будущей
+        // сверки, не как источник истины. См. cartsService.createCart JSDoc.
+        selfDiscountAmountInCurrency: (discountRecipient === 'self' && currentRate > 0)
+          ? Math.round((-lastSiteDiff.diffRub / currentRate) * 100) / 100
+          : undefined
       };
       const statusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
       const statusOrder = document.querySelector('select[data-dict="statusOrder"]').value;
@@ -1655,13 +1805,25 @@ window.Screens.cartNew = {
         });
       }
 
+      // «Скидка → кому уходит разница» (12.09.2026, решение VASY) — явное
+      // подтверждение ОБЯЗАТЕЛЬНО, если разница отрицательна (скидка), тот
+      // же принцип, что и остальные гейты этого блока: блокируем ДО
+      // отправки, не додумываем за менеджера молчаливым дефолтом.
+      if (lastSiteDiff.active && lastSiteDiff.diffRub < -0.01 && discountRecipient === null) {
+        showSaveToast(false, 'Скидка на корзине — выберите, кому уходит разница: клиенту или себе.');
+        return;
+      }
+
       // Ручная фиксация доли (§3 B3) — если реконсиляция активна И ВСЕ
       // заявки зафиксированы вручную, splitProportionally кладёт остаток
       // округления на первую заявку (вырожденный случай totalWeight<=0,
       // см. её JSDoc) — введённое вручную число молча "поехало" бы.
-      // Блокируем ДО отправки вместо тихого сдвига денег.
+      // Блокируем ДО отправки вместо тихого сдвига денег. Путь "себе"
+      // (см. алерт выше) сюда НЕ попадает — сервер целиком пропускает блок
+      // реконсиляции для него, эта проверка симулирует то, что реально
+      // сделал бы splitProportionally, а для "себе" он вообще не вызывается.
       const siteTotalRaw = parseFloat(siteTotalInput.value);
-      if (siteTotalRaw > 0) {
+      if (siteTotalRaw > 0 && discountRecipient !== 'self') {
         const allManual = items.every((it) => it.getCostCoefficient() === 0);
         if (allManual) {
           const poolRub = siteTotalRaw * currentRate;

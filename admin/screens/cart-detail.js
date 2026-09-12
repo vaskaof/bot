@@ -68,6 +68,17 @@ window.Screens.cartDetail = {
             <div id="cart-plan-fact-diff" class="mt-1 text-[11px]"></div>
           </div>
 
+          <!-- «Скидка/общие расходы» (12.09.2026) — видно только если на
+               корзине реально была отрицательная разница (см. cart-new.js's
+               алерт «кому уходит разница»). Путь "себе" — памятка "ожидает
+               факта выкупа" (цены заявок не менялись); путь "клиенту" —
+               просто причина (сама сумма уже видна построчно ниже + в
+               "Плане против факта" выше). -->
+          <div id="cart-discount-block" class="hidden bg-white rounded-2xl shadow-sm border border-amber-200 bg-amber-50 p-4 mb-3">
+            <div id="cart-discount-summary" class="text-sm text-amber-800 font-medium"></div>
+            <div id="cart-discount-reason" class="text-[12px] text-amber-700 mt-1"></div>
+          </div>
+
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
             <div class="text-[11px] text-gray-400 mb-2">Деньги клиентов</div>
             <div class="grid grid-cols-2 gap-3 text-sm mb-2">
@@ -140,6 +151,28 @@ window.Screens.cartDetail = {
           planFactBlock.classList.add('hidden');
         }
 
+        // «Скидка/общие расходы» (12.09.2026) — см. HTML-комментарий выше.
+        // `discountRecipient` — null, если разница не считалась/была
+        // положительной (общие расходы, эта карточка тогда не нужна —
+        // "План против факта" выше уже показывает знак и сумму).
+        const discountBlock = document.getElementById('cart-discount-block');
+        if (details.discountRecipient === 'client' || details.discountRecipient === 'self') {
+          discountBlock.classList.remove('hidden');
+          const summaryEl = document.getElementById('cart-discount-summary');
+          if (details.discountRecipient === 'self') {
+            const amount = details.selfDiscountAmountInCurrency !== null && details.selfDiscountAmountInCurrency !== undefined
+              ? `${details.selfDiscountAmountInCurrency} ${details.currency}` : '—';
+            summaryEl.textContent = `Скидка себе: ${amount} — цены заявок не менялись, ожидается на факте выкупа.`;
+          } else {
+            summaryEl.textContent = 'Скидка отдана клиенту — цены заявок уже снижены (см. «было → стало» на карточках ниже).';
+          }
+          const reasonEl = document.getElementById('cart-discount-reason');
+          reasonEl.textContent = details.discountReason ? `Причина: ${details.discountReason}` : '';
+          reasonEl.classList.toggle('hidden', !details.discountReason);
+        } else {
+          discountBlock.classList.add('hidden');
+        }
+
         document.getElementById('cart-total-paid').textContent = formatMoney(details.summary.totalPaidRub);
         document.getElementById('cart-total-remaining').textContent = formatMoney(details.summary.totalRemainingRub);
 
@@ -156,6 +189,11 @@ window.Screens.cartDetail = {
           breakdownEl.appendChild(row);
         });
 
+        // «Скидка/общие расходы» на уровне ЛОТА ЦЕЛИКОМ (не его отдельных
+        // позиций — см. mapOrderForCart's JSDoc на бэкенде) — для бейджа
+        // "лот #ID" на карточках заказов ниже.
+        const lotsById = new Map((details.lots || []).map((l) => [l.lotId, l]));
+
         const listEl = document.getElementById('cart-orders-list');
         listEl.innerHTML = '';
         details.orders.forEach((o) => {
@@ -171,10 +209,18 @@ window.Screens.cartDetail = {
               <div class="text-right shrink-0">
                 <div class="text-[13px] font-semibold text-gray-900">${o.amountInCurrency !== null ? o.amountInCurrency : '—'} ${escapeHtmlClient(o.currency || '')}</div>
                 <div class="text-[11px] text-gray-400">комиссия ${o.bookingCommission !== null ? o.bookingCommission : 0} ₽</div>
+                ${o.reconciliationDelta !== null && o.reconciliationDelta !== undefined
+                  ? `<div class="text-[11px] ${o.reconciliationDelta < 0 ? 'text-amber-600' : 'text-cyan-600'} mt-0.5">было ${o.amountBeforeReconciliation} ${o.reconciliationDelta > 0 ? '+' : ''}${o.reconciliationDelta}</div>`
+                  : ''}
               </div>
             </div>
             <div class="flex flex-wrap gap-1.5 mt-2">
-              ${o.lotId ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">лот #${escapeHtmlClient(o.lotId)}</span>` : ''}
+              ${o.lotId ? (() => {
+                const lot = lotsById.get(o.lotId);
+                const lotDelta = lot && lot.reconciliationDelta !== null && lot.reconciliationDelta !== undefined
+                  ? ` (${lot.reconciliationDelta > 0 ? '+' : ''}${lot.reconciliationDelta})` : '';
+                return `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">лот #${escapeHtmlClient(o.lotId)}${lotDelta}</span>`;
+              })() : ''}
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
             </div>
