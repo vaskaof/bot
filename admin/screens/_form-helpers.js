@@ -62,6 +62,17 @@ window.FormHelpers = {
       try {
         const result = await callServer('addDictionaryValue', category, trimmed);
         currentValues = result.values;
+        // Волна 6, находка 1 (пачка теста 08.09.2026) — раньше свежий список
+        // применялся ТОЛЬКО к этому конкретному <select> (closure-переменная
+        // currentValues), а общий объект справочников (загруженный ОДИН раз
+        // при старте приложения, router.js's window.APP_DICTIONARIES) не
+        // трогался — другой дропдаун той же категории (тот же экран или
+        // другой, включая тот же самый после перехода и возврата) продолжал
+        // показывать снимок при старте. Пишем сюда же, чтобы следующий
+        // render() любого экрана увидел добавленное значение.
+        if (window.APP_DICTIONARIES && category in window.APP_DICTIONARIES) {
+          window.APP_DICTIONARIES[category] = result.values;
+        }
         render();
         select.value = result.value;
         lastRealValue = result.value;

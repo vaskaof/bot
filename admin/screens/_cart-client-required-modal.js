@@ -22,9 +22,10 @@
  * Использование:
  *   root.innerHTML = `...основной контент... ${ClientRequiredModal.html()}`;
  *   const modal = ClientRequiredModal.init();
- *   const resolutions = await modal.open(rows); // rows: {id, label}[]
- *   if (!resolutions) return; // отменено — сохранение прервано целиком
- *   // resolutions: {id, kind:'own'|'on_sale'}[]
+ *   const result = await modal.open(rows); // rows: {id, label, focusClient?}[]
+ *   if (!result) return; // «Вернуться к правке»/крестик — сохранение прервано целиком
+ *   if (result.focusRowId) { byId.get(result.focusRowId).focusClient(); return; } // «Выбрать клиента» (Волна 6, находка 6)
+ *   // result: {id, kind:'own'|'on_sale'}[] — обычное завершение, выбор сделан по всем строкам
  */
 window.ClientRequiredModal = {
   html() {
@@ -51,12 +52,18 @@ window.ClientRequiredModal = {
   },
 
   /**
-   * @returns {{ open: (rows:{id:string,label:string}[]) => Promise<{id:string,kind:'own'}[]|null> }}
-   *   null — отменено (крестик/клик мимо/«Вернуться к правке»), сохранение
-   *   должно прерваться целиком, ничего применять не нужно.
+   * @returns {{ open: (rows:{id:string,label:string,focusClient?:Function}[]) => Promise<{id:string,kind:'own'|'on_sale'}[]|{focusRowId:string}|null> }}
+   *   null — отменено (крестик/«Вернуться к правке»), сохранение должно
+   *   прерваться целиком, ничего применять не нужно. `{focusRowId}` —
+   *   менеджер нажал «Выбрать клиента» на конкретной строке (Волна 6,
+   *   находка 6): тоже прерывает сохранение (остальные уже сделанные в этой
+   *   модалке выборы теряются, тот же принцип, что и у «Вернуться к
+   *   правке» — сама модалка не хранит частичный прогресс между открытиями),
+   *   но вызывающая сторона обязана после этого вызвать `focusClient()`
+   *   исходной строки, чтобы менеджер не искал её заново в длинном списке.
    */
   init() {
-    let choices = new Map(); // id -> 'own'
+    let choices = new Map(); // id -> 'own'|'on_sale'
     let rowIds = [];
     let resolveFn = null;
 
@@ -76,10 +83,15 @@ window.ClientRequiredModal = {
       list.innerHTML = rows.map((r) => `
         <div class="border border-gray-200 rounded-xl p-3" data-row-id="${r.id}">
           <div class="text-sm text-gray-800 mb-2 truncate">${escapeHtmlClient(r.label)}</div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 mb-1.5">
             <button type="button" data-kind="own" class="client-required-choice-btn flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">Личный заказ (на менеджера)</button>
             <button type="button" data-kind="on_sale" class="client-required-choice-btn flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500">На продаже</button>
           </div>
+          <!-- Волна 6, находка 6 — третий выход, НЕ ещё один "kind": вместо
+               заочного выбора между "личный"/"на продаже" сразу ведёт на
+               саму карточку, где менеджер напечатает/выберет РЕАЛЬНОГО
+               клиента тем же полем поиска, что и всегда. -->
+          <button type="button" class="client-required-focus-btn w-full py-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700">Выбрать клиента →</button>
         </div>
       `).join('');
 
@@ -98,6 +110,13 @@ window.ClientRequiredModal = {
             b.classList.toggle('text-gray-500', !active && !b.disabled);
           });
           updateConfirmState();
+        });
+      });
+
+      list.querySelectorAll('.client-required-focus-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.closest('[data-row-id]').dataset.rowId;
+          close({ focusRowId: id });
         });
       });
 

@@ -183,10 +183,20 @@ window.CartLot = {
     }
 
     // Ссылка на лот — та же кнопка "Найти", что на отдельной позиции
-    // (resolveOrderProductLink), но БЕЗ привязки к конкретной строке —
-    // лот содержит несколько разных товаров, поэтому результат только
-    // информирует (тост/создание позиции каталога), ничего не подставляет
-    // ни в одну из строк автоматически (5.2, см. комментарий в разметке).
+    // (resolveOrderProductLink). Лот содержит несколько разных товаров,
+    // поэтому нет ОДНОЙ очевидной строки, куда подставлять, ЕСЛИ товар уже
+    // указан у всех — тогда результат по-прежнему только информирует
+    // (тост/создание позиции каталога), см. else-ветку ниже.
+    //
+    // Волна 6, находка 7 (пачка теста 08.09.2026): "распознаётся, но не
+    // подставляется" — раньше это было ВСЕГДА так, даже когда в лоте есть
+    // явно пустая строка (типичный случай: менеджер только что нажал
+    // "+ Добавить позицию" внутри лота и сразу вставил ссылку, ещё не
+    // тронув поле товара) — тост говорил "выберите вручную" про товар,
+    // который система уже нашла. Теперь при 'matched' сначала ищем ПЕРВУЮ
+    // строку лота с пустым товаром и подставляем прямо в неё; только если
+    // такой строки нет (все строки уже с товаром, или строк нет вовсе) —
+    // прежнее поведение "только информирует".
     lotPurchaseLinkResolveBtn.addEventListener('click', async () => {
       const url = lotPurchaseLinkInputEl.value.trim();
       if (!url) return;
@@ -194,7 +204,17 @@ window.CartLot = {
       try {
         const result = await callServer('resolveOrderProductLink', url);
         if (result.status === 'matched') {
-          showSaveToast(true, `Ссылка распознана — товар в каталоге: «${result.sku.value || result.sku.label || ''}». Выберите его в нужной строке лота вручную.`);
+          const emptyRow = lotRows.find((r) => !(r.productOriginal || r.productSearchEl.value.trim()));
+          const skuLabel = result.sku.value || result.sku.label || '';
+          if (emptyRow) {
+            emptyRow.productSearchEl.value = skuLabel;
+            emptyRow.productOriginal = result.sku.value || '';
+            const rowIndex = lotRows.indexOf(emptyRow) + 1;
+            ctx.updateSummaryDisplay(); // §5 D1 — товар в строке сводки свёрнутой карточки
+            showSaveToast(true, `Ссылка распознана — товар «${skuLabel}» подставлен в позицию ${rowIndex} лота.`);
+          } else {
+            showSaveToast(true, `Ссылка распознана — товар в каталоге: «${skuLabel}». Все строки лота уже с товаром — выберите его в нужной строке вручную.`);
+          }
         } else if (result.status === 'unmatched') {
           const skuModal = SkuModal.init({
             onSaved: (skuResult, action) => {
@@ -794,6 +814,18 @@ window.CartLot = {
         .map(({ r, idx }) => ({
           id: `lot${id}-row${r.id}`,
           label: `Лот · позиция ${idx + 1} · ${r.productOriginal || r.productSearchEl.value.trim() || 'товар не указан'}`,
+          // Волна 6, находка 6 — тот же приём, что на отдельной позиции
+          // (см. её JSDoc в _cart-position.js): разворачивает ЛОТ целиком
+          // (строка внутри своего collapse-состояния не имеет — сворачивается
+          // только лот целиком), затем прокручивает и фокусирует поиск
+          // клиента именно этой строки.
+          focusClient: () => {
+            setLotExpanded(true);
+            requestAnimationFrame(() => {
+              r.clientSearchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              r.clientSearchEl.focus();
+            });
+          },
           markOwnPurchase: () => {
             r.ownPurchaseCheckboxEl.checked = true;
             r.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));

@@ -148,8 +148,16 @@ window.Screens.orders = {
           <div class="grid grid-cols-2 gap-2">
             <button type="button" id="bulk-assign-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">В коллективку</button>
             <button type="button" id="bulk-create-collective-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Создать коллективку</button>
-            <!-- Э5, REFACTOR-COLLECTIVES.md §3 -->
-            <button type="button" id="bulk-status-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Сменить статус</button>
+            <!-- Э5, REFACTOR-COLLECTIVES.md §3 — переименована "Сменить статус"
+                 → "Статус доставки" (Волна 6, находка 5, 11.09.2026), когда
+                 рядом появилась вторая кнопка на "Статус заказа" — иначе две
+                 разные массовые смены статуса неразличимы по подписи. -->
+            <button type="button" id="bulk-status-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Статус доставки</button>
+            <!-- Волна 6, находка 5 — тот же механизм массовых действий, что
+                 bulk-status-btn выше, для поля "Статус заказа" (см. JSDoc
+                 ordersService.setOrdersStatusOrder — без гейта долга/готовности,
+                 та лестница не про это поле). -->
+            <button type="button" id="bulk-status-order-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Статус заказа</button>
             <button type="button" id="bulk-delete-btn" class="py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
           </div>
         </div>
@@ -157,6 +165,7 @@ window.Screens.orders = {
 
       ${CollectivePickerModal.html()}
       ${DeliveryStatusModal.html()}
+      ${StatusOrderModal.html()}
 
       <!-- Массовое удаление — превью "чистые/с оплатами" (Э3, §3 п.7) -->
       <div id="bulk-delete-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
@@ -205,6 +214,7 @@ window.Screens.orders = {
     const bulkCreateBtn = document.getElementById('bulk-create-collective-btn');
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
+    const bulkStatusOrderBtn = document.getElementById('bulk-status-order-btn'); // Волна 6, находка 5
 
     document.getElementById('new-cart-btn').addEventListener('click', () => navigateTo('carts/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
@@ -317,6 +327,7 @@ window.Screens.orders = {
       bulkCreateBtn.disabled = disabled;
       bulkDeleteBtn.disabled = disabled;
       bulkStatusBtn.disabled = disabled;
+      bulkStatusOrderBtn.disabled = disabled;
     }
 
     function toggleSelected(orderId) {
@@ -670,6 +681,27 @@ window.Screens.orders = {
     bulkStatusBtn.addEventListener('click', () => {
       if (selectedIds.size === 0) return;
       deliveryStatusModal.open([...selectedIds]);
+    });
+
+    // --- "Сменить статус заказа" (Волна 6, находка 5) ---
+
+    const statusOrderModal = StatusOrderModal.init({
+      getStatusDictionary: async () => (await callServer('getDictionaries')).statusOrder,
+      onApplied: async ({ changed, failed }) => {
+        if (failed.length > 0) {
+          showSaveToast(false, `Статус изменён у ${changed.length}, не удалось у ${failed.length} (см. лог).`);
+        } else if (changed.length > 0) {
+          showSaveToast(true, `Статус заказа изменён у ${changed.length} заказ(ов).`);
+        }
+        setSelectMode(false);
+        allOrders = await callServer('getOrdersList');
+        render();
+      }
+    });
+
+    bulkStatusOrderBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      statusOrderModal.open([...selectedIds]);
     });
   }
 };

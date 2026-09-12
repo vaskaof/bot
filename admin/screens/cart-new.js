@@ -105,7 +105,20 @@ window.Screens.cartNew = {
             </div>
             <div class="flex-1 w-full">
               <div class="flex items-center justify-between gap-2">
-                <select id="cart-currency-select" class="bg-transparent border-none outline-none text-sm font-medium text-gray-600 cursor-pointer">
+                <!-- Волна 6, находка 3 (пачка теста 08.09.2026): VASY чуть не
+                     рассчитал заявку по другой валюте — серый плоский текст
+                     дропдауна ("USD ($)" тем же цветом, что подписи вокруг)
+                     не бросается в глаза настолько, насколько это критично
+                     ДЛЯ КАЖДОЙ суммы, введённой в форме. Синяя пилюля — тот
+                     же язык, что уже различает валютные/рублёвые поля внутри
+                     заявок (D2, IMPLEMENTATION-PLAN-CART-UX.md, amount-input
+                     bg-blue-50/amount-currency-symbol text-blue-500) —
+                     здесь применён к самому выбору валюты корзины, чтобы он
+                     читался как активное состояние, а не нейтральная подпись.
+                     ВНИМАНИЕ: НЕ добавлять обратные кавычки в этот комментарий
+                     — он живёт внутри JS template literal (см. JSDoc файла,
+                     уже трижды ловились на этом же). -->
+                <select id="cart-currency-select" class="bg-blue-100 border-none outline-none text-sm font-bold text-blue-700 cursor-pointer rounded-lg px-2 py-1">
                   <option value="Доллар">USD ($)</option>
                   <option value="Юань">CNY (¥)</option>
                   <option value="Евро">EUR (€)</option>
@@ -579,7 +592,13 @@ window.Screens.cartNew = {
         // §7 Фаза F — только подтверждённая идентичность (не ручной клиент,
         // не свободный текст) даёт telegramId, по которому вообще имеет
         // смысл спрашивать кредит/пул на сервере.
-        telegramId: entity.telegramId || ''
+        telegramId: entity.telegramId || '',
+        // Волна 6, находка 4 (11.09.2026) — читается в buildPreSaveSummary(),
+        // чтобы менеджер УВИДЕЛ, кому реально уйдёт уведомление, ДО отправки
+        // (раньше галочка "Уведомить клиента" не показывалась нигде за
+        // пределами самой карточки — узнать результат можно было только
+        // постфактум, у самого клиента).
+        notifyClient: !!(entity.notifyClientCheckboxEl && entity.notifyClientCheckboxEl.checked)
       };
     }
     // Один общий проход по ВСЕМ заявкам корзины — позиция даёт одну строку,
@@ -753,6 +772,20 @@ window.Screens.cartNew = {
       lines.push('', 'По клиентам:');
       byClient.forEach((r) => lines.push(`${r.label} — ${r.mainSum.toFixed(2)} ₽`));
       lines.push('', `Итого: ${grandTotal.toFixed(2)} ₽`);
+
+      // Волна 6, находка 4 (11.09.2026) — подтверждение галочки "Уведомить
+      // клиента" здесь, в уже существующей сводке перед отправкой (не в
+      // отдельном тосте постфактум): менеджер видит, кто РЕАЛЬНО получит
+      // сообщение, ДО того, как оно уйдёт, а не узнаёт от самого клиента.
+      // Own-purchase/"На продаже" исключены — платить/получать сообщение
+      // там некому, тот же критерий billableRows выше.
+      const notifyRows = rows.filter((r) => r.notifyClient && !r.isOwnPurchase && !r.isOnSale);
+      if (notifyRows.length > 0) {
+        lines.push('', `🔔 Уведомление будет отправлено (${notifyRows.length} из ${rows.length}):`);
+        notifyRows.forEach((r) => lines.push(`• ${r.label}`));
+      } else {
+        lines.push('', '🔕 Уведомление клиентам отправлено НЕ будет.');
+      }
 
       const warnings = [];
       rows.forEach((r) => {
@@ -1447,8 +1480,17 @@ window.Screens.cartNew = {
       const unresolvedClientRows = collectUnresolvedClientRows();
       if (unresolvedClientRows.length) {
         const resolutions = await clientRequiredModal.open(unresolvedClientRows.map(({ id, label }) => ({ id, label })));
-        if (!resolutions) return; // «Вернуться к правке» — сохранение прервано целиком
+        if (!resolutions) return; // «Вернуться к правке»/крестик — сохранение прервано целиком
         const byId = new Map(unresolvedClientRows.map((r) => [r.id, r]));
+        // Волна 6, находка 6 — «Выбрать клиента» на конкретной строке: тоже
+        // прерывает сохранение (см. JSDoc _cart-client-required-modal.js —
+        // модалка не хранит частичный прогресс между открытиями), но сначала
+        // ведёт менеджера прямо на эту карточку, а не молча закрывается.
+        if (resolutions.focusRowId) {
+          const row = byId.get(resolutions.focusRowId);
+          if (row && row.focusClient) row.focusClient();
+          return;
+        }
         resolutions.forEach((res) => {
           const row = byId.get(res.id);
           if (!row) return;

@@ -385,6 +385,15 @@ function startAdminRouter() {
       const staffNavBtn = document.getElementById('staff-nav-btn');
       if (staffNavBtn) staffNavBtn.style.display = 'none';
     }
+    // Волна 6, находка 1 (пачка теста 08.09.2026) — `dictionaries` грузится
+    // РОВНО один раз за открытие приложения и этот же объект передаётся во
+    // ВСЕ экраны на всё время сессии (см. renderRoute ниже). Открываем на
+    // него ссылку глобально, чтобы FormHelpers.wireDictionarySelect
+    // (screens/_form-helpers.js) мог писать свежий список категории прямо
+    // в этот объект после addDictionaryValue — тогда следующий рендер ЛЮБОГО
+    // экрана (не только того, где добавили значение) увидит новое значение
+    // без перезагрузки приложения.
+    window.APP_DICTIONARIES = dictionaries;
     renderRoute(dictionaries);
     window.addEventListener('hashchange', () => renderRoute(dictionaries));
   });

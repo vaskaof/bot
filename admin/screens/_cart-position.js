@@ -702,6 +702,21 @@ window.CartPosition = {
       return [{
         id: `pos${id}`,
         label: item.productOriginal || item.productSearchEl.value.trim() || 'товар не указан',
+        // Волна 6, находка 6 (пачка теста 08.09.2026): «Пропуск клиента —
+        // алерт есть, добавить правку прямо на месте» — третий выбор в
+        // ClientRequiredModal, РЯДОМ с «Личный заказ»/«На продаже»:
+        // «Выбрать клиента» закрывает модалку и ведёт менеджера прямо на
+        // эту карточку (разворачивает, если свёрнута, прокручивает,
+        // ставит фокус в её собственный поиск клиента) — раньше единственный
+        // выход был «Вернуться к правке», которая закрывала модалку МОЛЧА,
+        // не показывая, какую из позиций/строк лота искать в длинном списке.
+        focusClient: () => {
+          item.setCollapsed(false);
+          requestAnimationFrame(() => {
+            item.clientSearchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            item.clientSearchEl.focus();
+          });
+        },
         markOwnPurchase: () => {
           item.ownPurchaseCheckboxEl.checked = true;
           item.ownPurchaseCheckboxEl.dispatchEvent(new Event('change'));
