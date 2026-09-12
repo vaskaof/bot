@@ -61,10 +61,35 @@ window.ManualClientModal = {
       document.getElementById('manual-client-modal').classList.add('flex');
     }
 
-    document.getElementById('manual-client-close').addEventListener('click', close);
-    document.getElementById('manual-client-cancel').addEventListener('click', close);
+    // Волна 7 (12.09.2026, найдено e2e-тестом на «Дублировать») — РЕАЛЬНЫЙ
+    // баг: `init()` вызывается заново на КАЖДЫЙ клик "+ Ввести вручную"
+    // (см. `_cart-position.js`/`_cart-lot.js` — новый замыкающийся `onSaved`
+    // на каждую заявку), но кнопки модалки — ОДИН общий DOM-узел на весь
+    // экран. Без замены узла `addEventListener` копится: на экране с ДВУМЯ
+    // и более заявками (`cart-new.js` — единственное место, где на одном
+    // экране больше одного клиента) сохранение клиента для ВТОРОЙ заявки
+    // срабатывало ОБОИМИ листенерами разом и молча переписывало клиента
+    // ПЕРВОЙ заявки тем же именем. На `order-new.js`/`order-edit.js`/
+    // `wishlist-demand.js` (один клиент на экран) баг латентен — лишние
+    // листенеры пишут то же значение в ту же цель, незаметно. `cloneNode` +
+    // замена узла — снимает все старые листенеры одним движением, тот же
+    // приём, что уже применяют другие модалки этого проекта для похожих
+    // "переинициализируется на каждый клик" сценариев (`lot-new.js`'s
+    // `addBulkRow`-паттерн).
+    const saveBtn = document.getElementById('manual-client-save');
+    const freshSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.replaceWith(freshSaveBtn);
+    const closeBtn = document.getElementById('manual-client-close');
+    const freshCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.replaceWith(freshCloseBtn);
+    const cancelBtn = document.getElementById('manual-client-cancel');
+    const freshCancelBtn = cancelBtn.cloneNode(true);
+    cancelBtn.replaceWith(freshCancelBtn);
 
-    document.getElementById('manual-client-save').addEventListener('click', () => {
+    freshCloseBtn.addEventListener('click', close);
+    freshCancelBtn.addEventListener('click', close);
+
+    freshSaveBtn.addEventListener('click', () => {
       const username = document.getElementById('manual-client-username').value.trim();
       const name = document.getElementById('manual-client-name').value.trim();
       onSaved({ username, name });

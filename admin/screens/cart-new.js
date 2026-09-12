@@ -94,6 +94,13 @@ window.Screens.cartNew = {
            (см. JSDoc файла, наступали на это уже много раз). -->
       <main class="pt-16 pb-40 px-4 md:px-0 max-w-2xl mx-auto">
 
+        <!-- Волна 7, §7 п.2 — восстановление черновика «Размножить на
+             клиентов» после сбоя/убийства Telegram WebView (по прямому
+             запросу VASY, см. JSDoc scheduleMultiplyDraftSave в
+             _cart-position.js). Один общий баннер, тот же паттерн, что
+             #draft-recovery-banner в order-new.js. -->
+        <div id="multiply-draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+
         <!-- Шапка корзины — общая на все заявки внутри (§4 п.1 плана) -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mb-3">
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
@@ -656,15 +663,13 @@ window.Screens.cartNew = {
     // один источник правды на оба места, не два независимых обхода items.
     function allEntityRows() {
       const rows = [];
-      items.forEach((it) => {
-        // Через собственный метод заявки (getClientRow/getClientRows), не
-        // напрямую collectClientRow — та же публичная точка входа, что
-        // документирована в JSDoc _cart-position.js/_cart-lot.js (найдено
-        // целевым ревью: раньше позиция была единственным исключением,
-        // getClientRow() существовал, но никогда не вызывался).
-        if (it.type === 'position') rows.push(it.getClientRow());
-        else rows.push(...it.getClientRows());
-      });
+      // Через getClientRows() у ОБЕИХ сущностей (Волна 7, §7 п.2 —
+      // размноженная позиция тоже даёт N строк, не 0/1) — та же публичная
+      // точка входа, что документирована в JSDoc _cart-position.js/
+      // _cart-lot.js. Раньше позиция была особым случаем (getClientRow()
+      // singular), теперь getClientRows() внутри сама решает, вернуть ли
+      // [getClientRow()] или разбивку по multiplyRows.
+      items.forEach((it) => rows.push(...it.getClientRows()));
       return rows;
     }
 
@@ -810,8 +815,19 @@ window.Screens.cartNew = {
       const byClient = groupRowsByClient(rows);
       const grandTotal = byClient.reduce((s, r) => s + r.mainSum, 0);
 
+      // Волна 7, §7 п.2 — размноженные позиции считаются отдельно от
+      // обычных (та же идея, что уже применяется к лотам чуть ниже —
+      // "N лотов (M заявок внутри)"), иначе сводка молчала бы про
+      // реальное число заказов, которое создаст одна такая карточка.
+      const plainPositions = positions.filter((it) => !it.isMultiplied);
+      const multipliedPositions = positions.filter((it) => it.isMultiplied);
+
       const lines = ['Будет создано:'];
-      if (positions.length) lines.push(`• ${positions.length} ${pluralRu(positions.length, ['обычная позиция', 'обычные позиции', 'обычных позиций'])}`);
+      if (plainPositions.length) lines.push(`• ${plainPositions.length} ${pluralRu(plainPositions.length, ['обычная позиция', 'обычные позиции', 'обычных позиций'])}`);
+      if (multipliedPositions.length) {
+        const multipliedRowsCount = multipliedPositions.reduce((s, it) => s + it.multiplyRows.length, 0);
+        lines.push(`• ${multipliedPositions.length} ${pluralRu(multipliedPositions.length, ['размноженная позиция', 'размноженные позиции', 'размноженных позиций'])} (${multipliedRowsCount} ${pluralRu(multipliedRowsCount, ['клиент', 'клиента', 'клиентов'])} внутри)`);
+      }
       if (lots.length) {
         const lotRowsCount = lots.reduce((s, it) => s + it.getClientRows().length, 0);
         lines.push(`• ${lots.length} ${pluralRu(lots.length, ['лот', 'лота', 'лотов'])} (${lotRowsCount} ${pluralRu(lotRowsCount, ['заявка', 'заявки', 'заявок'])} внутри)`);
@@ -1440,10 +1456,58 @@ window.Screens.cartNew = {
     document.getElementById('add-position-btn').addEventListener('click', () => CartPosition.create(cartItemCtx));
     document.getElementById('add-lot-btn').addEventListener('click', () => CartLot.create(cartItemCtx));
 
-    // Предзаполнение из "Спрос клиентов" (слияние «Новый заказ»→«Корзина»,
-    // 05.09.2026, wishlist-demand.js теперь ведёт сюда вместо orders/new) —
-    // тот же набор параметров, что раньше читал order-new.js:1699-1719.
-    if (params && (params.telegramId || params.skuOriginal || params.productOriginal)) {
+    // «Дублировать» из order-edit.js (Волна 7, §7 п.1, 12.09.2026) —
+    // sessionStorage, не query-параметры (роутер умеет только плоский
+    // объект, см. комментарий в order-edit.js у duplicateIntoNewCart) и не
+    // localStorage (одноразовая передача между двумя экранами одной
+    // сессии, ключ читается и стирается СРАЗУ, не должен пережить, скажем,
+    // повторное открытие "Новой корзины" с нуля позже в той же вкладке).
+    let dupPrefill = null;
+    const dupPrefillRaw = sessionStorage.getItem('knopka_cart_duplicate_prefill');
+    if (dupPrefillRaw) {
+      sessionStorage.removeItem('knopka_cart_duplicate_prefill');
+      try { dupPrefill = JSON.parse(dupPrefillRaw); } catch (e) { dupPrefill = null; }
+    }
+
+    if (dupPrefill && Array.isArray(dupPrefill.positions) && dupPrefill.positions.length > 0) {
+      // Канал/аккаунт/карго/валюта — из шапки ИСХОДНОЙ корзины (см. решение
+      // VASY в order-edit.js). setDictionaryValue (не голое select.value) —
+      // тот же приём, что уже защищает "На продаже" от потери значения,
+      // выпавшего из справочника (аудит 08.09.2026), здесь на случай, если
+      // канал/аккаунт исходной корзины с тех пор пропал из списка.
+      const h = dupPrefill.header || {};
+      if (h.purchaseChannel) FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', h.purchaseChannel);
+      if (h.purchaseAccount) FormHelpers.setDictionaryValue('select[data-dict="purchaseAccount"]', h.purchaseAccount);
+      if (h.cargo) FormHelpers.setDictionaryValue('select[data-dict="cargo"]', h.cargo);
+      // currency-select — фиксированный список (не справочник), голого
+      // .value достаточно; 'change' переиспользует уже существующий
+      // слушатель (currentCurrency+applyCurrentCurrencyRate) вместо
+      // дублирования той же логики здесь. Безопасно вызвать ДО того, как
+      // refreshRate() (уже запущен выше, асинхронно) успеет ответить —
+      // применится no-op сейчас, по-настоящему сработает, когда придёт
+      // реальный курс (currentCurrency к тому моменту уже верный).
+      if (h.currency) { currencySelect.value = h.currency; currencySelect.dispatchEvent(new Event('change')); }
+      // Статус доставки/заказа НЕ переносится (явное решение VASY,
+      // ROLES-AND-NOTIFICATIONS.md §7 п.1) — новая позиция стартует
+      // обычным дефолтом, как при создании корзины с нуля, а не
+      // унаследованным статусом старого (возможно уже завершённого) заказа.
+
+      dupPrefill.positions.forEach((p) => {
+        const item = CartPosition.create(cartItemCtx);
+        if (p.productOriginal) {
+          item.productSearchEl.value = p.productShort || p.productOriginal;
+          item.productOriginal = p.productOriginal;
+        }
+        if (p.amount) {
+          item.amountInputEl.value = p.amount;
+          item.amountInputEl.dispatchEvent(new Event('input'));
+        }
+        if (p.feePercent) {
+          item.feePercentEl.value = p.feePercent;
+          item.feePercentEl.dispatchEvent(new Event('input'));
+        }
+      });
+    } else if (params && (params.telegramId || params.skuOriginal || params.productOriginal)) {
       const prefillClient = params.telegramId ? {
         telegramId: params.telegramId, username: params.username || '', name: params.name || '',
         display: (params.name && params.username) ? `${params.name} (${params.username})` : (params.name || params.username || 'Клиент')
@@ -1466,11 +1530,52 @@ window.Screens.cartNew = {
     // само по себе recomputeTotals не вызывает.
     updateSummaryDisplay();
 
+    // Волна 7, §7 п.2 — восстановление черновика «Размножить на клиентов».
+    // В отличие от order-new.js's тихого auto-retry (там черновик — готовый
+    // payload createOrder, можно попробовать отправить молча), здесь
+    // черновик — сырые UI-данные (нерезолвленные клиенты, необязательно
+    // валидные суммы) — показываем баннер сразу, без попытки тихой
+    // отправки, менеджер в любом случае должен проверить/досохранить руками.
+    const multiplyDraft = loadOrderDraft(CartPosition.MULTIPLY_DRAFT_KEY);
+    if (multiplyDraft) {
+      const banner = document.getElementById('multiply-draft-recovery-banner');
+      const rowCount = (multiplyDraft.payload.rows || []).length;
+      const product = multiplyDraft.payload.productOriginal || 'товар не указан';
+      const when = new Date(multiplyDraft.savedAt).toLocaleString('ru-RU');
+      banner.classList.remove('hidden');
+      banner.innerHTML = `
+        <div class="mb-2">Есть незавершённая «Размноженная» позиция от ${escapeHtmlClient(when)} — «${escapeHtmlClient(product)}», ${rowCount} клиент(а/ов). Черновик не отправлен на сервер.</div>
+        <div class="flex gap-2">
+          <button type="button" id="multiply-draft-restore-btn" class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium">Восстановить</button>
+          <button type="button" id="multiply-draft-discard-btn" class="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-medium">Удалить черновик</button>
+        </div>
+      `;
+      document.getElementById('multiply-draft-restore-btn').addEventListener('click', () => {
+        const restoredItem = CartPosition.create(cartItemCtx);
+        restoredItem.applyMultiplyDraft(multiplyDraft.payload);
+        clearOrderDraft(CartPosition.MULTIPLY_DRAFT_KEY);
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+        updateSummaryDisplay();
+      }, { once: true });
+      document.getElementById('multiply-draft-discard-btn').addEventListener('click', () => {
+        clearOrderDraft(CartPosition.MULTIPLY_DRAFT_KEY);
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+      }, { once: true });
+    }
+
     document.addEventListener('click', (e) => {
       items.forEach((it) => {
         if (it.type !== 'position') return;
         if (!it.clientSearchEl.contains(e.target) && !it.clientDropdownEl.contains(e.target)) it.clientDropdownEl.classList.remove('active');
         if (!it.productSearchEl.contains(e.target) && !it.productDropdownEl.contains(e.target)) it.productDropdownEl.classList.remove('active');
+        // Волна 7, §7 п.2 — размноженные строки несут СВОЙ клиентский поиск
+        // (товар остаётся общим на позицию, дропдаун товара выше уже
+        // закрывает его), каждая строка закрывается независимо.
+        it.multiplyRows.forEach((r) => {
+          if (!r.clientSearchEl.contains(e.target) && !r.clientDropdownEl.contains(e.target)) r.clientDropdownEl.classList.remove('active');
+        });
       });
     }, { signal });
 
@@ -1498,7 +1603,10 @@ window.Screens.cartNew = {
       };
       const statusDelivery = document.querySelector('select[data-dict="statusDelivery"]').value;
       const statusOrder = document.querySelector('select[data-dict="statusOrder"]').value;
-      const positions = items.filter((it) => it.type === 'position').map((it) => ({ ...it.getPayload(), statusDelivery, statusOrder }));
+      // .flatMap, не .map (Волна 7, §7 п.2) — getPayload() позиции теперь
+      // ВСЕГДА массив (1 элемент — обычная позиция, N — размноженная на
+      // клиентов), см. JSDoc item.getPayload в _cart-position.js.
+      const positions = items.filter((it) => it.type === 'position').flatMap((it) => it.getPayload().map((p) => ({ ...p, statusDelivery, statusOrder })));
       const lots = items.filter((it) => it.type === 'lot').map((it) => {
         const payload = it.getPayload();
         payload.positions = payload.positions.map((p) => ({ ...p, statusDelivery, statusOrder }));
@@ -1591,6 +1699,11 @@ window.Screens.cartNew = {
       try {
         const response = await callServer('createCart', payload);
         clearOrderDraft(CART_DRAFT_KEY);
+        // Волна 7, §7 п.2 — черновик «Размножить на клиентов» (см. JSDoc
+        // scheduleMultiplyDraftSave в _cart-position.js) чистится только
+        // на подтверждённом успехе, тем же принципом, что и CART_DRAFT_KEY
+        // чуть выше.
+        clearOrderDraft(CartPosition.MULTIPLY_DRAFT_KEY);
         // Лот, успешный НА СВОЁМ уровне (response.lotResults[i].success),
         // может всё равно содержать частичные сбои ВНУТРИ себя — createLot
         // возвращает {lotId, results:[...]} по каждой своей позиции (тот же

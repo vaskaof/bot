@@ -52,7 +52,19 @@
  * router.js/_form-helpers.js/_sku-modal.js/_manual-client-modal.js,
  * загруженных раньше этого файла в `admin/app.html`).
  */
+// Волна 7, §7 п.2 — черновик восстановления «Размножить на клиентов»
+// (см. JSDoc внутри create() у scheduleMultiplyDraftSave/applyMultiplyDraft).
+// Отдельный ключ от CART_DRAFT_KEY (cart-new.js) — тот пишется целиком
+// перед КАЖДОЙ отправкой и чистится при успехе без баннера восстановления
+// (сознательное решение экрана, см. её JSDoc); этот — специально ПОД
+// баннер, зеркало старого `pendingBulkOrderDraft` (order-new.js).
+const MULTIPLY_DRAFT_KEY = 'pendingCartMultiplyDraft';
+
 window.CartPosition = {
+  // Читается `cart-new.js`'s баннером восстановления при монтировании
+  // экрана — тот же ключ, что пишет scheduleMultiplyDraftSave ниже.
+  MULTIPLY_DRAFT_KEY,
+
   create(ctx, prefillClient) {
     const id = ctx.nextItemId();
     const rowEl = document.createElement('div');
@@ -95,7 +107,7 @@ window.CartPosition = {
         </div>
       </div>
 
-      <div class="client-row relative mb-2">
+      <div class="single-client-fields client-row relative mb-2">
         <input type="text" class="client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
         <ul class="client-dropdown dropdown-menu custom-scrollbar"></ul>
       </div>
@@ -104,6 +116,34 @@ window.CartPosition = {
         <ul class="product-dropdown dropdown-menu custom-scrollbar"></ul>
       </div>
 
+      <!-- «Размножить на клиентов» (Волна 7, §7 п.2 IMPLEMENTATION-PLAN-
+           ROLES-AND-NOTIFICATIONS.md, 12.09.2026) — миграция старого режима
+           «Несколько сразу» (order-new.js) внутрь одной карточки «Позиция»:
+           товар/канал/аккаунт/карго/валюта/статус остаются ОБЩИМИ (они и
+           так уже поля шапки корзины, переносить нечего), а сама карточка
+           превращается в мини-таблицу клиент+сумма+комиссия%+«сколько уже
+           оплачено» на строку. Цель VASY: не забивать одну позицию по три
+           раза. Сознательно урезано относительно одиночной позиции (тот же
+           класс упрощения, что уже принят для строк "Лота" — комиссионный
+           гейт Э6/D-10 не подключен, см. JSDoc item.validateCommissionGate
+           ниже) — без реконсиляции "Итог с сайта выкупа" (own/manual-share
+           не участвуют), без прогноза расходов (своя сумма на строку,
+           единого прогноза нет, тот же принцип, что был в order-new.js),
+           без "Ссылка на покупку"/"Личный заказ"-чекбокса на уровне строки
+           (сам чекбокс НЕ подходит семантически — см. вместо него
+           markOwnPurchase/markOnSale внутри getUnresolvedClientRows ниже). -->
+      <div class="mb-2">
+        <button type="button" class="multiply-toggle-btn text-[11px] text-indigo-600 font-medium inline-flex items-center gap-1">
+          <i data-lucide="users" class="w-3.5 h-3.5"></i> <span class="multiply-toggle-label">Размножить на клиентов</span>
+        </button>
+      </div>
+      <div class="multiply-rows-block hidden">
+        <div class="text-[11px] font-semibold text-gray-500 mb-1.5">Клиенты (<span class="multiply-rows-count">0</span>)</div>
+        <div class="multiply-rows-list space-y-2 mb-2"></div>
+        <button type="button" class="add-multiply-row-btn w-full py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-500 text-xs font-medium mb-2">+ Добавить клиента</button>
+      </div>
+
+      <div class="single-client-fields">
       <!-- §5 D2 — поля в валюте корзины отличаются на глаз от рублёвых
            (светло-синий фон + синий символ валюты) — раньше и «Сумма»
            (валюта), и «Комиссия ₽» (рубли) были одинаковым серым, репорт
@@ -208,6 +248,7 @@ window.CartPosition = {
         <label class="text-[11px] text-gray-500">Сколько уже оплачено, ₽</label>
         <input type="number" class="already-paid-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
       </div>
+      </div>
       <div class="mb-2">
         <label class="text-[11px] text-gray-500">Примечание</label>
         <textarea class="note-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" rows="2" maxlength="300" placeholder="Введите примечание..."></textarea>
@@ -217,7 +258,7 @@ window.CartPosition = {
         Уведомить клиента
       </label>
 
-      <div class="pt-2 border-t border-gray-100">
+      <div class="single-client-fields pt-2 border-t border-gray-100">
         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Прогноз расходов (можно поправить)</div>
         <div class="flex items-center gap-2 mb-1.5">
           <span class="text-[11px] text-gray-500 w-16 shrink-0">Вес</span>
@@ -287,7 +328,214 @@ window.CartPosition = {
     // §2 A3 (IMPLEMENTATION-PLAN-CART-UX-2.md, 07.09.2026) — плоский метод
     // на самой заявке, которым ctx.diffWeightFor(it) пользуется без знания
     // о внутреннем `manualShare` (тот же контракт нужен и лоту).
-    item.getManualRub = () => item.manualShare.getManualRub();
+    // «Размножить на клиентов» исключена из ручной фиксации/реконсиляции
+    // «Итог с сайта выкупа» целиком (см. JSDoc блока разметки выше) — база
+    // ВСЕГДА сырая сумма×курс, просуммированная по строкам.
+    item.getManualRub = () => (item.isMultiplied ? null : item.manualShare.getManualRub());
+
+    // --- «Размножить на клиентов» (Волна 7, §7 п.2) ---
+    // Тумблер превращает карточку «Позиция» в мини-таблицу клиент+сумма+
+    // комиссия%+«сколько уже оплачено» на строку — портирует старый режим
+    // «Несколько сразу» (order-new.js, до 12.09.2026) внутрь «Корзины».
+    // Общее (товар/канал/аккаунт/карго/валюта/статус/примечание/уведомление)
+    // остаётся ровно там же, где и было — на уровне позиции/шапки корзины,
+    // портировать нечего (см. buildSharedOrderData order-new.js — набор
+    // полей идентичен уже существующим полям карточки/шапки).
+    item.isMultiplied = false;
+    item.multiplyRows = [];
+    const MAX_MULTIPLY_ROWS = 30; // §2 плана — запас над реальным максимумом, встреченным в проде (18 строк, случайный дубль 18.08.2026), без риска повесить форму N полноценными карточками
+    const multiplyToggleBtn = rowEl.querySelector('.multiply-toggle-btn');
+    const multiplyToggleLabelEl = rowEl.querySelector('.multiply-toggle-label');
+    const multiplyRowsBlockEl = rowEl.querySelector('.multiply-rows-block');
+    const multiplyRowsListEl = rowEl.querySelector('.multiply-rows-list');
+    const multiplyRowsCountEl = rowEl.querySelector('.multiply-rows-count');
+    const addMultiplyRowBtn = rowEl.querySelector('.add-multiply-row-btn');
+    // .single-client-fields — три несмежных блока разметки (клиент; сумма
+    // …«сколько уже оплачено»; прогноз расходов), см. их разметку выше —
+    // toggle одним классом вместо трёх независимых ссылок на элементы.
+    const singleClientFieldsEls = Array.from(rowEl.querySelectorAll('.single-client-fields'));
+
+    function updateMultiplyRowsCount() {
+      multiplyRowsCountEl.textContent = String(item.multiplyRows.length);
+      addMultiplyRowBtn.classList.toggle('hidden', item.multiplyRows.length >= MAX_MULTIPLY_ROWS);
+    }
+
+    // Черновик восстановления (по прямому запросу VASY, 12.09.2026) — тот
+    // же готовый паттерн, что уже применяет order-new.js/order-edit.js
+    // (saveOrderDraft/loadOrderDraft/clearOrderDraft, common.js), под
+    // отдельным ключом (зеркало старого `pendingBulkOrderDraft`, тот же
+    // класс риска: длинная форма с N клиентами, реальный шанс потерять
+    // введённое при зависании/убийстве Telegram WebView). Один ключ на
+    // экран, "последняя тронутая размноженная позиция побеждает" — тот же
+    // компромисс, что был у старого ключа (в проде одновременно
+    // размножают обычно одну позицию, не несколько сразу). Восстановление
+    // (баннер на `cart-new.js`) читает и предлагает это же самое, см.
+    // `item.applyMultiplyDraft` ниже.
+    const scheduleMultiplyDraftSave = debounce(() => {
+      if (!item.isMultiplied) return;
+      saveOrderDraft(MULTIPLY_DRAFT_KEY, {
+        productOriginal: item.productOriginal || item.productSearchEl.value.trim(),
+        purchaseLink: item.purchaseLinkInputEl.value.trim(),
+        rows: item.multiplyRows.map((r) => ({
+          telegramId: r.telegramId, username: r.username, name: r.name,
+          manualClientData: r.manualClientData, display: r.clientSearchEl.value,
+          amount: r.amountInputEl.value, feePercent: r.feePercentInputEl.value, alreadyPaid: r.alreadyPaidInputEl.value
+        }))
+      });
+    }, 800);
+
+    function createMultiplyRow(prefill) {
+      const rEl = document.createElement('div');
+      rEl.className = 'multiply-row border border-gray-200 rounded-xl p-2 relative';
+      rEl.innerHTML = `
+        <button type="button" class="remove-multiply-row-btn absolute top-1.5 right-1.5 z-10 p-1 text-gray-300 hover:text-red-500"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+        <div class="relative mb-1.5 pr-6">
+          <input type="text" class="mr-client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
+          <ul class="mr-client-dropdown dropdown-menu custom-scrollbar"></ul>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5">
+          <div>
+            <label class="text-[10px] text-gray-500">Сумма</label>
+            <div class="flex items-center gap-0.5">
+              <span class="mr-amount-symbol text-[11px] text-blue-500 font-medium"></span>
+              <input type="number" class="mr-amount-input w-full bg-blue-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01">
+            </div>
+          </div>
+          <div><label class="text-[10px] text-gray-500">Комиссия %</label><input type="number" class="mr-fee-percent-input w-full bg-gray-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+          <div><label class="text-[10px] text-gray-500">Уже оплачено</label><input type="number" class="mr-already-paid-input w-full bg-gray-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
+        </div>
+        <div class="mr-total-display text-[10px] text-gray-500 text-right mt-1">Итого: 0.00 ₽</div>
+      `;
+      multiplyRowsListEl.appendChild(rEl);
+      if (window.lucide) window.lucide.createIcons();
+
+      const row = {
+        rowEl: rEl,
+        clientSearchEl: rEl.querySelector('.mr-client-search'),
+        clientDropdownEl: rEl.querySelector('.mr-client-dropdown'),
+        telegramId: '', username: '', name: '', manualClientData: null,
+        amountInputEl: rEl.querySelector('.mr-amount-input'),
+        amountSymbolEl: rEl.querySelector('.mr-amount-symbol'),
+        feePercentInputEl: rEl.querySelector('.mr-fee-percent-input'),
+        alreadyPaidInputEl: rEl.querySelector('.mr-already-paid-input'),
+        totalDisplayEl: rEl.querySelector('.mr-total-display'),
+        // «Личный заказ»/«На продаже» на уровне СТРОКИ (не чекбокс в
+        // разметке — семантически не подходит "мини-таблице клиентов",
+        // единственный путь сюда — ClientRequiredModal, ровно как у
+        // item.onSale выше). getUnresolvedClientRows/collectClientRow
+        // ниже читают эти же поля через лёгкую обёртку.
+        isOwnPurchase: false, onSale: false
+      };
+
+      function refreshRow() {
+        row.amountSymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
+        const base = (parseFloat(row.amountInputEl.value) || 0) * ctx.getCurrentRate();
+        const commission = CartMoney.feeRubFromPercent(base, parseFloat(row.feePercentInputEl.value) || 0);
+        row.totalDisplayEl.textContent = `Итого: ${(base + commission).toFixed(2)} ₽`;
+        ctx.updateSummaryDisplay();
+        scheduleMultiplyDraftSave();
+      }
+      row.refresh = refreshRow;
+
+      const handleRowClientSearch = debounce(async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 2) { row.clientDropdownEl.classList.remove('active'); return; }
+        const results = await callServer('searchClients', query);
+        FormHelpers.renderDropdown(row.clientDropdownEl, results, (r) => `
+          <div class="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+            ${escapeHtmlClient(r.displayName)}
+            ${r.pending ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">не подтверждён</span>' : ''}
+          </div>
+        `, (r) => {
+          row.clientSearchEl.value = r.displayName;
+          row.telegramId = r.telegramId; row.username = r.username; row.name = r.name; row.manualClientData = null;
+          row.clientDropdownEl.classList.remove('active');
+          ctx.updateSummaryDisplay();
+          scheduleMultiplyDraftSave();
+        });
+        row.clientDropdownEl.appendChild(Object.assign(document.createElement('li'), {
+          className: 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center',
+          textContent: '+ Ввести вручную'
+        })).addEventListener('click', () => {
+          row.clientDropdownEl.classList.remove('active');
+          const manualModal = ManualClientModal.init({
+            onSaved: ({ username, name }) => {
+              row.manualClientData = { username, name };
+              row.telegramId = ''; row.username = username; row.name = name;
+              row.clientSearchEl.value = name !== '' ? `${name} (${username || 'без username'})` : (username || 'Без данных');
+              ctx.updateSummaryDisplay();
+              scheduleMultiplyDraftSave();
+            }
+          });
+          manualModal.open();
+        });
+      }, 300);
+      row.clientSearchEl.addEventListener('input', handleRowClientSearch);
+      row.clientSearchEl.addEventListener('focus', () => { if (row.clientSearchEl.value.trim().length >= 2) row.clientDropdownEl.classList.add('active'); });
+
+      row.amountInputEl.addEventListener('input', refreshRow);
+      row.feePercentInputEl.addEventListener('input', refreshRow);
+      row.alreadyPaidInputEl.addEventListener('input', () => { ctx.updateSummaryDisplay(); scheduleMultiplyDraftSave(); });
+
+      rEl.querySelector('.remove-multiply-row-btn').addEventListener('click', () => {
+        if (item.multiplyRows.length <= 1) { showSaveToast(false, 'Нужна хотя бы одна строка клиента.'); return; }
+        const idx = item.multiplyRows.indexOf(row);
+        if (idx !== -1) item.multiplyRows.splice(idx, 1);
+        rEl.remove();
+        updateMultiplyRowsCount();
+        ctx.updateSummaryDisplay();
+        scheduleMultiplyDraftSave();
+      });
+
+      if (prefill) {
+        row.telegramId = prefill.telegramId || ''; row.username = prefill.username || ''; row.name = prefill.name || '';
+        row.manualClientData = prefill.manualClientData || null;
+        row.clientSearchEl.value = prefill.display || '';
+        row.amountInputEl.value = prefill.amount || '';
+        row.feePercentInputEl.value = prefill.feePercent || '';
+        row.alreadyPaidInputEl.value = prefill.alreadyPaid || '';
+      }
+
+      item.multiplyRows.push(row);
+      updateMultiplyRowsCount();
+      refreshRow();
+      return row;
+    }
+    item.createMultiplyRow = createMultiplyRow; // используется applyMultiplyDraft ниже
+
+    addMultiplyRowBtn.addEventListener('click', () => {
+      if (item.multiplyRows.length >= MAX_MULTIPLY_ROWS) return;
+      createMultiplyRow();
+    });
+
+    function setMultiplied(on) {
+      item.isMultiplied = on;
+      singleClientFieldsEls.forEach((el) => el.classList.toggle('hidden', on));
+      multiplyRowsBlockEl.classList.toggle('hidden', !on);
+      multiplyToggleLabelEl.textContent = on ? 'Вернуть одного клиента' : 'Размножить на клиентов';
+      if (on && item.multiplyRows.length === 0) createMultiplyRow();
+      ctx.recomputeTotals();
+      scheduleMultiplyDraftSave();
+    }
+    multiplyToggleBtn.addEventListener('click', () => setMultiplied(!item.isMultiplied));
+
+    // Восстановление черновика (см. scheduleMultiplyDraftSave выше) —
+    // вызывается СНАРУЖИ, из `cart-new.js`'s баннера на монтировании
+    // экрана, на СВЕЖЕСОЗДАННОЙ позиции (`CartPosition.create(ctx)`), сразу
+    // после её создания.
+    item.applyMultiplyDraft = (draft) => {
+      if (draft.productOriginal) { item.productSearchEl.value = draft.productOriginal; item.productOriginal = draft.productOriginal; }
+      if (draft.purchaseLink) item.purchaseLinkInputEl.value = draft.purchaseLink;
+      setMultiplied(true);
+      // setMultiplied(true) уже создала одну пустую строку по умолчанию —
+      // убираем её, дальше заполняем ТОЛЬКО тем, что реально было в
+      // черновике (иначе после восстановления N строк черновика на экране
+      // была бы N+1-я, лишняя, пустая).
+      const autoRow = item.multiplyRows.pop();
+      if (autoRow) autoRow.rowEl.remove();
+      updateMultiplyRowsCount();
+      (draft.rows || []).forEach((r) => createMultiplyRow(r));
+    };
 
     // §3 B1 — кнопка «Задать сумму вручную» прячет/показывает ручной ввод,
     // не удаляя его из DOM (см. комментарий в разметке выше — e2e ищет
@@ -357,8 +605,17 @@ window.CartPosition = {
     // проходом, что и липкая панель итогов (ctx.updateSummaryDisplay, §4 C1),
     // не отдельным набором слушателей.
     item.updateCardSummaryText = () => {
-      const client = ctx.clientLabelFor(item);
       const product = item.productOriginal || item.productSearchEl.value.trim() || 'товар не указан';
+      // Размноженная позиция — своя, более уместная сводка ("N клиентов ·
+      // Товар · платит Σ ₽"), а не clientLabelFor(item) (та читает ПУСТОЙ
+      // общий client-row, который скрыт в этом режиме, — дала бы вводящее
+      // в заблуждение "Без клиента").
+      if (item.isMultiplied) {
+        const totalRub = item.getTotalRub() + item.getCommissionRub();
+        item.summaryTextEl.textContent = `${item.multiplyRows.length} клиент(а/ов) · ${product}${totalRub > 0 ? ` · платит ${totalRub.toFixed(2)} ₽` : ''}`;
+        return;
+      }
+      const client = ctx.clientLabelFor(item);
       const amount = parseFloat(item.amountInputEl.value) || 0;
       const symbol = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
       const total = parseFloat(item.totalPaymentEl.value) || 0;
@@ -520,13 +777,24 @@ window.CartPosition = {
       ctx.recomputeTotals();
     }
 
+    // --- Размноженные строки — общие чистые вычисления, переиспользуются
+    // getTotalRub/getCommissionRub/getFeeTargets/getClientRow(s)/
+    // getUnresolvedClientRows/getPayload ниже. НЕ читают ctx.diffWeightFor/
+    // реконсиляцию — размноженная позиция в ней не участвует (см. JSDoc
+    // разметки в начале файла).
+    function rowBaseRub(row) { return (parseFloat(row.amountInputEl.value) || 0) * ctx.getCurrentRate(); }
+    function rowCommissionRub(row) { return CartMoney.feeRubFromPercent(rowBaseRub(row), parseFloat(row.feePercentInputEl.value) || 0); }
+    function rowHasClient(row) { return row.isOwnPurchase || row.onSale || !!row.telegramId || !!row.manualClientData; }
+
     // База для комиссии/итога (§2 A1, ИСПРАВЛЕНО 06.09.2026) — если «Итог
     // с сайта выкупа» реконсилировал эту заявку, база = её реальная
     // реконсилированная доля, НЕ сырая сумма×курс. Раньше комиссия вообще
     // не знала о реконсиляции — корень бага "комиссия не учитывает
     // разницу" из репорта VASY (направление всегда в минус, см.
-    // cartsService.createCart JSDoc за полным разбором).
-    item.getEffectiveBaseRub = () => (item.reconciledShareRub !== null ? item.reconciledShareRub : item.getTotalRub());
+    // cartsService.createCart JSDoc за полным разбором). Размноженная
+    // позиция реконсиляцию не получает вообще (setReconciledShareRub
+    // ниже — no-op для неё) — effective всегда равен сырой сумме.
+    item.getEffectiveBaseRub = () => (item.isMultiplied || item.reconciledShareRub === null ? item.getTotalRub() : item.reconciledShareRub);
 
     // Связка Сумма↔Комиссия %↔Комиссия ₽↔Итог — ТОЧНО как в order-new.js
     // (см. IMPLEMENTATION-PLAN-CART-UX.md §0 п.3, VASY 06.09.2026: "если
@@ -601,6 +869,14 @@ window.CartPosition = {
     // recomputeSiteTotalReconciliation в render(). null — реконсиляция
     // выключена/сброшена, возврат к сырой сумме.
     item.setReconciledShareRub = (shareRub) => {
+      // Размноженная позиция не участвует в реконсиляции «Итог с сайта
+      // выкупа» вообще (getCostCoefficient() ниже уже отдаёт 0 — сюда
+      // попадает как страховка от вырожденного случая, когда ВСЕ веса
+      // корзины нулевые и normalizeDegenerateWeights молча раздала бы ей
+      // долю поровну — см. личную память Architect'а) — блок реконсиляции
+      // принудительно остаётся скрытым независимо от того, что решил
+      // общий проход в cart-new.js МОМЕНТОМ РАНЬШЕ.
+      if (item.isMultiplied) { item.reconciledShareRub = null; item.coefBlockEl.classList.add('hidden'); return; }
       item.reconciledShareRub = shareRub;
       if (shareRub === null) item.manualShare.reset(); // реконсиляция выключена целиком — не оставлять «вручную» висеть на скрытом блоке
       else item.manualShare.setAutoPreview(shareRub);
@@ -649,18 +925,28 @@ window.CartPosition = {
       item.amountCurrencySymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
       updateAmountRub();
       updateFeeRub();
+      // Размноженные строки конвертируют в рубли по тому же курсу — свой
+      // собственный проход, т.к. они не завязаны на amountInputEl/feeRubEl
+      // связку выше вообще (см. rowBaseRub/rowCommissionRub).
+      item.multiplyRows.forEach((r) => r.refresh());
     };
     // Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) — заявка
     // «вручную» использует число, введённое менеджером в «Итог заявки с
     // учётом разницы», как свою «известную базу» ВМЕСТО сырой
     // сумма×курс — та же роль, что раньше играл вес=0 слайдера, только
-    // явным числом, а не абстрактным коэффициентом.
+    // явным числом, а не абстрактным коэффициентом. Размноженная позиция —
+    // сумма БАЗ всех строк (Σ amount×курс), ручная фиксация недоступна.
     item.getTotalRub = () => {
+      if (item.isMultiplied) return item.multiplyRows.reduce((s, r) => s + rowBaseRub(r), 0);
       const manualRub = item.manualShare.getManualRub();
       return manualRub !== null ? manualRub : (parseFloat(item.amountInputEl.value) || 0) * ctx.getCurrentRate();
     };
-    item.getCommissionRub = () => parseFloat(item.feeRubEl.value) || 0;
-    item.getCostCoefficient = () => (item.manualShare.getManualRub() !== null ? 0 : 1);
+    item.getCommissionRub = () => (item.isMultiplied
+      ? item.multiplyRows.reduce((s, r) => s + rowCommissionRub(r), 0)
+      : parseFloat(item.feeRubEl.value) || 0);
+    // 0 — размноженная позиция никогда не участвует в разбивке разницы
+    // «Итог с сайта выкупа» (см. JSDoc setReconciledShareRub выше).
+    item.getCostCoefficient = () => (item.isMultiplied || item.manualShare.getManualRub() !== null ? 0 : 1);
     // G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) — точка входа
     // для обратного пересчёта «Получить с клиентов, ₽» с уровня корзины
     // (cart-new.js). Позиция — ОДНА клиентская заявка (в отличие от лота,
@@ -670,18 +956,56 @@ window.CartPosition = {
     // существующее поле+событие 'input' (ту же цепочку, что менеджер
     // запускает вручную), не пишет в fee-поля напрямую в обход неё —
     // иначе разошлось бы со связкой Сумма/Комиссия%/Комиссия₽/Итог.
-    item.getFeeTargets = () => ((item.ownPurchaseCheckboxEl.checked || item.onSale) ? [] : [{
-      getBaseRub: () => item.getEffectiveBaseRub(),
-      setFeePercent: (percent) => {
-        item.feePercentEl.value = percent.toFixed(2);
-        item.feePercentEl.dispatchEvent(new Event('input'));
+    item.getFeeTargets = () => {
+      if (item.isMultiplied) {
+        // Каждая незакрытая ("Личный заказ"/"На продаже" на уровне строки)
+        // строка — своя цель, ровно как обычная позиция — G1 (§8 плана)
+        // применяет единый % ко ВСЕМ клиентским заявкам корзины разом.
+        return item.multiplyRows.filter((r) => !r.isOwnPurchase && !r.onSale).map((r) => ({
+          getBaseRub: () => rowBaseRub(r),
+          setFeePercent: (percent) => {
+            r.feePercentInputEl.value = percent.toFixed(2);
+            r.feePercentInputEl.dispatchEvent(new Event('input'));
+          }
+        }));
       }
-    }]);
+      return (item.ownPurchaseCheckboxEl.checked || item.onSale) ? [] : [{
+        getBaseRub: () => item.getEffectiveBaseRub(),
+        setFeePercent: (percent) => {
+          item.feePercentEl.value = percent.toFixed(2);
+          item.feePercentEl.dispatchEvent(new Event('input'));
+        }
+      }];
+    };
     // §4 C1 — строка "по клиентам" липкой панели итогов. uidHint (`id`,
     // из ctx.nextItemId() — глобально уникален на всю корзину, общий
     // счётчик с лотами) — используется только как фолбэк-ключ группировки
     // для клиента без telegramId/username, см. clientKeyFor в cart-new.js.
     item.getClientRow = () => ctx.collectClientRow(item, `pos${id}`);
+    // Волна 7, §7 п.2 — обобщение на N строк (зеркало _cart-lot.js's
+    // getClientRows, см. allEntityRows() в cart-new.js — "позиция даёт
+    // одну строку, лот — по одной на каждую свою позицию", теперь
+    // размноженная позиция — тоже "по одной на каждую свою строку").
+    // `collectClientRow` не дублируется — ей просто подсовывается лёгкий
+    // объект-обёртка с теми же именами полей, что она читает у обычной
+    // позиции (totalPaymentEl/ownPurchaseCheckboxEl — не реальные DOM-узлы
+    // этой строки, просто объекты с тем же .value/.checked).
+    item.getClientRows = () => {
+      if (!item.isMultiplied) return [item.getClientRow()];
+      return item.multiplyRows.map((r, i) => ctx.collectClientRow({
+        rowEl: r.rowEl,
+        totalPaymentEl: { value: (rowBaseRub(r) + rowCommissionRub(r)).toFixed(2) },
+        alreadyPaidInputEl: r.alreadyPaidInputEl,
+        ownPurchaseCheckboxEl: { checked: r.isOwnPurchase },
+        onSale: r.onSale,
+        productOriginal: item.productOriginal || item.productSearchEl.value.trim(),
+        productSearchEl: item.productSearchEl,
+        notifyClientCheckboxEl: item.notifyClientCheckboxEl,
+        telegramId: r.telegramId, username: r.username, name: r.name,
+        manualClientData: r.manualClientData,
+        clientSearchEl: r.clientSearchEl
+      }, `pos${id}-row${i}`));
+    };
     // §6 Фаза E — клиент не выбран И не отмечено «Личный заказ». Тот же
     // критерий "пусто", что уже использует clientKeyFor (cart-new.js) для
     // группировки "по клиентам" (`__empty__`) — раньше это была ТОЛЬКО
@@ -692,6 +1016,30 @@ window.CartPosition = {
     // ставит чекбокс и эмулирует его 'change' (та же логика скрытия
     // client-row/обновления сводки, что при ручном клике менеджера).
     item.getUnresolvedClientRows = () => {
+      // Размноженная позиция — по одной записи на КАЖДУЮ незаполненную
+      // строку (тот же принцип, что уже применяет _cart-lot.js для строк
+      // лота), не 0/1 как у обычной позиции. "Личный заказ"/"На продаже" —
+      // здесь применяются К ОДНОЙ КОНКРЕТНОЙ строке (не всей позиции целиком,
+      // семантика "мини-таблицы клиентов" — каждая строка это будущий
+      // отдельный заказ, ровно как в обычном режиме каждая позиция).
+      if (item.isMultiplied) {
+        return item.multiplyRows
+          .map((r, i) => ({ r, i }))
+          .filter(({ r }) => !rowHasClient(r))
+          .map(({ r, i }) => ({
+            id: `pos${id}-row${i}`,
+            label: `${item.productOriginal || item.productSearchEl.value.trim() || 'товар не указан'} (клиент ${i + 1})`,
+            focusClient: () => {
+              item.setCollapsed(false);
+              requestAnimationFrame(() => {
+                r.rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                r.clientSearchEl.focus();
+              });
+            },
+            markOwnPurchase: () => { r.isOwnPurchase = true; ctx.updateSummaryDisplay(); },
+            markOnSale: () => { r.onSale = true; ctx.updateSummaryDisplay(); }
+          }));
+      }
       // НЕ читаем clientSearchEl.value.trim() как признак "клиент есть" —
       // (найдено целевым ревью перед деплоем 07.09.2026) менеджер мог
       // напечатать текст в поиск и не выбрать ни один результат из
@@ -745,12 +1093,64 @@ window.CartPosition = {
     // причину для client_kind='own' (F-35) ИЛИ statusOrder='На продаже'
     // (IMPLEMENTATION-PLAN-ON-SALE.md §3.5) — гейтить это на клиенте было бы
     // регрессией.
-    item.validateCommissionGate = () => item.ownPurchaseCheckboxEl.checked || item.onSale || item.commissionGate.validate();
+    // Размноженные строки — гейт НЕ подключён (сознательный пробел,
+    // тот же класс, что уже принят для строк «Лота» — wireCommissionGate
+    // singleton-паттерна, не годится на N строк без рефакторинга самого
+    // хелпера, см. личную память Architect'а). Плоский %-инпут на строке
+    // есть, предупреждения/обязательной причины — нет.
+    item.validateCommissionGate = () => item.isMultiplied || item.ownPurchaseCheckboxEl.checked || item.onSale || item.commissionGate.validate();
+    // Волна 7, §7 п.2 — возвращает МАССИВ (не один объект): размноженная
+    // позиция превращается в N `createOrder`-элементов payload'а корзины
+    // (`buildPayload()` в cart-new.js делает `.flatMap`, не `.map`, см. её
+    // комментарий). Обычная позиция — массив из одного элемента, тот же
+    // объект, что и раньше, просто обёрнутый.
     item.getPayload = () => {
+      if (item.isMultiplied) {
+        return item.multiplyRows.map((r) => {
+          const bookingSumRub = rowCommissionRub(r);
+          const alreadyPaidRub = parseFloat(r.alreadyPaidInputEl.value) || 0;
+          const booking = CartMoney.computeBookingFields(bookingSumRub, alreadyPaidRub);
+          return {
+            client: (r.isOwnPurchase || r.onSale)
+              ? { telegramId: '', username: '', name: '' }
+              : (r.manualClientData
+                ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }
+                : { telegramId: r.telegramId || '', username: r.username, name: r.name }),
+            isOwnPurchase: r.isOwnPurchase,
+            ...(r.onSale ? { statusOrder: 'На продаже' } : {}),
+            productOriginal: item.productOriginal || item.productSearchEl.value,
+            amount: r.amountInputEl.value,
+            // 0/null — размноженная строка не участвует в разбивке разницы
+            // «Итог с сайта выкупа» (см. JSDoc setReconciledShareRub выше).
+            costCoefficient: 0,
+            fixedShareRub: null,
+            bookingSum: bookingSumRub.toFixed(2),
+            commissionPercent: r.feePercentInputEl.value,
+            mainSum: (rowBaseRub(r) + bookingSumRub).toFixed(2),
+            mainAmountReceivedAtCreation: r.alreadyPaidInputEl.value,
+            bookingPaid: booking.bookingPaid,
+            bookingAlreadyInMainAmount: booking.bookingAlreadyInMainAmount,
+            purchaseLink: item.purchaseLinkInputEl.value.trim(),
+            remark: item.noteInputEl.value,
+            notifyClient: item.notifyClientCheckboxEl.checked,
+            // Комиссионный гейт не подключён к строкам (см. validateCommissionGate
+            // выше) — причины занижения здесь в принципе не бывает.
+            commissionLowReason: '',
+            wishlistId: '',
+            // Прогноз расходов — не запрашивается на уровне строки (та же
+            // причина, что была у старого order-new.js: своя сумма на
+            // строку, единого прогноза нет) — пусто, сервер эти поля
+            // просто не получит (то же поведение, что при пустых полях
+            // формы одиночной позиции).
+            weightSum: '', taxiKzSum: '', sdekSum: '', taxiRfSum: '', taxiRfSendSum: '', shippingRfSum: '', taxiRfReceiveSum: '',
+            requestId: generateRequestId()
+          };
+        });
+      }
       const bookingSumRub = parseFloat(item.feeRubEl.value) || 0;
       const alreadyPaidRub = parseFloat(item.alreadyPaidInputEl.value) || 0;
       const booking = CartMoney.computeBookingFields(bookingSumRub, alreadyPaidRub);
-      return {
+      return [{
         client: (item.ownPurchaseCheckboxEl.checked || item.onSale)
           ? { telegramId: '', username: '', name: '' }
           : (item.manualClientData
@@ -809,7 +1209,7 @@ window.CartPosition = {
         shippingRfSum: item.shippingRfEl.value,
         taxiRfReceiveSum: item.taxiRfReceiveEl.value,
         requestId: generateRequestId()
-      };
+      }];
     };
 
     updateAmountRub();

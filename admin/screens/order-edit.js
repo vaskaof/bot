@@ -556,6 +556,7 @@ window.Screens.orderEdit = {
       ${DeleteOrderModal.html()}
       ${PurchaseEventModal.html()}
       ${WriteoffModal.html()}
+      ${DuplicatePositionsModal.html()}
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
@@ -1586,47 +1587,86 @@ window.Screens.orderEdit = {
       }
     });
 
-    // "Дублировать" (13.08.2026, bulk order creation) — открывает "Новый
-    // заказ" в режиме "Несколько сразу" с общими полями этого заказа. НЕ
-    // копируются: клиент, примечание (не входят в общий набор), и "Оплачена
-    // ли бронь?" (явное требование VASY — новый заказ всегда стартует с
-    // этим флагом сброшенным, ставится вручную) — bulk-режим order-new.js и
-    // так не выставляет этот флаг ни для одной строки, здесь просто не
-    // передаём его вовсе, чтобы не создавать соблазн когда-нибудь его
-    // прокинуть по аналогии с остальными полями.
-    document.getElementById('duplicate-order-btn').addEventListener('click', () => {
-      if (!loadedDetails) return;
-      const bookingSum = parseFloat(loadedDetails.payments.booking.sum) || 0;
-      const amountRub = amountRubBase; // уже посчитан loadOrder() из mainSum-bookingSum
-      const feePercent = amountRub > 0 && bookingSum > 0 ? ((bookingSum / amountRub) * 100).toFixed(2) : '';
-      // ИСПРАВЛЕНО (13.08.2026) — params должны быть ПЛОСКИМ объектом
-      // (navigateTo/buildQueryString в admin/router.js не умеют вложенные
-      // объекты, см. комментарий в order-new.js у обработчика dupMode; сюда
-      // раньше уходил вложенный duplicateFrom, что молча теряло все поля).
-      navigateTo('orders/new', {
-        dupMode: '1',
-        dupProductOriginal: loadedDetails.productOriginal,
-        // ИСПРАВЛЕНО (13.08.2026, репорт VASY после первого фикса — "Выпуск"
-        // копировался как голый текст, не как выбранная позиция каталога):
-        // короткое название/фото раньше вообще не передавались, order-new.js
-        // не могло их проставить — releaseSearch.value выглядел заполненным,
-        // но без short-name/thumbnail это не совпадало с тем, что видно при
-        // обычном выборе через поиск. Теперь оба поля идут вместе с позицией.
-        dupProductShort: loadedDetails.productShort,
-        dupImageUrl: loadedDetails.imageUrl,
-        dupStatusDelivery: loadedDetails.statusDelivery,
-        dupStatusOrder: loadedDetails.statusOrder,
-        dupPurchaseChannel: loadedDetails.purchaseChannel,
-        dupPurchaseAccount: loadedDetails.purchaseAccount,
-        dupCargo: loadedDetails.cargo,
-        // dupDateOrder больше НЕ передаётся (16.08.2026, багфикс "дата молча
-        // копировалась со старого заказа") — order-new.js больше не читает
-        // это поле, дата всегда стартует на сегодня в режиме дублирования.
-        dupCurrency: loadedDetails.currency,
-        dupAmount: loadedDetails.amount,
-        dupFeePercent: feePercent
-      });
+    // "Дублировать" (Волна 7, §7 п.1 IMPLEMENTATION-PLAN-ROLES-AND-
+    // NOTIFICATIONS.md, 12.09.2026) — теперь открывает "Новую корзину"
+    // (`carts/new`), не `order-new.js` (снесён следом, п.3 того же плана).
+    // НЕ копируются: клиент, примечание, статус доставки/заказа (решение
+    // VASY — новая позиция всегда стартует обычным дефолтом статуса, как
+    // при создании с нуля, а не унаследованным от, возможно, уже
+    // завершённого старого заказа).
+    //
+    // Если у заказа есть корзина (`loadedDetails.cartId` — заполняется
+    // getOrderDetails транзитивно через lot_id, если заказ был частью
+    // лота) — ВСЕГДА явный вопрос, какие позиции этой корзины скопировать
+    // тоже (DuplicatePositionsModal), даже если позиция там ровно одна —
+    // без исключений, решение VASY. Канал/аккаунт/карго/валюта берутся из
+    // шапки ИСХОДНОЙ корзины напрямую (все позиции одной корзины физически
+    // не могут иметь разные значения этих полей — заданы один раз при её
+    // создании).
+    //
+    // Заказ без корзины (легаси, до появления Корзин) — дублируем сразу,
+    // без модалки, ровно эту одну позицию, шапку строим из полей самого
+    // заказа (единственный источник, который у нас есть).
+    const duplicatePositionsModal = DuplicatePositionsModal.init({
+      onConfirm: (selectedOrderIds) => duplicateIntoNewCart(loadedDetails, selectedOrderIds)
     });
+
+    document.getElementById('duplicate-order-btn').addEventListener('click', async () => {
+      if (!loadedDetails) return;
+      if (!loadedDetails.cartId) {
+        await duplicateIntoNewCart(loadedDetails, [loadedDetails.orderId]);
+        return;
+      }
+      const cart = await callServer('getCartDetails', loadedDetails.cartId);
+      duplicatePositionsModal.open(cart.orders, loadedDetails.orderId);
+    });
+
+    /**
+     * Строит prefill для "Новой корзины" по выбранным orderId и уходит туда.
+     * `cartHeader` — откуда брать канал/аккаунт/карго/валюту: либо шапка
+     * реальной корзины (`getCartDetails`'s верхнеуровневые поля), либо, для
+     * легаси-заказа без корзины, сам `loadedDetails` (те же имена полей).
+     * Позиции читаются ЗАНОВО через `getOrderDetails` на каждый выбранный
+     * orderId (не переиспользуем `cart.orders` — там нет productShort,
+     * нужного для точного попадания в каталожный SKU при подстановке в
+     * поиск "Выпуск", тот же баг, что уже чинили 13.08.2026). `imageUrl`
+     * НЕ переносится — карточка «Позиция» в `cart-new.js` не показывает
+     * превью товара вовсе (в отличие от старого `order-new.js`), нести
+     * поле, которое некуда положить, незачем.
+     */
+    async function duplicateIntoNewCart(cartHeader, selectedOrderIds) {
+      const positions = [];
+      for (const orderId of selectedOrderIds) {
+        const d = orderId === loadedDetails.orderId ? loadedDetails : await callServer('getOrderDetails', orderId);
+        const bookingSum = parseFloat(d.payments.booking.sum) || 0;
+        const mainSum = parseFloat(d.payments.main.sum) || 0;
+        let amountRub = mainSum - bookingSum;
+        if (amountRub < 0) amountRub = 0;
+        const feePercent = amountRub > 0 && bookingSum > 0 ? ((bookingSum / amountRub) * 100).toFixed(2) : '';
+        positions.push({
+          productOriginal: d.productOriginal,
+          productShort: d.productShort,
+          amount: d.amount,
+          feePercent
+        });
+      }
+      // sessionStorage, не query-параметры navigateTo (роутер умеет только
+      // плоский объект — см. исправление 13.08.2026 у прежнего dupMode) и не
+      // localStorage (одноразовая передача между двумя экранами одной
+      // сессии, не должна пережить закрытие вкладки — тот же приём, что
+      // `knopka_open_task_title` в `contests.js`'s deep-link). `cart-new.js`
+      // читает и сразу удаляет ключ на монтировании.
+      sessionStorage.setItem('knopka_cart_duplicate_prefill', JSON.stringify({
+        header: {
+          currency: cartHeader.currency,
+          purchaseChannel: cartHeader.purchaseChannel,
+          purchaseAccount: cartHeader.purchaseAccount,
+          cargo: cartHeader.cargo
+        },
+        positions
+      }));
+      navigateTo('carts/new');
+    }
 
     // --- Удаление заказа (16.08.2026, см. личную память Architect'а
     // project_bot_knopka_order_deletion) — двойной гейт против случайного
