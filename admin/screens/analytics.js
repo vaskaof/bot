@@ -55,8 +55,247 @@
  * "Поиск → Вишлист" — эвристика (Postgres, соседство по времени в
  * `analyticsRepository.getSearchToWishlistConversion`), помечена на экране
  * как "оценка", не смешивается с точной цифрой в один общий процент.
+ *
+ * Человекочитаемые названия методов (14.09.2026, запрос VASY) — до этого
+ * "Топ методов"/"Медленные методы"/"Тренд ошибок"/"Последние ошибки" везде
+ * показывали сырой технический идентификатор метода (`getOrdersList` и
+ * т.п.) без перевода. METHOD_LABELS/methodLabel() ниже — статический
+ * словарь на основе `server/src/api/contract.js` (ADMIN_METHODS+
+ * CLIENT_METHODS), показывает "Название (technicalName)"; метод, которого
+ * нет в словаре (новый метод, GAS-прокси route:'proxy' и т.п.) — тихий
+ * фолбэк на сырой идентификатор, как было раньше. Пополнять словарь при
+ * добавлении новых методов НЕ обязательно (не блокирует работу экрана),
+ * но желательно для читаемости.
  */
 window.Screens = window.Screens || {};
+
+const METHOD_LABELS = {
+  // ADMIN_METHODS (server/src/api/contract.js)
+  addCatalogLink: 'Добавить ссылку в каталог',
+  addCatalogLinkWithResolve: 'Добавить ссылку в каталог (с автоподбором)',
+  addDictionaryValue: 'Добавить значение в справочник',
+  addStaffMember: 'Добавить сотрудника',
+  addWishlistItemForClient: 'Добавить позицию в вишлист клиента',
+  applyCollectiveLogisticsSharesToOrders: 'Применить доли логистики коллективки к заказам',
+  applyCreditToOldModelOrder: 'Применить кредит к заказу (старая модель)',
+  applyFxBufferRecompute: 'Применить пересчёт валютного буфера',
+  approvePaymentClaim: 'Подтвердить заявку об оплате',
+  approveTaskSubmission: 'Одобрить выполнение задания',
+  assignClientPayoutRole: 'Назначить роль выплаты клиенту',
+  assignOrderToCollective: 'Привязать заказ к коллективке',
+  assignOrdersToCollective: 'Привязать заказы к коллективке',
+  blockClient: 'Заблокировать клиента',
+  bulkDeleteOrders: 'Массовое удаление заказов',
+  cancelClientPayment: 'Отменить платёж клиента',
+  cancelLottery: 'Отменить лотерею',
+  cancelManualAllocation: 'Отменить ручное распределение',
+  cancelOrderPayment: 'Отменить оплату заказа',
+  checkClientWishlistMatch: 'Проверить совпадение с вишлистом клиента',
+  createCart: 'Создать корзину',
+  createCollective: 'Создать коллективку',
+  createLot: 'Создать лот',
+  createLottery: 'Создать лотерею',
+  createManualAllocation: 'Создать ручное распределение',
+  createNews: 'Создать новость',
+  createOrder: 'Создать заказ',
+  createOrdersBatch: 'Создать заказы пачкой',
+  createSku: 'Создать позицию каталога',
+  createTask: 'Создать задание',
+  deactivateStaffMember: 'Деактивировать сотрудника',
+  deleteCatalogLink: 'Удалить ссылку каталога',
+  deleteCollective: 'Удалить коллективку',
+  deleteFinancialSetting: 'Удалить финансовую настройку',
+  deleteNews: 'Удалить новость',
+  deleteOrder: 'Удалить заказ',
+  deleteSku: 'Удалить позицию каталога',
+  drawLotteryPrize: 'Разыграть приз лотереи',
+  editClientPayment: 'Изменить платёж клиента',
+  editOrderPayment: 'Изменить оплату заказа',
+  exportUsageEvents: 'Экспорт событий аналитики (CSV)',
+  findDuplicateCatalogClusters: 'Найти дубли в каталоге',
+  finishLottery: 'Завершить лотерею',
+  getAdminLotteriesList: 'Список лотерей (админ)',
+  getAdminLotteryBoard: 'Доска лотереи (админ)',
+  getAdminTasksList: 'Список заданий (админ)',
+  getBankStatementRows: 'Строки банковской выписки',
+  getBulkOrderDeletionPreview: 'Превью массового удаления заказов',
+  getCalculatorKztToRubRate: 'Курс ₸→₽ (калькулятор)',
+  getCartDetails: 'Детали корзины',
+  getCartsList: 'Список корзин',
+  getCatalogLinksForSku: 'Ссылки позиции каталога',
+  getCatalogList: 'Список каталога',
+  getCatalogOrdersAudit: 'Аудит заказов по каталогу',
+  getCatalogTagValues: 'Значения тегов каталога',
+  getClientBlockLog: 'Журнал блокировок клиента',
+  getClientByTelegramId: 'Клиент по Telegram ID',
+  getClientCreditBalance: 'Кредитный баланс клиента',
+  getClientPaymentsRollup: 'Сводка платежей клиента',
+  getClientPayoutRoles: 'Роли выплат клиента',
+  getClientReport: 'Отчёт по клиенту',
+  getClientsList: 'Список клиентов',
+  getClientsMoneyContext: 'Денежный контекст клиентов',
+  getClosedWithoutPurchaseReport: 'Отчёт "закрыты без выкупа"',
+  getCollectiveAutomationConfig: 'Настройки автоматизации коллективки',
+  getCollectiveDetails: 'Детали коллективки',
+  getCollectiveLogisticsContext: 'Контекст логистики коллективки',
+  getCollectivesList: 'Список коллективок',
+  getCommissionLowReasonReport: 'Отчёт по заниженной комиссии',
+  getContestDashboard: 'Дашборд конкурсов/билетов',
+  getCostBufferReport: 'Отчёт по буферу расходов',
+  getDeletedOrdersList: 'Список удалённых заказов',
+  getDictionaries: 'Справочники',
+  getEarmarksForClient: 'Метки/резервы клиента',
+  getEntityAuditLog: 'Журнал изменений сущности',
+  getFinancialSettings: 'Финансовые настройки',
+  getFxBufferPlanVsFactReport: 'План/факт валютного буфера',
+  getFxBufferRecomputeSuggestion: 'Предпросмотр пересчёта буфера',
+  getFxExposureAlerts: 'Алерты валютного риска',
+  getIntermediaryCommissionRate: 'Комиссия посредника',
+  getLotDetails: 'Детали лота',
+  getLotsList: 'Список лотов',
+  getLotteryParticipants: 'Участники лотереи',
+  getManagerPerformanceReport: 'Отчёт по менеджерам',
+  getMarginReport: 'Отчёт по марже',
+  getMyAccessInfo: 'Информация о доступе (свой аккаунт)',
+  getNewsList: 'Список новостей',
+  getOrderDeletionPreview: 'Превью удаления заказа',
+  getOrderDetails: 'Детали заказа',
+  getOrderForecast: 'Прогноз расходов заказа',
+  getOrderPurchaseSummary: 'Сводка выкупов по заказу',
+  getOrderWriteoffs: 'Списания по заказу',
+  getOrdersForClientAdmin: 'Заказы клиента (админ)',
+  getOrdersList: 'Список заказов',
+  getOwnPurchasesReport: 'Отчёт по личным закупкам',
+  getPaymentsForClient: 'Платежи клиента',
+  getPendingPaymentClaims: 'Заявки об оплате (ожидают)',
+  getPendingTaskSubmissions: 'Заявки на задания (ожидают)',
+  getPnlSnapshot: 'Снимок P&L',
+  getQuestionsForClientAdmin: 'Вопросы клиента (админ)',
+  getQuestionsList: 'Список вопросов',
+  getRatesForDate: 'Курс на дату',
+  getRecentApprovedTaskSubmissions: 'Недавно одобренные задания',
+  getRemainingLotteryParticipants: 'Оставшиеся участники лотереи',
+  getReminders: 'Напоминания',
+  getRemindersSummary: 'Сводка напоминаний',
+  getSharePayoutsReport: 'Отчёт по выплатам долей',
+  getShippingRecommendations: 'Рекомендации по отправке',
+  getSkuCostByChannelReport: 'Себестоимость по каналам',
+  getSkuCostHistoryReport: 'История себестоимости SKU',
+  getSkuDetails: 'Детали позиции каталога',
+  getStaffAuditLog: 'Журнал действий персонала',
+  getStaffList: 'Список персонала',
+  getUsageAnalytics: 'Аналитика использования (сводка)',
+  getUsageErrorTrend: 'Тренд ошибок',
+  getUsageFunnel: 'Воронка каталог→вишлист→заказ',
+  getUsageRetention: 'Возврат клиентов',
+  getUsageTopUsers: 'Активные пользователи',
+  getUserUsageAnalytics: 'Аналитика по пользователю',
+  getWalletBalance: 'Баланс кошелька',
+  getWishlistDemand: 'Спрос по вишлисту',
+  getWishlistForClientAdmin: 'Вишлист клиента (админ)',
+  getWorkingCapitalFundBalance: 'Остаток фонда оборотных средств',
+  importBankStatement: 'Импорт банковской выписки',
+  linkStaffAccounts: 'Связать аккаунты сотрудника',
+  linkWishlistItemToSku: 'Привязать вишлист к каталогу',
+  listBankStatements: 'Список банковских выписок',
+  listOrderWriteoffs: 'Список списаний',
+  listPnlSnapshots: 'Список снимков P&L',
+  markSharePayout: 'Отметить выплату доли',
+  previewApplyCollectiveLogisticsSharesToOrders: 'Превью применения долей логистики',
+  previewDeliveryStatusChange: 'Превью смены статуса доставки',
+  publishLottery: 'Опубликовать лотерею',
+  publishNews: 'Опубликовать новость',
+  reactivateStaffMember: 'Восстановить сотрудника',
+  recordCartPurchaseEvent: 'Записать выкуп по корзине',
+  recordClientPaymentDirect: 'Записать платёж клиента напрямую',
+  recordFxConversion: 'Записать конвертацию валюты',
+  recordOrderPayment: 'Записать оплату заказа',
+  recordOrderWriteoff: 'Записать списание по заказу',
+  recordPurchaseEvent: 'Записать факт выкупа',
+  refreshCatalogList: 'Обновить список каталога',
+  refreshOrdersList: 'Обновить список заказов',
+  refreshRate: 'Обновить курс валют',
+  refundClientCredit: 'Вернуть кредит клиенту',
+  rejectPaymentClaim: 'Отклонить заявку об оплате',
+  rejectTaskSubmission: 'Отклонить выполнение задания',
+  releaseClientCredit: 'Списать кредит клиента',
+  releaseClientCreditForClient: 'Списать кредит клиента (со счёта клиента)',
+  renameStaffMember: 'Переименовать сотрудника',
+  replacePayoutShares: 'Заменить доли выплат',
+  resolveOrderProductLink: 'Распознать ссылку товара для заказа',
+  resolveProductLinkForAdmin: 'Распознать ссылку товара (админ)',
+  restoreOrder: 'Восстановить заказ',
+  revokeClientPayoutRole: 'Снять роль выплаты клиента',
+  revokeTaskReward: 'Отозвать награду за задание',
+  saveCollectiveLogisticsReconciliation: 'Сохранить сверку логистики коллективки',
+  saveQuestionAnswer: 'Сохранить ответ на вопрос',
+  searchClients: 'Поиск клиентов',
+  searchOrdersForCollective: 'Поиск заказов для коллективки',
+  searchSku: 'Поиск по каталогу',
+  setCartManagerId: 'Назначить менеджера корзины',
+  setClientIntermediary: 'Отметить клиента посредником (легаси)',
+  setClientManagerId: 'Назначить менеджера клиента',
+  setClientType: 'Изменить тип клиента',
+  setCollectiveSentAt: 'Указать дату отправки коллективки',
+  setCollectiveStatusMapping: 'Настроить соответствие статусов коллективки',
+  setIntermediaryCommissionRate: 'Установить комиссию посредника',
+  setOrderLogisticsUnits: 'Указать единицы логистики заказа',
+  setOrdersDeliveryStatus: 'Массовая смена статуса доставки',
+  setOrdersStatusOrder: 'Массовая смена статуса заказа',
+  setReminderStageAmount: 'Указать сумму стадии напоминания',
+  setStaffCanViewAllClients: 'Настроить видимость всех клиентов сотруднику',
+  snoozeReminder: 'Отложить напоминание',
+  takePnlSnapshot: 'Сделать снимок P&L',
+  toggleTaskActive: 'Включить/выключить задание',
+  unassignOrderFromCollective: 'Отвязать заказ от коллективки',
+  unassignOrdersFromCollective: 'Отвязать заказы от коллективки',
+  unblockClient: 'Разблокировать клиента',
+  unlinkStaffAccounts: 'Отвязать аккаунты сотрудника',
+  updateCollective: 'Изменить коллективку',
+  updateLottery: 'Изменить лотерею',
+  updateNews: 'Изменить новость',
+  updateOrder: 'Изменить заказ',
+  updateSku: 'Изменить позицию каталога',
+  updateStaffRole: 'Изменить роль сотрудника',
+  updateTask: 'Изменить задание',
+  upsertFinancialSetting: 'Сохранить финансовую настройку',
+  // CLIENT_METHODS (server/src/api/contract.js)
+  addWishlistItem: 'Добавить в вишлист',
+  bookLotteryCell: 'Забронировать ячейку лотереи',
+  deleteWishlistItem: 'Удалить из вишлиста',
+  getClientNewsFeed: 'Лента новостей',
+  getClientOrderDetails: 'Детали заказа (клиент)',
+  getClientOrdersList: 'Список заказов (клиент)',
+  getClientQuestionsList: 'Список вопросов (клиент)',
+  getClientWishlist: 'Вишлист',
+  getLotteriesList: 'Список лотерей',
+  getLotteryBoard: 'Доска лотереи',
+  getMyCreditBalance: 'Мой кредитный баланс',
+  getMyNotificationSettings: 'Настройки уведомлений',
+  getMyPaymentClaims: 'Мои заявки об оплате',
+  getMyPaymentsRollup: 'Сводка моих платежей',
+  getMyPoolLeftover: 'Остаток моего пула',
+  getReferralInfo: 'Реферальная информация',
+  getTasksList: 'Список заданий',
+  getUserContext: 'Контекст пользователя',
+  joinLottery: 'Участвовать в лотерее',
+  recordPrivacyConsent: 'Согласие с политикой конфиденциальности',
+  resolveWishlistLink: 'Распознать ссылку для вишлиста',
+  searchSkuForClient: 'Поиск по каталогу (клиент)',
+  setMyNotificationSettings: 'Сохранить настройки уведомлений',
+  setNewsSubscription: 'Подписка на новости',
+  submitOrderQuestion: 'Задать вопрос',
+  submitPaymentClaim: 'Заявить об оплате',
+  submitTaskProof: 'Отправить задание на проверку',
+  updateWishlistItem: 'Изменить позицию вишлиста',
+  updateWishlistItemStatus: 'Изменить статус позиции вишлиста'
+};
+
+function methodLabel(method) {
+  const label = METHOD_LABELS[method];
+  return label ? `${label} (${method})` : method;
+}
+
 window.Screens.analytics = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
@@ -438,7 +677,7 @@ window.Screens.analytics = {
         <div class="flex items-center gap-1 text-[10px] text-gray-500">
           <span class="w-2 h-2 rounded-full shrink-0" style="background-color:${colors[i]}"></span>
           <span class="text-[9px] px-1 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
-          <span class="truncate">${escapeHtmlClient(m.method)} (${m.failed})</span>
+          <span class="truncate">${escapeHtmlClient(methodLabel(m.method))} (${m.failed})</span>
         </div>
       `).join('');
 
@@ -493,7 +732,7 @@ window.Screens.analytics = {
             <div class="flex items-center justify-between text-[13px]">
               <div class="flex items-center gap-1.5 min-w-0">
                 <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
-                <span class="text-gray-800 truncate">${escapeHtmlClient(m.method)}</span>
+                <span class="text-gray-800 truncate">${escapeHtmlClient(methodLabel(m.method))}</span>
               </div>
               <div class="shrink-0 text-right">
                 <div class="text-gray-500">~${m.avgMs} мс</div>
@@ -513,7 +752,7 @@ window.Screens.analytics = {
             <div class="flex items-center justify-between text-[13px]">
               <div class="flex items-center gap-1.5 min-w-0">
                 <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">${escapeHtmlClient(routeLabels[m.route] || m.route)}</span>
-                <span class="text-gray-800 truncate">${escapeHtmlClient(m.method)}</span>
+                <span class="text-gray-800 truncate">${escapeHtmlClient(methodLabel(m.method))}</span>
               </div>
               <div class="shrink-0 text-gray-500">${m.count}${m.failed > 0 ? ` <span class="text-red-500">(${m.failed} ошиб.)</span>` : ''}</div>
             </div>
@@ -554,7 +793,7 @@ window.Screens.analytics = {
         <div class="space-y-2">
           ${recentErrors.map(e => `
             <div class="text-[12px] border-l-2 border-red-300 pl-2">
-              <div class="text-gray-500">${escapeHtmlClient(e.method)} · ${escapeHtmlClient(e.isAdmin ? 'админ' : 'клиент')}${e.telegramId ? ` (${escapeHtmlClient(e.telegramId)})` : ''}</div>
+              <div class="text-gray-500">${escapeHtmlClient(methodLabel(e.method))} · ${escapeHtmlClient(e.isAdmin ? 'админ' : 'клиент')}${e.telegramId ? ` (${escapeHtmlClient(e.telegramId)})` : ''}</div>
               <div class="text-red-600">${escapeHtmlClient(e.errorMessage || 'без текста ошибки')}</div>
             </div>
           `).join('')}
