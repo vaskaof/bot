@@ -1433,7 +1433,24 @@ window.Screens.cartNew = {
           discountAlertEl.classList.add('hidden');
           diffSplitRowEl.classList.add('hidden');
           items.forEach((it) => { if (it.coefBlockEl) it.coefBlockEl.classList.add('hidden'); });
-          items.forEach((it) => it.setReconciledShareRub(null));
+          // ИСПРАВЛЕНО 13.09.2026 (найдено при миграции e2e с order-new.js
+          // на cart-new.js, Волна 7 п.3) — раньше звалось на КАЖДОЙ заявке
+          // безусловно, даже когда реконсиляция для неё и так уже была
+          // выключена (reconciledShareRub уже null). setReconciledShareRub
+          // же дёргает updateFeeRub() как побочный эффект — тот
+          // пересчитывает "Комиссию ₽" ОБРАТНО из "Комиссии %", что стирает
+          // в пустоту любое значение, которое менеджер только что ввёл
+          // НАПРЯМУЮ в "Итог" (§2 A1's updateFromTotal) для заявки с
+          // пустой/нулевой "Суммой" — там feePercentFromRub(0, X) всегда 0
+          // (не может выразить абсолютный ₽ без базы), round-trip через %
+          // теряет исходное число. Реальный сценарий: любой ввод в поле
+          // "Итог"/"Комиссия %"/"Комиссия ₽" вызывает recomputeTotals()
+          // (через updateFeeRub/updateFeePercent/updateFromTotal), который
+          // ПОКА реконсиляция выключена — эта самая ветка — и стирал только
+          // что введённое обратно. Пропуск уже-неактивных заявок убирает
+          // побочный эффект ПОЛНОСТЬЮ для общего случая (реконсиляция не
+          // используется), ничего не меняя для активной реконсиляции ниже.
+          items.forEach((it) => { if (it.reconciledShareRub !== null) it.setReconciledShareRub(null); });
           discountRecipient = null;
           return;
         }

@@ -54,11 +54,10 @@ const ROUTES = [
   // по образцу collectiveMatch.
   { path: 'lots', screen: 'lots', navKey: null, showNav: true },
   { path: 'lots/new', screen: 'lotNew', navKey: null, showNav: true },
-  { path: 'orders/new', screen: 'orderNew', navKey: null, showNav: true },
-  // Рефакторинг «Корзина», фаза 3 (REFACTOR-CART.md §4, 03.09.2026) —
-  // отдельная точка входа РЯДОМ с 'orders/new' (решение VASY: отдельная
-  // кнопка "+ Корзина", не feature-флаг и не замена "+ Новый заказ" —
-  // переходный период, старое не убирается, см. cart-new.js JSDoc).
+  // ИСПРАВЛЕНО 13.09.2026 (Волна 7 п.3, снос order-new.js) — маршрут
+  // 'orders/new'/screen 'orderNew' убран целиком, экран снесён физически
+  // (см. cart-new.js JSDoc — переходный период закончился, «Корзина»
+  // единственная точка входа в создание заказа с 05.09.2026).
   { path: 'carts/new', screen: 'cartNew', navKey: null, showNav: true },
   // Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7, 07.09.2026) — список корзин,
   // тот же паттерн, что 'lots'/'collectives' — не в нижней навигации, вход

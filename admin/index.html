@@ -6,7 +6,10 @@
 </head>
 <body>
   <!-- Заглушка-редирект (admin SPA, 02.08.2026) — страница объединена в
-       app.html#/orders/new. Оставлена на случай старых закладок/ссылок. -->
-  <script>window.location.replace('app.html#/orders/new');</script>
+       app.html#/orders. Оставлена на случай старых закладок/ссылок.
+       ИСПРАВЛЕНО 13.09.2026 (Волна 7 п.3, снос order-new.js) — раньше вела
+       на #/orders/new, маршрут снесён вместе с экраном; ведёт на список
+       заказов (создание — только через «Корзину»). -->
+  <script>window.location.replace('app.html#/orders');</script>
 </body>
 </html>
