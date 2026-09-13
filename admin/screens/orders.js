@@ -244,15 +244,27 @@ window.Screens.orders = {
     // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — "мои заказы". Менеджер: жёсткий
     // фильтр по своему telegramId, без переключателя. Админ: дропдаун по
     // конкретному сотруднику, дефолт "Все", восстанавливается из ordersListState.
-    if (window.CURRENT_ACCESS_ROLE === 'manager') {
-      mineOnlyBadge.classList.remove('hidden');
-    } else if (window.CURRENT_ACCESS_ROLE === 'admin') {
+    // Волна 3, остаток (13.09.2026) — `getOrdersList` теперь реально
+    // фильтрует НА СЕРВЕРЕ (раньше "мои заказы" была чисто фронтовой
+    // маскировкой). Менеджер с `can_view_all_clients=true` уже получает от
+    // сервера ВСЕ заказы — ему нужен тот же дропдаун-выбор, что админу, а
+    // НЕ жёсткий self-фильтр (тот бы молча спрятал то, что сервер честно
+    // отдал). См. `canSeeAll` в render() ниже — та же граница.
+    const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
+    if (canSeeAll) {
       callServer('getStaffList').then((staffList) => {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
         managerFilterSelect.value = managerFilter;
         managerFilterSelect.classList.remove('hidden');
       }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+    } else {
+      // Связка аккаунтов (Волна 3, остаток, п.4) — сервер уже объединил
+      // видимость с партнёром, бейдж отражает это, а не только "ваши".
+      mineOnlyBadge.textContent = window.CURRENT_LINKED_STAFF_TELEGRAM_ID
+        ? `Показаны заказы: ваши + ${window.CURRENT_LINKED_STAFF_NAME || 'связанный аккаунт'}`
+        : 'Показаны только ваши заказы';
+      mineOnlyBadge.classList.remove('hidden');
     }
     managerFilterSelect.addEventListener('change', () => { managerFilter = managerFilterSelect.value; render(); });
 
@@ -358,10 +370,16 @@ window.Screens.orders = {
       const query = searchInput.value.trim().toLowerCase();
 
       let filtered = allOrders;
-      // Фаза 2 (roles/RBAC, M2.6) — "мои заказы". Менеджер: всегда жёстко
-      // по своему telegramId (нет UI-переключателя). Админ: по выбору в
-      // manager-filter-select, пусто = все.
-      const effectiveManagerId = window.CURRENT_ACCESS_ROLE === 'manager' ? window.CURRENT_STAFF_TELEGRAM_ID : managerFilter;
+      // Фаза 2 (roles/RBAC, M2.6) — "мои заказы". Волна 3, остаток
+      // (13.09.2026): сервер (`getOrdersList`) уже вернул РОВНО то, что
+      // этому пользователю положено видеть (свой набор + связанный аккаунт,
+      // либо всё — см. `canSeeAll` выше) — здесь остаётся ТОЛЬКО
+      // необязательное admin-style сужение по `manager-filter-select`,
+      // доступное когда `canSeeAll`. Раньше это поле жёстко фильтровало
+      // менеджера по его ОДНОМУ telegramId даже когда сервер уже прислал
+      // расширенный/связанный набор — молча прятало часть уже честно
+      // отданных данных.
+      const effectiveManagerId = canSeeAll ? managerFilter : '';
       if (effectiveManagerId) {
         filtered = filtered.filter(o => o.managerId === effectiveManagerId);
       }

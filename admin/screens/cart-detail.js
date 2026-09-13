@@ -55,6 +55,17 @@ window.Screens.cartDetail = {
                 <div id="cart-entry-count" class="font-medium text-gray-700"></div>
               </div>
             </div>
+            <!-- Волна 3, остаток, п.6 (13.09.2026) — переназначение
+                 менеджера ВСЕЙ корзине разом, admin-only (сервер —
+                 setCartManagerId, bulk по всем заказам корзины). Скрыто
+                 целиком для менеджера — та же логика, что order-edit.js's
+                 аналогичная строка. -->
+            <div id="cart-manager-row" class="hidden mt-3 pt-3 border-t border-gray-100">
+              <div class="text-[11px] text-gray-400 mb-1">Менеджер (все заявки корзины)</div>
+              <select id="cart-manager-select" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+                <option value="">Не назначен</option>
+              </select>
+            </div>
           </div>
 
           <!-- "План против факта" (F2) — видно только если корзина создавалась
@@ -110,6 +121,29 @@ window.Screens.cartDetail = {
       purchaseEventModal.open(currentCartDetails.cartId, currentCartDetails.currency);
     });
 
+    // Волна 3, остаток, п.6 (13.09.2026) — применяется сразу на смену
+    // значения (тот же паттерн, что "Связка" на экране "Персонал"), не через
+    // отдельную кнопку "Сохранить" — этот экран целиком read-only/на
+    // немедленных действиях (см. "Факт выкупа" выше), не форма с общим сабмитом.
+    document.getElementById('cart-manager-select').addEventListener('change', async (e) => {
+      const newManagerId = e.target.value;
+      const label = e.target.selectedOptions[0] ? e.target.selectedOptions[0].textContent : newManagerId;
+      const ok = await showConfirmModal(
+        newManagerId
+          ? `Переназначить ВСЕ заявки этой корзины на "${label}"?`
+          : 'Снять привязку менеджера со ВСЕХ заявок этой корзины?'
+      );
+      if (!ok) { e.target.value = (currentCartDetails && currentCartDetails.orders[0] && currentCartDetails.orders[0].managerId) || ''; return; }
+      try {
+        await callServer('setCartManagerId', params.cartId, newManagerId);
+        showSaveToast(true, 'Менеджер корзины изменён.');
+        await load();
+      } catch (error) {
+        showSaveToast(false, error.message || 'Не удалось изменить менеджера корзины.');
+        e.target.value = (currentCartDetails && currentCartDetails.orders[0] && currentCartDetails.orders[0].managerId) || '';
+      }
+    });
+
     let currentCartDetails = null;
 
     function formatMoney(n) {
@@ -128,6 +162,25 @@ window.Screens.cartDetail = {
         document.getElementById('cart-cargo').textContent = details.cargo || '—';
         document.getElementById('cart-entry-count').textContent =
           `${details.summary.orderCount} заказ(ов)${details.summary.lotCount > 0 ? `, ${details.summary.lotCount} лот(ов)` : ''}`;
+
+        // Волна 3, остаток, п.6 (13.09.2026) — см. HTML-комментарий выше.
+        // `getStaffList` сам admin-only на сервере — менеджер даже не
+        // пытается его звать, строка остаётся скрытой.
+        if (window.CURRENT_ACCESS_ROLE === 'admin') {
+          const managerRow = document.getElementById('cart-manager-row');
+          const managerSelect = document.getElementById('cart-manager-select');
+          managerRow.classList.remove('hidden');
+          try {
+            const staffList = await callServer('getStaffList');
+            managerSelect.innerHTML = '<option value="">Не назначен</option>' +
+              staffList.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}${s.isActive ? '' : ' (отключён)'}</option>`).join('');
+            // Заказы корзины физически МОГУТ иметь разные manager_id (сервер
+            // это технически допускает, см. cartsService.setCartManagerId
+            // JSDoc) — берём значение первого заказа как отображаемое,
+            // применение всегда переставляет ВСЕ на один и тот же выбор.
+            managerSelect.value = (details.orders[0] && details.orders[0].managerId) || '';
+          } catch { /* необязательное поле — сбой не блокирует карточку корзины */ }
+        }
 
         // "План против факта" (F2) — та же логика бейджа расхождения, что
         // `cart-new.js`'s липкая панель показывает ДО сохранения (§4 C1).

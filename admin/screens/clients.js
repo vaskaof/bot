@@ -167,14 +167,28 @@ window.Screens.clients = {
     // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — "мои клиенты". Менеджер:
     // жёсткий фильтр по своему telegramId, без переключателя (та же логика,
     // что orders.js). Админ: дропдаун по конкретному сотруднику, дефолт "Все".
-    if (window.CURRENT_ACCESS_ROLE === 'manager') {
-      mineOnlyBadge.classList.remove('hidden');
-    } else if (window.CURRENT_ACCESS_ROLE === 'admin') {
+    // Волна 3, остаток (13.09.2026) — `getClientsList` теперь реально
+    // ограничивает НА СЕРВЕРЕ для обычного менеджера (и полностью
+    // ИГНОРИРУЕТ этот `managerId`, если пришёл от него — см. backend
+    // clientsService.listClients JSDoc), а менеджеру с
+    // `can_view_all_clients=true` сервер отдаёт всех БЕЗ ограничения. Такому
+    // менеджеру нужен тот же дропдаун-выбор, что админу — жёсткая отправка
+    // `managerId: window.CURRENT_STAFF_TELEGRAM_ID` для ЛЮБОГО менеджера
+    // (было раньше) молча ограничила бы и его тоже, несмотря на права.
+    const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
+    if (canSeeAll) {
       callServer('getStaffList').then((staffList) => {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
         managerFilterSelect.classList.remove('hidden');
       }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+    } else {
+      // Связка аккаунтов (Волна 3, остаток, п.4) — сервер уже объединил
+      // видимость с партнёром, бейдж отражает это, а не только "ваши".
+      mineOnlyBadge.textContent = window.CURRENT_LINKED_STAFF_TELEGRAM_ID
+        ? `Показаны клиенты: ваши + ${window.CURRENT_LINKED_STAFF_NAME || 'связанный аккаунт'}`
+        : 'Показаны только ваши клиенты';
+      mineOnlyBadge.classList.remove('hidden');
     }
     managerFilterSelect.addEventListener('change', () => { managerFilter = managerFilterSelect.value; loadList(); });
 
@@ -183,8 +197,9 @@ window.Screens.clients = {
     async function loadList() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const effectiveManagerId = window.CURRENT_ACCESS_ROLE === 'manager' ? window.CURRENT_STAFF_TELEGRAM_ID : managerFilter;
-        const { items, total } = await callServer('getClientsList', { query, blockedOnly, managerId: effectiveManagerId, sortBy, limit: 100, offset: 0 });
+        // canSeeAll=false — не шлём managerId вообще (сервер сам подставит
+        // область видимости по user; см. clientsService.listClients).
+        const { items, total } = await callServer('getClientsList', { query, blockedOnly, managerId: canSeeAll ? managerFilter : undefined, sortBy, limit: 100, offset: 0 });
         countLabel.textContent = `Найдено: ${total}`;
         renderList(items);
         loadTop5();

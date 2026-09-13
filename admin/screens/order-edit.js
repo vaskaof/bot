@@ -181,6 +181,25 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
+          <!-- Волна 3, остаток, п.6 (13.09.2026) — переназначение менеджера,
+               admin-only (сервер — уже существующий updateOrder's
+               fields.managerId, admin-only и там же). Скрыт целиком для
+               менеджера (у него нет легитимной причины видеть/трогать это
+               поле — тот же принцип, что "Списание"). -->
+          <div id="order-manager-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+                <i data-lucide="user-cog" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Менеджер</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="order-manager-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800">
+                <option value="">Не назначен</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — видно только при
                одном из 4 статусов-причин, см. WRITEOFF_REASON_STATUSES ниже. -->
           <div id="writeoff-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-red-50/50">
@@ -721,6 +740,23 @@ window.Screens.orderEdit = {
         fields.isOwnPurchase = ownPurchaseChecked;
       }
 
+      // Волна 3, остаток, п.6 (13.09.2026) — тот же принцип, что isOwnPurchase
+      // выше: отправляем managerId, ТОЛЬКО если реально изменён в этом
+      // заходе (сервер трактует отсутствие ключа как "не трогать", см.
+      // ordersService.updateOrder JSDoc). ЯВНАЯ проверка роли, а не только
+      // наличия select в DOM — для не-admin (`order-manager-row` скрыт,
+      // `loadOrder` НЕ вызывает getStaffList) select остаётся на дефолтной
+      // пустой опции независимо от реального managerId заказа; без этой
+      // проверки ЛЮБОЕ сохранение менеджером заказа, у которого менеджер уже
+      // назначен, тихо обнулило бы это поле как "изменённое" (пустая строка
+      // ≠ реальный managerId).
+      if (window.CURRENT_ACCESS_ROLE === 'admin') {
+        const managerSelectEl = document.getElementById('order-manager-select');
+        if (managerSelectEl.value !== (loadedDetails ? (loadedDetails.managerId || '') : '')) {
+          fields.managerId = managerSelectEl.value;
+        }
+      }
+
       // Черновик — ДО отправки, как у order-new.js, только чисто UX-цель
       // (см. ORDER_EDIT_DRAFT_KEY выше) — updateOrder сам по себе безопасен
       // к повтору, черновик просто не даёт менеджеру остаться в неведении,
@@ -1250,6 +1286,22 @@ window.Screens.orderEdit = {
         deliveryLadderEl.innerHTML = buildDeliveryLadder(ladder, statusDeliverySelect.value, {});
       });
       FormHelpers.setDictionaryValue('select[data-dict="statusOrder"]', details.statusOrder);
+
+      // Волна 3, остаток, п.6 (13.09.2026) — переназначение менеджера,
+      // admin-only. `getStaffList` сам admin-only на сервере
+      // (MANAGER_EXCLUDED_METHODS) — менеджер даже не пытается его звать,
+      // строка остаётся скрытой (см. её `hidden` в разметке выше).
+      if (window.CURRENT_ACCESS_ROLE === 'admin') {
+        const managerRow = document.getElementById('order-manager-row');
+        const managerSelect = document.getElementById('order-manager-select');
+        managerRow.classList.remove('hidden');
+        try {
+          const staffList = await callServer('getStaffList');
+          managerSelect.innerHTML = '<option value="">Не назначен</option>' +
+            staffList.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}${s.isActive ? '' : ' (отключён)'}</option>`).join('');
+          managerSelect.value = details.managerId || '';
+        } catch { /* необязательное поле — сбой не блокирует форму заказа */ }
+      }
 
       // Списание (Э8, M8.1) — тот же приём, что delivery-ladder выше:
       // снимок с сервера на загрузке + пересчёт на 'change', не дублируем

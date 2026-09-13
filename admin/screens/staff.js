@@ -25,6 +25,16 @@
  * 05.09.2026). `getEntityAuditLog` — admin-only на сервере
  * (`MANAGER_EXCLUDED_METHODS`), эта вкладка не имеет смысла для менеджера
  * даже в теории — тот же принцип, что «Отчёт по менеджерам».
+ *
+ * Волна 3, остаток (13.09.2026, IMPLEMENTATION-PLAN-ROLES-AND-NOTIFICATIONS.md
+ * §3 п.4) — `renameStaffMember` (кнопка-карандаш, метод уже существовал
+ * backend-only с 10.09.2026, здесь наконец получил UI),
+ * `setStaffCanViewAllClients` (переключатель "видит все заказы/только
+ * свои"), `linkStaffAccounts`/`unlinkStaffAccounts` (дропдаун "Связка" на
+ * карточке — мутуальная связка одного человека с двумя Telegram-аккаунтами,
+ * объединяет видимость "мои заказы/клиенты", НЕ роль). Все три — owner-only
+ * на сервере (`staffService.assertIsOwner`, тот же гейт, что остальное
+ * управление составом), кнопки видны любому admin — сервер сам отклонит.
  */
 window.Screens = window.Screens || {};
 window.Screens.staff = {
@@ -412,6 +422,12 @@ window.Screens.staff = {
       return `<div class="text-[11px] text-gray-400 mt-0.5">Клиент: ${escapeHtmlClient(label)}</div>`;
     }
 
+    /** Волна 3, остаток, п.4 (13.09.2026) — подпись связанного аккаунта, если есть. */
+    function linkedAccountLine(item) {
+      if (!item.linkedTelegramId) return '';
+      return `<div class="text-[11px] text-indigo-500 mt-0.5">Связан с: ${escapeHtmlClient(item.linkedName || item.linkedTelegramId)}</div>`;
+    }
+
     async function load() {
       const listEl = document.getElementById('staff-list');
       const emptyEl = document.getElementById('staff-empty');
@@ -436,9 +452,15 @@ window.Screens.staff = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" data-telegram-id="${escapeHtmlClient(item.telegramId)}">
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(item.name || '(без имени)')}</div>
+              <div class="flex items-center gap-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(item.name || '(без имени)')}</div>
+                <button type="button" class="staff-rename-btn text-gray-300 shrink-0" title="Переименовать">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
               <div class="text-xs text-gray-400">ID ${escapeHtmlClient(item.telegramId)}</div>
               ${clientIdentityLine(item)}
+              ${linkedAccountLine(item)}
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-[11px] px-2 py-0.5 rounded-full ${item.accessRole === 'admin' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600'}">${item.accessRole === 'admin' ? 'Админ' : 'Менеджер'}</span>
@@ -452,9 +474,24 @@ window.Screens.staff = {
             <button type="button" class="staff-active-toggle-btn text-xs px-2.5 py-1.5 rounded-lg border ${item.isActive ? 'border-red-200 text-red-500' : 'border-green-200 text-green-600'}">
               ${item.isActive ? 'Деактивировать' : 'Восстановить'}
             </button>
+            <button type="button" class="staff-view-scope-toggle-btn text-xs px-2.5 py-1.5 rounded-lg border ${item.canViewAllClients ? 'border-indigo-200 text-indigo-600' : 'border-gray-200 text-gray-600'}">
+              ${item.canViewAllClients ? 'Видит все заказы' : 'Видит только свои'}
+            </button>
             <button type="button" class="staff-history-toggle-btn text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-400 ml-auto">
               История
             </button>
+          </div>
+          <!-- Волна 3, остаток, п.4 (13.09.2026) — связка аккаунтов одного
+               человека: "мои заказы/клиенты" объединяет видимость обеих
+               сторон, роль каждого аккаунта остаётся своя (не наследуется). -->
+          <div class="flex items-center gap-2 mt-2">
+            <span class="text-[11px] text-gray-400 shrink-0">Связка:</span>
+            <select class="staff-link-select flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400">
+              <option value="">Не связан</option>
+              ${items.filter((s) => s.telegramId !== item.telegramId).map((s) => `
+                <option value="${escapeHtmlClient(s.telegramId)}" ${item.linkedTelegramId === s.telegramId ? 'selected' : ''}>${escapeHtmlClient(s.name || s.telegramId)}</option>
+              `).join('')}
+            </select>
           </div>
           <div class="staff-history-block hidden mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1"></div>
         </div>
@@ -493,6 +530,62 @@ window.Screens.staff = {
           }
         });
 
+        card.querySelector('.staff-rename-btn').addEventListener('click', async () => {
+          const newName = await showPromptModal(`Новое имя для "${item.name || telegramId}"`, { defaultValue: item.name || '' });
+          if (newName === null) return; // отмена
+          try {
+            await callServer('renameStaffMember', telegramId, newName.trim());
+            showSaveToast(true, 'Имя изменено.');
+            await load();
+          } catch (error) {
+            showSaveToast(false, error.message || 'Не удалось переименовать.');
+          }
+        });
+
+        // Волна 3, остаток, п.4 (13.09.2026) — переключатель "видит все
+        // заказы/клиентов" (can_view_all_clients). Владелец-only на сервере
+        // (staffService.assertIsOwner), кнопка видна всем admin — сервер сам
+        // отклонит не-владельца, та же экономия кода, что у остальных
+        // staff-кнопок этого экрана (owner-гейт проверяется не здесь).
+        card.querySelector('.staff-view-scope-toggle-btn').addEventListener('click', async () => {
+          const next = !item.canViewAllClients;
+          const ok = await showConfirmModal(
+            next
+              ? `"${item.name || telegramId}" сможет видеть ВСЕ заказы и клиентов, не только свои. Продолжить?`
+              : `"${item.name || telegramId}" снова будет видеть только свои заказы/клиентов. Продолжить?`
+          );
+          if (!ok) return;
+          try {
+            await callServer('setStaffCanViewAllClients', telegramId, next);
+            showSaveToast(true, 'Область видимости изменена.');
+            await load();
+          } catch (error) {
+            showSaveToast(false, error.message || 'Не удалось изменить область видимости.');
+          }
+        });
+
+        // Волна 3, остаток, п.4 (13.09.2026) — связка аккаунтов одного
+        // человека (мутуальная, см. staffService.linkStaffAccounts). Смена
+        // значения дропдауна сразу применяет — отдельной кнопки "Сохранить"
+        // нет, тот же паттерн, что и остальные toggle-кнопки карточки.
+        card.querySelector('.staff-link-select').addEventListener('change', async (e) => {
+          const targetTelegramId = e.target.value;
+          const targetItem = items.find((s) => s.telegramId === targetTelegramId);
+          try {
+            if (targetTelegramId === '') {
+              await callServer('unlinkStaffAccounts', telegramId);
+              showSaveToast(true, 'Связка снята.');
+            } else {
+              await callServer('linkStaffAccounts', telegramId, targetTelegramId);
+              showSaveToast(true, `Связан с "${targetItem ? (targetItem.name || targetTelegramId) : targetTelegramId}".`);
+            }
+            await load();
+          } catch (error) {
+            showSaveToast(false, error.message || 'Не удалось изменить связку.');
+            e.target.value = item.linkedTelegramId || ''; // откат UI на неудаче
+          }
+        });
+
         card.querySelector('.staff-history-toggle-btn').addEventListener('click', async () => {
           const block = card.querySelector('.staff-history-block');
           if (!block.classList.contains('hidden')) {
@@ -516,7 +609,10 @@ window.Screens.staff = {
     }
 
     function formatAuditAction(action) {
-      const labels = { added: 'Добавлен', role_changed: 'Смена роли', activated: 'Активирован', deactivated: 'Деактивирован' };
+      const labels = {
+        added: 'Добавлен', role_changed: 'Смена роли', activated: 'Активирован', deactivated: 'Деактивирован',
+        renamed: 'Переименован', linked: 'Связан', unlinked: 'Отвязан', view_scope_changed: 'Смена области видимости'
+      };
       return labels[action] || action;
     }
   }

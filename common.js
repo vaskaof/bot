@@ -202,10 +202,22 @@ function initAccessCheck(onSuccess) {
                 // Фаза 2 (roles/RBAC, M2.6, 04.09.2026) — нужен orders.js/
                 // clients.js для клиентского фильтра "мои заказы/клиенты".
                 window.CURRENT_STAFF_TELEGRAM_ID = accessInfo.telegramId;
+                // Волна 3, остаток (13.09.2026) — сервер теперь реально
+                // расширяет/сужает выдачу getOrdersList/getClientsList по
+                // этим двум полям (см. staffService.resolveVisibilityScope);
+                // orders.js/clients.js должны знать об этом, чтобы НЕ
+                // накладывать поверх свой собственный более узкий фильтр
+                // "только моё" и не прятать то, что сервер уже честно отдал.
+                window.CURRENT_CAN_VIEW_ALL_CLIENTS = accessInfo.canViewAllClients === true;
+                window.CURRENT_LINKED_STAFF_TELEGRAM_ID = accessInfo.linkedTelegramId || '';
+                window.CURRENT_LINKED_STAFF_NAME = accessInfo.linkedName || '';
             } catch (error) {
                 window.CURRENT_ACCESS_ROLE = null;
                 window.CURRENT_STAFF_NAME = '';
                 window.CURRENT_STAFF_TELEGRAM_ID = '';
+                window.CURRENT_CAN_VIEW_ALL_CLIENTS = false;
+                window.CURRENT_LINKED_STAFF_TELEGRAM_ID = '';
+                window.CURRENT_LINKED_STAFF_NAME = '';
             }
             loadingScreen.classList.add('hidden');
             appContent.classList.remove('hidden');
