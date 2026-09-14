@@ -187,6 +187,12 @@ window.Screens.orderDetails = {
         // упадёт, экран заказа всё равно должен открыться нормально (это
         // дополнительная, не критичная информация).
         callServer('getMyPaymentsRollup').then(renderPoolRollup).catch(() => {});
+        // Шаг C (14.09.2026) — диплинк `order-details/{id}/claim` (кнопка
+        // «Я оплатил(а)» на уведомлении об одном заказе) открывает форму
+        // сразу после загрузки деталей, а не просто карточку заказа.
+        // `openReportModal` читает `currentDetails` (уже установлен строкой
+        // выше) для scope-переключателя — тот же путь, что ручной клик.
+        if (params.autoOpenClaim) openReportModal();
       } catch (error) {
         showNotFound();
       }
@@ -463,7 +469,12 @@ window.Screens.orderDetails = {
     const rpModalScopeRow = document.getElementById('rp-modal-scope-row');
     const rpModalError = document.getElementById('rp-modal-error');
 
-    document.getElementById('report-payment-btn').addEventListener('click', () => {
+    // Вынесено в именованную функцию (Шаг C плана IMPLEMENTATION-PLAN-BOT-
+    // NOTIFICATIONS.md, К1, 14.09.2026) — раньше была анонимным листенером
+    // клика; теперь её же зовёт и `initApp()` для диплинка `.../claim`
+    // (кнопка «Я оплатил(а)» на уведомлении об одном заказе должна открывать
+    // эту форму СРАЗУ, без лишнего клика по «Сообщить об оплате»).
+    function openReportModal() {
       rpModalAmount.value = '';
       rpModalProof.value = '';
       rpModalError.classList.add('hidden');
@@ -479,7 +490,8 @@ window.Screens.orderDetails = {
       }
       reportModal.classList.remove('hidden');
       reportModal.classList.add('flex');
-    });
+    }
+    document.getElementById('report-payment-btn').addEventListener('click', openReportModal);
 
     function closeReportModal() {
       reportModal.classList.add('hidden');

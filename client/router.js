@@ -30,9 +30,15 @@ function matchRoute(hash) {
   const clean = (hash || '').replace(/^#\/?/, '');
   if (clean === '') return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, params: {} };
 
-  const detailsMatch = clean.match(/^order-details\/([^/]+)$/);
+  // `/claim` необязательный хвост (Шаг C плана IMPLEMENTATION-PLAN-BOT-
+  // NOTIFICATIONS.md, К1, 14.09.2026) — диплинк с кнопки «Я оплатил(а)» в
+  // уведомлении об одном заказе, ведёт СРАЗУ на предзаполненную форму
+  // "Сообщить об оплате" (см. order-details.js's autoOpenClaim), не просто
+  // на карточку заказа. `[^/]+` не матчит `/`, так что этот хвост не может
+  // случайно "съесть" сам orderId — регекс требует его как отдельный сегмент.
+  const detailsMatch = clean.match(/^order-details\/([^/]+)(\/claim)?$/);
   if (detailsMatch) {
-    return { screen: 'orderDetails', navKey: null, params: { orderId: decodeURIComponent(detailsMatch[1]) } };
+    return { screen: 'orderDetails', navKey: null, params: { orderId: decodeURIComponent(detailsMatch[1]), autoOpenClaim: !!detailsMatch[2] } };
   }
 
   // Политика конфиденциальности (17.08.2026) — не пункт нижней навигации,
