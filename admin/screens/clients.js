@@ -177,11 +177,19 @@ window.Screens.clients = {
     // (было раньше) молча ограничила бы и его тоже, несмотря на права.
     const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
     if (canSeeAll) {
-      callServer('getStaffList').then((staffList) => {
+      // ИСПРАВЛЕНО 15.09.2026 — тот же баг и то же исправление, что на
+      // экране «Заказы» (см. подробный комментарий в orders.js): было
+      // `getStaffList` (admin-only), менеджер с can_view_all_clients
+      // не получал ни дропдауна, ни плашки.
+      callServer('getStaffFilterOptions').then((staffList) => {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map((s) => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
+        managerFilterSelect.value = managerFilter;
         managerFilterSelect.classList.remove('hidden');
-      }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+      }).catch(() => {
+        mineOnlyBadge.textContent = 'Фильтр по менеджерам не загрузился';
+        mineOnlyBadge.classList.remove('hidden');
+      });
     } else {
       // Связка аккаунтов (Волна 3, остаток, п.4) — сервер уже объединил
       // видимость с партнёром, бейдж отражает это, а не только "ваши".

@@ -225,7 +225,20 @@ window.CartLot = {
               }
             }
           });
-          skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
+          // suggestedTags — РАСШИРЕНО 15.09.2026 (Этап 1 плана "Лоты/ИИ"):
+          // Бренд/Персонаж/Серия, предложенные по eBay-характеристикам
+          // продавца (см. catalogService.suggestTagsFromAspects) —
+          // undefined для не-eBay ссылок/обычного скрейпа, SkuModal сама
+          // тихо игнорирует отсутствие.
+          const suggestedTags = result.resolved && result.resolved.suggestedTags;
+          skuModal.open('create', null, {
+            original: (result.resolved && result.resolved.title) || '',
+            description: result.resolved && result.resolved.description,
+            imageUrl: result.resolved && result.resolved.imageUrl,
+            brand: suggestedTags && suggestedTags.brand,
+            character: suggestedTags && suggestedTags.character,
+            series: suggestedTags && suggestedTags.series
+          });
         }
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);

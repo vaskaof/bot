@@ -252,12 +252,25 @@ window.Screens.orders = {
     // отдал). См. `canSeeAll` в render() ниже — та же граница.
     const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
     if (canSeeAll) {
-      callServer('getStaffList').then((staffList) => {
+      // ИСПРАВЛЕНО 15.09.2026 (репорт VASY «менеджер говорит, что не видит»)
+      // — было `getStaffList`, а он admin-only (MANAGER_EXCLUDED_METHODS).
+      // Менеджеру с can_view_all_clients сервер отвечал «Доступ запрещён»,
+      // немой `.catch(() => {})` ниже это глотал, дропдаун так и оставался
+      // hidden — а плашка «показаны только ваши» к тому моменту уже была
+      // скрыта (мы в ветке canSeeAll). Итог: ни фильтра, ни объяснения.
+      // `getStaffFilterOptions` — узкий, менеджеру разрешён.
+      callServer('getStaffFilterOptions').then((staffList) => {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
         managerFilterSelect.value = managerFilter;
         managerFilterSelect.classList.remove('hidden');
-      }).catch(() => {}); // необязательный фильтр — сбой не блокирует список
+      }).catch(() => {
+        // Сбой больше не немой: список заказов он не блокирует (фильтр
+        // необязателен), но молчание здесь уже один раз стоило нам
+        // «фича есть, а её не видно» — пусть видно, что именно не поднялось.
+        mineOnlyBadge.textContent = 'Фильтр по менеджерам не загрузился';
+        mineOnlyBadge.classList.remove('hidden');
+      });
     } else {
       // Связка аккаунтов (Волна 3, остаток, п.4) — сервер уже объединил
       // видимость с партнёром, бейдж отражает это, а не только "ваши".

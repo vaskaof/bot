@@ -15,6 +15,10 @@
  *   // Заказы, 03.08.2026), нужны order-new.js/order-edit.js для сценария
  *   // "вставили ссылку в поле Выпуск":
  *   skuModal.open('create', null, { original, description, imageUrl }, { pendingLink: url });
+ *   // prefill.brand/character/series — РАСШИРЕНО 15.09.2026 (Этап 1 плана
+ *   // "Лоты/ИИ"): предложенные теги из характеристик площадки (сейчас
+ *   // только eBay, см. catalogService.suggestTagsFromAspects) — всегда
+ *   // редактируемы, ничего не сохраняют сами.
  */
 
 // Слой 5 плана дедупликации каталога (03.08.2026, опционально) — авто-
@@ -470,7 +474,16 @@ window.SkuModal = {
     // Автозаполнение Фото/Описание, если они ещё пустые — никогда не
     // перезаписывает то, что уже видно на экране (тот же принцип, что
     // авто-подстановка Бренда). Используется в обоих режимах.
-    function applyResolvedFields(imageUrl, description) {
+    // РАСШИРЕНО 15.09.2026 (Этап 1 плана "Лоты/ИИ") — необязательный 3-й
+    // параметр `suggestedTags` (от `resolveProductLinkForAdmin`/
+    // `resolveOrderProductLink`, см. catalogService.suggestTagsFromAspects
+    // на backend). ТОЛЬКО ПРЕДЛОЖЕНИЕ — тот же принцип "не перезаписывать
+    // уже заполненное", что уже применён к фото/описанию выше: заполняет
+    // Бренд/Персонаж/Серию, только если они ещё пустые, ничего не
+    // сохраняет само (менеджер по-прежнему должен нажать "Сохранить").
+    // Данные площадки (eBay) — то, что заполнил ПРОДАВЕЦ, не проверенный
+    // факт (позиция VASY 15.09.2026) — отсюда и это правило, не автозапись.
+    function applyResolvedFields(imageUrl, description, suggestedTags) {
       const imageInput = document.getElementById('sku-image-input');
       const descriptionInput = document.getElementById('sku-description-input');
       if (imageInput.value.trim() === '' && imageUrl) {
@@ -479,6 +492,13 @@ window.SkuModal = {
       }
       if (descriptionInput.value.trim() === '' && description) {
         descriptionInput.value = description;
+      }
+      if (suggestedTags) {
+        const brandInput = document.getElementById('sku-brand-input');
+        if (brandInput.value.trim() === '' && suggestedTags.brand) brandInput.value = suggestedTags.brand;
+        if (characterChips.length === 0 && suggestedTags.character) addCharacterChip(suggestedTags.character);
+        const seriesInput = document.getElementById('sku-series-input');
+        if (seriesInput.value.trim() === '' && suggestedTags.series) seriesInput.value = suggestedTags.series;
       }
     }
 
@@ -534,10 +554,14 @@ window.SkuModal = {
         // оно уже произошло выше. Запускается ТОЛЬКО если пусты ОБА поля (по
         // фидбеку VASY 03.08.2026) — если данные уже есть хотя бы с одной
         // ссылки, повторный парсинг для следующей — трата лимита без пользы.
+        // РАСШИРЕНО 15.09.2026 — если ссылка с eBay и продавец заполнил
+        // характеристики, ответ несёт ещё и suggestedTags (Бренд/Персонаж/
+        // Серия) — applyResolvedFields сама решает, куда их применять, и
+        // не перезаписывает уже введённое.
         if (document.getElementById('sku-image-input').value.trim() === ''
           && document.getElementById('sku-description-input').value.trim() === '') {
           callServer('resolveProductLinkForAdmin', url)
-            .then(result => applyResolvedFields(result.imageUrl, result.description))
+            .then(result => applyResolvedFields(result.imageUrl, result.description, result.suggestedTags))
             .catch(() => {
               // Распознавание — удобство, не критичная функциональность; тихо не показываем при сбое.
             });
@@ -607,6 +631,15 @@ window.SkuModal = {
           if (prefill.original) document.getElementById('sku-original-input').value = prefill.original;
           if (prefill.description) document.getElementById('sku-description-input').value = prefill.description;
           if (prefill.imageUrl) document.getElementById('sku-image-input').value = prefill.imageUrl;
+          // РАСШИРЕНО 15.09.2026 (Этап 1 плана "Лоты/ИИ") — Бренд/Персонаж/
+          // Серия как ПРЕДЛОЖЕНИЕ (eBay-характеристики продавца, см.
+          // catalogService.suggestTagsFromAspects), не факт. Поля здесь уже
+          // гарантированно пусты (очищены строкой выше, в отличие от
+          // applyResolvedFields, которая защищается от гонки с уже
+          // открытой формой) — прямое присвоение, без доп. проверки.
+          if (prefill.brand) document.getElementById('sku-brand-input').value = prefill.brand;
+          if (prefill.character) addCharacterChip(prefill.character);
+          if (prefill.series) document.getElementById('sku-series-input').value = prefill.series;
         }
 
         updateImagePreview();

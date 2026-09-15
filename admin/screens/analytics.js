@@ -184,6 +184,7 @@ const METHOD_LABELS = {
   getSkuDetails: 'Детали позиции каталога',
   getStaffAuditLog: 'Журнал действий персонала',
   getStaffList: 'Список персонала',
+  getStaffFilterOptions: 'Список персонала для фильтра',
   getUsageAnalytics: 'Аналитика использования (сводка)',
   getUsageErrorTrend: 'Тренд ошибок',
   getUsageFunnel: 'Воронка каталог→вишлист→заказ',
