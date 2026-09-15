@@ -1,12 +1,14 @@
 'use strict';
 
 /**
- * Экран "Карточка лота" — read-only (delegated-spinning-rabbit.md,
- * 02.09.2026). В отличие от коллективки, у лота в первой волне НЕТ живого
- * пересчёта долей после создания (шапка лота неизменяема — план, раздел
- * "Риски", п.3) — здесь просто показывается, что получилось при создании;
- * донастройка отдельного заказа (сумма/комиссия) — обычным редактированием
- * заказа (`orders/{id}/edit`), маршрут не отличается от любого другого.
+ * Экран "Карточка лота" — в основном read-only (delegated-spinning-rabbit.md,
+ * 02.09.2026). Шапка лота по-прежнему неизменяема (план, раздел "Риски",
+ * п.3) — донастройка отдельного заказа (сумма/комиссия) — обычным
+ * редактированием заказа (`orders/{id}/edit`), маршрут не отличается от
+ * любого другого. ИСКЛЮЧЕНИЕ, добавленное Этапом 4 плана "Лоты/ИИ"
+ * (15.09.2026): бейдж "доля веса N" на карточке заказа теперь кликабелен —
+ * та же узкая правка через `updateLotOrderWeight`, что и на `order-edit.js`
+ * (см. её JSDoc в ordersService.js), не полноценный пересчёт всей шапки.
  */
 window.Screens = window.Screens || {};
 window.Screens.lotDetail = {
@@ -85,9 +87,33 @@ window.Screens.lotDetail = {
                    известными ценами товаров, не "доля стоимости" в старом
                    смысле). -->
               ${o.lotCostWeight !== null ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">доля в общих тратах ${o.lotCostWeight}</span>` : ''}
-              ${o.lotWeightCoefficient !== null ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">доля веса ${o.lotWeightCoefficient}</span>` : ''}
+              ${o.lotWeightCoefficient !== null ? `<button type="button" class="lot-weight-edit-badge text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium" data-order-id="${escapeHtmlClient(o.orderId)}" data-weight="${o.lotWeightCoefficient}">доля веса ${o.lotWeightCoefficient} ✎</button>` : ''}
             </div>
           `;
+          // Этап 4 плана "Лоты/ИИ" (15.09.2026) — бейдж живёт внутри карточки,
+          // на всю которую висит навигация на orders/{id}/edit (addEventListener
+          // выше) — stopPropagation, иначе клик по бейджу уводил бы с экрана
+          // вместо открытия модалки.
+          const weightBadge = card.querySelector('.lot-weight-edit-badge');
+          if (weightBadge) {
+            weightBadge.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const raw = await showPromptModal('Доля веса лота (0 — не участвует, 1 — как у всех):', {
+                defaultValue: weightBadge.dataset.weight,
+                inputType: 'number'
+              });
+              if (raw === null) return;
+              const value = parseFloat(raw);
+              if (isNaN(value) || value < 0) { showSaveToast(false, 'Доля должна быть неотрицательным числом.'); return; }
+              try {
+                await callServer('updateLotOrderWeight', weightBadge.dataset.orderId, value);
+                showSaveToast(true, 'Доля веса обновлена');
+                load();
+              } catch (error) {
+                showSaveToast(false, 'Не удалось изменить долю веса: ' + error.message);
+              }
+            });
+          }
           listEl.appendChild(card);
         });
 

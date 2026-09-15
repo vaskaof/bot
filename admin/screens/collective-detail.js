@@ -937,10 +937,14 @@ window.Screens.collectiveDetail = {
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
               ${o.ownLegPaid ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">плечо оплачено</span>` : ''}
-              <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) —
-                   чисто визуальная связка, VASY явно отклонил вложенность
-                   лота в коллективку как единицы — доля логистики выше
-                   считается независимо, этот бейдж её не трогает. -->
+              <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026),
+                   ОБНОВЛЕНО Этапом 4 плана "Лоты/ИИ" (15.09.2026) — бейдж сам
+                   по себе не пишет ничего (клик открывает карточку лота, не
+                   трогает ползунок); но доля логистики выше теперь МОЖЕТ
+                   стартовать со значения "доля веса лота" (см. JSDoc
+                   collectivesService.getEffectiveUnits на backend) — только
+                   как начальный дефолт для нетронутого ползунка, менеджер
+                   двигает его так же независимо, как и раньше. -->
               ${o.lotId ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 cursor-pointer" data-lot-id="${escapeHtmlClient(o.lotId)}">Лот #${escapeHtmlClient(o.lotId)}</span>` : ''}
             </div>
             <div class="text-[13px] text-gray-500 mt-1.5">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>

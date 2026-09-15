@@ -200,6 +200,24 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
+          <!-- Этап 4 плана "Лоты/ИИ" (15.09.2026) — видно только когда
+               заказ реально входит в лот (details.lotId). Раньше доля веса
+               лота выставлялась только при создании лота и была
+               недоступна для правки здесь вообще. Не admin-only — любой
+               менеджер может править. -->
+          <div id="lot-weight-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="scale" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доля веса лота</span>
+            </div>
+            <div class="flex-1 w-full flex items-center justify-between gap-2">
+              <span id="lot-weight-display" class="text-[15px] font-medium text-gray-900">—</span>
+              <button type="button" id="lot-weight-edit-btn" class="text-indigo-600 text-xs font-medium px-2 py-1">Изменить</button>
+            </div>
+          </div>
+
           <!-- Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — видно только при
                одном из 4 статусов-причин, см. WRITEOFF_REASON_STATUSES ниже. -->
           <div id="writeoff-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-red-50/50">
@@ -1303,6 +1321,13 @@ window.Screens.orderEdit = {
         } catch { /* необязательное поле — сбой не блокирует форму заказа */ }
       }
 
+      // Этап 4 плана "Лоты/ИИ" (15.09.2026) — строка видна только для
+      // заказов из лота, значение перечитывается на каждой loadOrder()
+      // (тот же принцип снимка с сервера, что и delivery-ladder ниже).
+      document.getElementById('lot-weight-row').classList.toggle('hidden', !details.lotId);
+      document.getElementById('lot-weight-display').textContent = details.lotWeightCoefficient !== null && details.lotWeightCoefficient !== undefined
+        ? details.lotWeightCoefficient : '—';
+
       // Списание (Э8, M8.1) — тот же приём, что delivery-ladder выше:
       // снимок с сервера на загрузке + пересчёт на 'change', не дублируем
       // статус отдельным состоянием. refreshExistingWriteoffs — best-effort,
@@ -1753,6 +1778,33 @@ window.Screens.orderEdit = {
     document.getElementById('open-writeoff-modal-btn').addEventListener('click', () => {
       if (!currentOrderId) return;
       writeoffModal.open(currentOrderId, document.querySelector('select[data-dict="statusOrder"]').value);
+    });
+
+    // Этап 4 плана "Лоты/ИИ" (15.09.2026) — тот же микро-паттерн
+    // "клик → showPromptModal → callServer → перезагрузить", что уже есть
+    // у payments.js's "edit-payment". Узкий метод updateLotOrderWeight, НЕ
+    // updateOrder — та перезаписывает всю строку заказа из полного снимка
+    // формы, здесь нет смысла собирать его целиком ради одного поля.
+    const lotWeightEditBtn = document.getElementById('lot-weight-edit-btn');
+    lotWeightEditBtn.addEventListener('click', async () => {
+      if (!currentOrderId || !loadedDetails || !loadedDetails.lotId) return;
+      const raw = await showPromptModal('Доля веса лота (0 — не участвует, 1 — как у всех):', {
+        defaultValue: loadedDetails.lotWeightCoefficient !== null && loadedDetails.lotWeightCoefficient !== undefined ? loadedDetails.lotWeightCoefficient.toString() : '1',
+        inputType: 'number'
+      });
+      if (raw === null) return;
+      const value = parseFloat(raw);
+      if (isNaN(value) || value < 0) { showSaveToast(false, 'Доля должна быть неотрицательным числом.'); return; }
+      lotWeightEditBtn.disabled = true;
+      try {
+        await callServer('updateLotOrderWeight', currentOrderId, value);
+        showSaveToast(true, 'Доля веса лота обновлена');
+        await loadOrder();
+      } catch (error) {
+        showSaveToast(false, 'Не удалось изменить долю веса лота: ' + error.message);
+      } finally {
+        lotWeightEditBtn.disabled = false;
+      }
     });
 
     const deleteOrderBtn = document.getElementById('delete-order-btn');
