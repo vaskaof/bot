@@ -298,7 +298,10 @@ window.Screens.catalog = {
     });
 
     function renderDuplicatesReport(result) {
-      if (result.clusters.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0
+      // conflicts — план "Лоты/ИИ", Этап 2 (15.09.2026): result.conflicts
+      // может отсутствовать у старого закэшированного ответа, поэтому ||[].
+      const conflicts = result.conflicts || [];
+      if (result.clusters.length === 0 && conflicts.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0
         && result.orphanedOrders.length === 0 && result.unusedSkus.length === 0) {
         duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей, позиций без ссылки/фото и рассинхронизации с заказами не найдено.</div>';
         return;
@@ -333,6 +336,66 @@ window.Screens.catalog = {
             });
           });
           section.appendChild(block);
+        });
+        duplicatesBody.appendChild(section);
+      }
+
+      // "Спорные пары" — план "Лоты/ИИ", Этап 2, решения 3+5 (15.09.2026).
+      // Похоже, НО расходится число/размер/цвет — не авто-предложение
+      // "Объединить" по умолчанию (как выше), а явный выбор человека: либо
+      // всё равно "Объединить" (переиспользует ту же openMergeCompare), либо
+      // "Это разные" — пишет вердикт (`recordCatalogDedupVerdict`), после
+      // чего пара больше не показывается ни здесь, ни в кластерах
+      // (catalog_dedup_verdicts, пока одно из двух названий не изменится).
+      if (conflicts.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div class="text-xs font-semibold text-gray-500 mb-2">Спорные пары (${conflicts.length})</div>`;
+        conflicts.forEach((pair, pairIdx) => {
+          const block = document.createElement('div');
+          block.className = 'border border-sky-200 bg-sky-50 rounded-xl p-3 mb-2 space-y-1.5';
+          [pair.a, pair.b].forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 text-xs';
+            row.innerHTML = `
+              ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+              <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+            `;
+            block.appendChild(row);
+          });
+          const actions = document.createElement('div');
+          actions.className = 'flex items-center justify-between gap-2 pt-1';
+          actions.innerHTML = `
+            <span class="text-[11px] text-sky-700 truncate">отличается по: ${escapeHtmlClient(pair.distinguishingTokens.join(', '))}</span>
+            <span class="flex gap-1.5 shrink-0">
+              <button type="button" class="conflict-not-duplicate-btn px-2 py-1 rounded-lg border border-gray-200 text-gray-700 text-[11px]" data-idx="${pairIdx}">Это разные</button>
+              <button type="button" class="conflict-merge-btn px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-idx="${pairIdx}">Объединить</button>
+            </span>
+          `;
+          block.appendChild(actions);
+          section.appendChild(block);
+        });
+        section.querySelectorAll('.conflict-merge-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const pair = conflicts[parseInt(btn.dataset.idx, 10)];
+            closeDuplicatesModal();
+            openMergeCompare(pair.a.original, pair.b.original);
+          });
+        });
+        section.querySelectorAll('.conflict-not-duplicate-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (btn.disabled) return; // fail-safe чек-лист п.1 — второй клик до отключения игнорируем
+            btn.disabled = true;
+            const pair = conflicts[parseInt(btn.dataset.idx, 10)];
+            try {
+              await callServer('recordCatalogDedupVerdict', pair.a.original, pair.b.original, 'not_duplicate');
+              showSaveToast(true, 'Отмечено: это разные позиции');
+              btn.closest('.border-sky-200').remove();
+            } catch (error) {
+              showSaveToast(false, error.message);
+              btn.disabled = false;
+            }
+          });
         });
         duplicatesBody.appendChild(section);
       }
