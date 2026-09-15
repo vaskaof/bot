@@ -41,6 +41,16 @@ function matchRoute(hash) {
     return { screen: 'orderDetails', navKey: null, params: { orderId: decodeURIComponent(detailsMatch[1]), autoOpenClaim: !!detailsMatch[2] } };
   }
 
+  // Вишлист по фото (план "Лоты/ИИ", Этап 6, 16.09.2026) — deep-link из чата
+  // бота на экран подтверждения конкретного скана (см. botHandler.js's
+  // handleWishlistPhotoCapture). Путь-сегмент, не query — тот же принцип,
+  // что уже у `order-details/<id>/claim` (см. его комментарий про
+  // `tgWebAppData` в фрагменте документа).
+  const photoScanMatch = clean.match(/^wishlist\/photo-scan\/([^/]+)$/);
+  if (photoScanMatch) {
+    return { screen: 'wishlist', navKey: 'wishlist', params: { photoScanId: decodeURIComponent(photoScanMatch[1]) } };
+  }
+
   // Политика конфиденциальности (17.08.2026) — не пункт нижней навигации,
   // доступ по ссылке (из «Профиль» и из /start бота), тот же паттерн, что
   // order-details выше.

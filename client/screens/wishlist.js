@@ -12,11 +12,14 @@
  */
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
-  render(root) {
+  render(root, _context, params) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мой вишлист</h1>';
     document.getElementById('header-actions').innerHTML = `
       <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      </button>
+      <button id="photo-scan-btn" title="Добавить по фото" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="camera" class="w-5 h-5"></i>
       </button>
       <button id="add-item-btn" title="Добавить в вишлист" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
@@ -110,6 +113,30 @@ window.Screens.wishlist = {
           <div class="p-4 border-t border-gray-100 flex gap-2">
             <button id="item-modal-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
             <button id="item-modal-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+      <input type="file" id="photo-scan-input" accept="image/*" class="hidden">
+
+      <!-- Вишлист по фото (план "Лоты/ИИ", Этап 6, 16.09.2026) — тот же
+           принцип, что "Разобрать лот по ссылке" (Этап 3): ИИ только
+           предлагает, "Добавить в вишлист" — единственное место записи. -->
+      <div id="photo-scan-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Похоже на фото</h2>
+            <button id="photo-scan-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="photo-scan-loading" class="p-6 text-center text-sm text-gray-400">Распознаю фото...</div>
+          <div id="photo-scan-empty" class="hidden p-6 text-center text-sm text-gray-500">Не получилось распознать товар на фото — попробуйте другое фото или добавьте вручную.</div>
+          <div id="photo-scan-list" class="p-4 space-y-3"></div>
+          <div id="photo-scan-error" class="px-4 text-xs text-red-500 hidden"></div>
+          <div id="photo-scan-actions" class="hidden p-4 border-t border-gray-100 flex gap-2">
+            <button id="photo-scan-discard-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Не добавлять</button>
+            <button id="photo-scan-confirm-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Добавить в вишлист</button>
           </div>
         </div>
       </div>
@@ -468,5 +495,206 @@ window.Screens.wishlist = {
         itemModalSaveBtn.disabled = false;
       }
     });
+
+    // --- Вишлист по фото (план "Лоты/ИИ", Этап 6, 16.09.2026) ---
+    const photoScanBtn = document.getElementById('photo-scan-btn');
+    const photoScanInput = document.getElementById('photo-scan-input');
+    const photoScanModal = document.getElementById('photo-scan-modal');
+    const photoScanLoading = document.getElementById('photo-scan-loading');
+    const photoScanEmpty = document.getElementById('photo-scan-empty');
+    const photoScanList = document.getElementById('photo-scan-list');
+    const photoScanError = document.getElementById('photo-scan-error');
+    const photoScanActions = document.getElementById('photo-scan-actions');
+    const photoScanDiscardBtn = document.getElementById('photo-scan-discard-btn');
+    const photoScanConfirmBtn = document.getElementById('photo-scan-confirm-btn');
+
+    let currentScanId = null;
+
+    function closePhotoScanModal() {
+      photoScanModal.classList.add('hidden');
+      photoScanModal.classList.remove('flex');
+      currentScanId = null;
+      photoScanInput.value = '';
+    }
+    document.getElementById('photo-scan-modal-close').addEventListener('click', closePhotoScanModal);
+
+    function openPhotoScanModalLoading() {
+      photoScanLoading.classList.remove('hidden');
+      photoScanEmpty.classList.add('hidden');
+      photoScanList.innerHTML = '';
+      photoScanError.classList.add('hidden');
+      photoScanActions.classList.add('hidden');
+      photoScanModal.classList.remove('hidden');
+      photoScanModal.classList.add('flex');
+    }
+
+    function renderPhotoScanPositions(positions) {
+      photoScanLoading.classList.add('hidden');
+      if (!positions || positions.length === 0) {
+        photoScanEmpty.classList.remove('hidden');
+        return;
+      }
+      photoScanList.innerHTML = '';
+      positions.forEach((pos, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-start gap-2 p-2 rounded-xl border border-gray-100';
+        const confidencePct = pos.confidence !== null && pos.confidence !== undefined ? Math.round(pos.confidence * 100) : null;
+        row.innerHTML = `
+          <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" checked>
+          <div class="flex-1 min-w-0">
+            <input type="text" class="photo-scan-name w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" data-idx="${idx}" maxlength="150" value="${escapeHtmlClient(pos.name)}">
+            <div class="flex items-center gap-2 mt-1">
+              <label class="text-[11px] text-gray-400">Кол-во</label>
+              <input type="number" min="1" max="20" class="photo-scan-qty w-14 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" data-idx="${idx}" value="${pos.quantity}">
+              ${confidencePct !== null ? `<span class="text-[11px] text-gray-400">уверенность ${confidencePct}%</span>` : ''}
+            </div>
+            ${pos.note ? `<div class="text-[11px] text-amber-600 mt-1">${escapeHtmlClient(pos.note)}</div>` : ''}
+          </div>
+        `;
+        photoScanList.appendChild(row);
+      });
+      photoScanActions.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function collectPhotoScanItems() {
+      const items = [];
+      photoScanList.querySelectorAll('.photo-scan-check').forEach((checkbox) => {
+        const idx = checkbox.dataset.idx;
+        const nameInput = photoScanList.querySelector(`.photo-scan-name[data-idx="${idx}"]`);
+        const qtyInput = photoScanList.querySelector(`.photo-scan-qty[data-idx="${idx}"]`);
+        items.push({
+          checked: checkbox.checked,
+          name: nameInput ? nameInput.value.trim() : '',
+          quantity: qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1
+        });
+      });
+      return items;
+    }
+
+    function showPhotoScanError(message) {
+      photoScanLoading.classList.add('hidden');
+      photoScanError.textContent = message;
+      photoScanError.classList.remove('hidden');
+    }
+
+    function friendlyScanErrorMessage(error) {
+      if (error.message === 'NEEDS_CONSENT') {
+        return 'Нужно заново подтвердить политику конфиденциальности — перезайдите в приложение (появится окно подтверждения).';
+      }
+      if (error.message === 'RATE_LIMIT_DAILY') {
+        return 'Лимит распознавания фото на сегодня исчерпан — попробуйте завтра.';
+      }
+      return error.message;
+    }
+
+    async function startPhotoScan(images) {
+      openPhotoScanModalLoading();
+      try {
+        const result = await callServer('scanWishlistPhoto', images);
+        currentScanId = result.scanId;
+        renderPhotoScanPositions(result.positions);
+      } catch (error) {
+        showPhotoScanError(friendlyScanErrorMessage(error));
+      }
+    }
+
+    // Сжатие фото на устройстве перед отправкой (canvas) — сырые фото с
+    // камеры телефона легко несколько МБ, `callServer` шлёт JSON-текстом без
+    // выделенной загрузки файлов, base64 добавляет ещё ~33% — без сжатия
+    // отправка была бы медленной/ненадёжной на мобильной сети.
+    function compressImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Не удалось прочитать файл.'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Не удалось прочитать изображение.'));
+          img.onload = () => {
+            const maxDim = 1280;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const scale = maxDim / Math.max(width, height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            resolve({ mimeType: 'image/jpeg', data: dataUrl.split(',')[1] });
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    photoScanBtn.addEventListener('click', () => photoScanInput.click());
+    photoScanInput.addEventListener('change', async () => {
+      const file = photoScanInput.files[0];
+      if (!file) return;
+      openPhotoScanModalLoading();
+      try {
+        const image = await compressImageFile(file);
+        await startPhotoScan([image]);
+      } catch (error) {
+        showPhotoScanError(error.message);
+      }
+    });
+
+    photoScanDiscardBtn.addEventListener('click', async () => {
+      if (!currentScanId) { closePhotoScanModal(); return; }
+      photoScanDiscardBtn.disabled = true;
+      try {
+        await callServer('discardWishlistPhotoScan', currentScanId);
+      } catch (_error) {
+        // не критично — скан просто останется 'pending', сверх дневного лимита не считается заново
+      } finally {
+        photoScanDiscardBtn.disabled = false;
+        closePhotoScanModal();
+      }
+    });
+
+    photoScanConfirmBtn.addEventListener('click', async () => {
+      if (!currentScanId) return;
+      const items = collectPhotoScanItems();
+      if (!items.some((i) => i.checked && i.name !== '')) {
+        showPhotoScanError('Отметьте хотя бы одну позицию.');
+        return;
+      }
+      photoScanConfirmBtn.disabled = true;
+      try {
+        const result = await callServer('confirmWishlistPhotoScan', currentScanId, items);
+        closePhotoScanModal();
+        showSaveToast(true, `Добавлено в вишлист: ${result.added}`);
+        loadWishlist();
+      } catch (error) {
+        showPhotoScanError(error.message);
+      } finally {
+        photoScanConfirmBtn.disabled = false;
+      }
+    });
+
+    // Диплинк из чата бота (`wishlist/photo-scan/<scanId>`, см. botHandler.js) —
+    // черновик уже существует на сервере, здесь просто открываем экран
+    // подтверждения по его id, не заводим новый скан.
+    if (params && params.photoScanId) {
+      (async () => {
+        openPhotoScanModalLoading();
+        try {
+          const scan = await callServer('getWishlistPhotoScan', params.photoScanId);
+          currentScanId = scan.scanId;
+          if (scan.status !== 'pending') {
+            showPhotoScanError('Этот скан уже обработан.');
+          } else {
+            renderPhotoScanPositions(scan.positions);
+          }
+        } catch (error) {
+          showPhotoScanError(error.message);
+        }
+      })();
+    }
   }
 };
