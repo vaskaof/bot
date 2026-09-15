@@ -21,6 +21,9 @@ window.Screens.catalog = {
       <button id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy-check" class="w-6 h-6"></i>
       </button>
+      <button id="short-name-btn" title="Стандартизация коротких имён" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="wand-2" class="w-5 h-5"></i>
+      </button>
       <button id="wishlist-demand-btn" title="Спрос клиентов" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="heart" class="w-6 h-6"></i>
       </button>
@@ -69,6 +72,21 @@ window.Screens.catalog = {
             </button>
           </div>
           <div id="merge-compare-body" class="p-4"></div>
+        </div>
+      </div>
+
+      <div id="short-name-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 inline-flex items-center gap-1.5">Короткие имена${helpIcon('Что это', '<p>Позиции каталога с пустым «Коротким именем» — оно показывается клиенту вместо технического названия. Если уже заполнены Бренд и Персонаж — имя собирается автоматически, бесплатно. Иначе — предлагает ИИ, пачками (батчами), по запросу.</p><p>Ничего не применяется автоматически — отметьте нужные строки и нажмите «Применить выбранные», или отклоните конкретную (тогда ИИ больше не будет предлагать её снова, пока название позиции не изменится).</p>')}</h2>
+            <button id="short-name-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="short-name-body" class="p-4 space-y-2"></div>
+          <div class="p-4 pt-0">
+            <button type="button" id="short-name-apply-btn" class="hidden w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить выбранные</button>
+          </div>
         </div>
       </div>
     `;
@@ -277,11 +295,125 @@ window.Screens.catalog = {
     }
     document.getElementById('duplicates-close').addEventListener('click', closeDuplicatesModal);
 
-    document.getElementById('find-duplicates-btn').addEventListener('click', async () => {
-      duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Проверяю каталог...</div>';
-      duplicatesModal.classList.remove('hidden');
-      duplicatesModal.classList.add('flex');
+    // "Короткие имена" — план "Лоты/ИИ", Этап 5, Часть Б (16.09.2026).
+    // Отдельная модалка (не внутри "Аудит каталога" — другой смысл: это
+    // проактивная стандартизация витрины, не пассивный аудит). НИЧЕГО не
+    // применяется автоматически (см. helpIcon в разметке) — только по
+    // явному "Применить выбранные"/"Отклонить" на каждую строку.
+    const shortNameModal = document.getElementById('short-name-modal');
+    const shortNameBody = document.getElementById('short-name-body');
+    const shortNameApplyBtn = document.getElementById('short-name-apply-btn');
+    let currentShortNameSuggestions = [];
 
+    function closeShortNameModal() {
+      shortNameModal.classList.add('hidden');
+      shortNameModal.classList.remove('flex');
+    }
+    document.getElementById('short-name-close').addEventListener('click', closeShortNameModal);
+
+    document.getElementById('short-name-btn').addEventListener('click', () => {
+      shortNameModal.classList.remove('hidden');
+      shortNameModal.classList.add('flex');
+      loadShortNameSuggestions();
+    });
+
+    async function loadShortNameSuggestions() {
+      shortNameBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка предложений...</div>';
+      shortNameApplyBtn.classList.add('hidden');
+      try {
+        const result = await callServer('getCatalogShortNameSuggestions');
+        currentShortNameSuggestions = result.suggestions || [];
+        renderShortNameSuggestions(result.remainingForAi || 0);
+      } catch (error) {
+        shortNameBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    // `remainingForAi` "Загрузить ещё" сознательно показывается ТОЛЬКО когда
+    // текущий список полностью разобран (пуст) — иначе повторный клик до
+    // того, как человек применил/отклонил уже показанные ИИ-предложения,
+    // заново отправил бы ТЕ ЖЕ позиции в Gemini (getShortNameSuggestions не
+    // помнит "уже показано, но ещё не решено" — только "решено") и сжёг бы
+    // токены впустую, прямо против тезиса VASY "разумный прогон".
+    function renderShortNameSuggestions(remainingForAi) {
+      if (currentShortNameSuggestions.length === 0) {
+        shortNameBody.innerHTML = remainingForAi > 0
+          ? `<div class="text-center text-sm text-gray-400 py-6">Список пуст. Ещё ${remainingForAi} — ожидают ИИ-разбора.</div>
+             <button type="button" id="short-name-more-btn" class="w-full py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium">Загрузить ещё (ИИ)</button>`
+          : '<div class="text-center text-sm text-gray-400 py-6">Все позиции с пустым коротким именем разобраны.</div>';
+        shortNameApplyBtn.classList.add('hidden');
+        const moreBtn = document.getElementById('short-name-more-btn');
+        if (moreBtn) moreBtn.addEventListener('click', loadShortNameSuggestions);
+        return;
+      }
+
+      shortNameBody.innerHTML = currentShortNameSuggestions.map((s, idx) => `
+        <div class="border border-gray-200 rounded-xl p-3">
+          <div class="flex items-start gap-2">
+            <input type="checkbox" class="short-name-checkbox mt-1.5" data-idx="${idx}">
+            <div class="min-w-0 flex-1">
+              <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(s.original)}</div>
+              <input type="text" class="short-name-input w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-1" data-idx="${idx}" value="${escapeHtmlClient(s.suggested)}">
+              <div class="text-[10px] text-gray-400 mt-1">${s.source === 'ai' ? 'предложено ИИ' : 'из тегов, бесплатно'}</div>
+            </div>
+            <button type="button" class="short-name-reject-btn text-[11px] text-gray-400 hover:text-red-500 shrink-0" data-idx="${idx}">Отклонить</button>
+          </div>
+        </div>
+      `).join('');
+
+      shortNameApplyBtn.classList.remove('hidden');
+      wireShortNameRowEvents(remainingForAi);
+    }
+
+    function wireShortNameRowEvents(remainingForAi) {
+      shortNameBody.querySelectorAll('.short-name-reject-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          const idx = parseInt(btn.dataset.idx, 10);
+          const item = currentShortNameSuggestions[idx];
+          try {
+            await callServer('rejectCatalogShortNameSuggestion', item.original);
+            currentShortNameSuggestions = currentShortNameSuggestions.filter((_, i) => i !== idx);
+            renderShortNameSuggestions(remainingForAi);
+          } catch (error) {
+            showSaveToast(false, error.message);
+            btn.disabled = false;
+          }
+        });
+      });
+
+      shortNameApplyBtn.onclick = async () => {
+        if (shortNameApplyBtn.disabled) return;
+        const checkedIdx = [...shortNameBody.querySelectorAll('.short-name-checkbox:checked')].map((cb) => parseInt(cb.dataset.idx, 10));
+        if (checkedIdx.length === 0) { showSaveToast(false, 'Отметьте хотя бы одну позицию.'); return; }
+        shortNameApplyBtn.disabled = true;
+        try {
+          for (const idx of checkedIdx) {
+            const item = currentShortNameSuggestions[idx];
+            const input = shortNameBody.querySelector(`.short-name-input[data-idx="${idx}"]`);
+            const value = input.value.trim();
+            if (value === '') continue;
+            await callServer('applyCatalogShortNameSuggestion', item.original, value);
+          }
+          showSaveToast(true, `Применено: ${checkedIdx.length}`);
+          currentShortNameSuggestions = currentShortNameSuggestions.filter((_, i) => !checkedIdx.includes(i));
+          renderShortNameSuggestions(remainingForAi);
+          loadCatalog(); // короткие имена изменились — обновить список каталога
+        } catch (error) {
+          showSaveToast(false, error.message);
+        } finally {
+          shortNameApplyBtn.disabled = false;
+        }
+      };
+    }
+
+    // Вынесено из клика "find-duplicates-btn" (16.09.2026, Этап 5, Часть А)
+    // — "Сверить с ИИ" тоже должна перезагрузить весь отчёт после ответа
+    // (решённые пары должны пропасть из «Спорные пары»/переехать в «ИИ
+    // предлагает объединить»), без дублирования того же запроса.
+    async function loadDuplicatesReport() {
+      duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Проверяю каталог...</div>';
       try {
         // Фаза 6.4 (04.08.2026) — аудит Заказы↔Каталог в той же модалке,
         // единая точка входа для менеджера. Два независимых запроса
@@ -295,13 +427,21 @@ window.Screens.catalog = {
       } catch (error) {
         duplicatesBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
       }
+    }
+
+    document.getElementById('find-duplicates-btn').addEventListener('click', () => {
+      duplicatesModal.classList.remove('hidden');
+      duplicatesModal.classList.add('flex');
+      loadDuplicatesReport();
     });
 
     function renderDuplicatesReport(result) {
-      // conflicts — план "Лоты/ИИ", Этап 2 (15.09.2026): result.conflicts
-      // может отсутствовать у старого закэшированного ответа, поэтому ||[].
+      // conflicts/aiSuggestedMerges — план "Лоты/ИИ", Этап 2/5 (15-16.09.2026):
+      // могут отсутствовать у старого закэшированного ответа, поэтому ||[].
       const conflicts = result.conflicts || [];
-      if (result.clusters.length === 0 && conflicts.length === 0 && result.missingLink.length === 0 && result.missingImage.length === 0
+      const aiSuggestedMerges = result.aiSuggestedMerges || [];
+      if (result.clusters.length === 0 && conflicts.length === 0 && aiSuggestedMerges.length === 0
+        && result.missingLink.length === 0 && result.missingImage.length === 0
         && result.orphanedOrders.length === 0 && result.unusedSkus.length === 0) {
         duplicatesBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Вероятных дублей, позиций без ссылки/фото и рассинхронизации с заказами не найдено.</div>';
         return;
@@ -349,7 +489,20 @@ window.Screens.catalog = {
       // (catalog_dedup_verdicts, пока одно из двух названий не изменится).
       if (conflicts.length > 0) {
         const section = document.createElement('div');
-        section.innerHTML = `<div class="text-xs font-semibold text-gray-500 mb-2">Спорные пары (${conflicts.length})</div>`;
+        // Этап 5, Часть А (16.09.2026) — «Сверить с ИИ» рядом с заголовком:
+        // один клик = один батч ≤50 пар (см. JSDoc catalogService.
+        // reviewConflictsWithAi), решённые пары уходят из «Спорные пары» либо
+        // в «ИИ предлагает объединить», либо пропадают совсем — модалка
+        // перезагружается целиком после ответа, как после любой другой
+        // записи в этом экране.
+        section.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-semibold text-gray-500">Спорные пары (${conflicts.length})</div>
+            <button type="button" id="review-conflicts-ai-btn" class="px-2 py-1 rounded-lg bg-violet-600 text-white text-[11px] inline-flex items-center gap-1">
+              <i data-lucide="sparkles" class="w-3 h-3"></i>Сверить с ИИ
+            </button>
+          </div>
+        `;
         conflicts.forEach((pair, pairIdx) => {
           const block = document.createElement('div');
           block.className = 'border border-sky-200 bg-sky-50 rounded-xl p-3 mb-2 space-y-1.5';
@@ -398,7 +551,89 @@ window.Screens.catalog = {
           });
         });
         duplicatesBody.appendChild(section);
+
+        const reviewAiBtn = document.getElementById('review-conflicts-ai-btn');
+        reviewAiBtn.addEventListener('click', async () => {
+          if (reviewAiBtn.disabled) return;
+          reviewAiBtn.disabled = true;
+          reviewAiBtn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>Сверяю...';
+          if (window.lucide) window.lucide.createIcons();
+          try {
+            const reviewResult = await callServer('reviewCatalogConflictsWithAi');
+            showSaveToast(true, `ИИ сверила ${reviewResult.reviewedCount} пар` + (reviewResult.remainingCount > 0 ? ` — ещё ${reviewResult.remainingCount} в очереди` : ''));
+            await loadDuplicatesReport();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            reviewAiBtn.disabled = false;
+            reviewAiBtn.innerHTML = '<i data-lucide="sparkles" class="w-3 h-3"></i>Сверить с ИИ';
+            if (window.lucide) window.lucide.createIcons();
+          }
+        });
       }
+
+      // "ИИ предлагает объединить" — план "Лоты/ИИ", Этап 5, Часть А
+      // (16.09.2026). Вердикт `duplicate` от ИИ (`source='ai'`) уже записан
+      // в catalog_dedup_verdicts (см. `reviewConflictsWithAi` — пара больше
+      // никогда не уйдёт в Gemini повторно), но САМО слияние — необратимая
+      // операция (переезд заказов/ссылок/вишлиста) — остаётся ТОЛЬКО по
+      // клику человека, тот же принцип, что у решения 4 плана. "Это разные"
+      // здесь перезаписывает ИИ-вердикт на `not_duplicate, source='manual'`
+      // (тот же `recordCatalogDedupVerdict`, что и у «Спорных пар» — upsert
+      // всегда перезаписывает предыдущий вердикт независимо от источника).
+      if (aiSuggestedMerges.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div class="text-xs font-semibold text-gray-500 mb-2 inline-flex items-center gap-1"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-500"></i>ИИ предлагает объединить (${aiSuggestedMerges.length})</div>`;
+        aiSuggestedMerges.forEach((pair, pairIdx) => {
+          const block = document.createElement('div');
+          block.className = 'border border-violet-200 bg-violet-50 rounded-xl p-3 mb-2 space-y-1.5';
+          [pair.a, pair.b].forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 text-xs';
+            row.innerHTML = `
+              ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+              <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+            `;
+            block.appendChild(row);
+          });
+          const actions = document.createElement('div');
+          actions.className = 'flex items-center justify-between gap-2 pt-1';
+          actions.innerHTML = `
+            <span class="text-[11px] text-violet-700 truncate" title="${escapeHtmlClient(pair.reason)}">${pair.reason ? escapeHtmlClient(pair.reason) : 'ИИ считает это одним товаром'}</span>
+            <span class="flex gap-1.5 shrink-0">
+              <button type="button" class="ai-merge-not-duplicate-btn px-2 py-1 rounded-lg border border-gray-200 text-gray-700 text-[11px]" data-idx="${pairIdx}">Это разные</button>
+              <button type="button" class="ai-merge-btn px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-idx="${pairIdx}">Объединить</button>
+            </span>
+          `;
+          block.appendChild(actions);
+          section.appendChild(block);
+        });
+        section.querySelectorAll('.ai-merge-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const pair = aiSuggestedMerges[parseInt(btn.dataset.idx, 10)];
+            closeDuplicatesModal();
+            openMergeCompare(pair.a.original, pair.b.original);
+          });
+        });
+        section.querySelectorAll('.ai-merge-not-duplicate-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (btn.disabled) return;
+            btn.disabled = true;
+            const pair = aiSuggestedMerges[parseInt(btn.dataset.idx, 10)];
+            try {
+              await callServer('recordCatalogDedupVerdict', pair.a.original, pair.b.original, 'not_duplicate');
+              showSaveToast(true, 'Отмечено: это разные позиции');
+              btn.closest('.border-violet-200').remove();
+            } catch (error) {
+              showSaveToast(false, error.message);
+              btn.disabled = false;
+            }
+          });
+        });
+        duplicatesBody.appendChild(section);
+      }
+
+      if (window.lucide) window.lucide.createIcons();
 
       // Фаза 6.4 (04.08.2026) — аудит Заказы↔Каталог, обе стороны. Чисто
       // информационно, ничего не блокирует и не трогает автоматически.
