@@ -63,6 +63,29 @@ window.CartLot = {
             <input type="text" class="lot-purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
             <button type="button" class="lot-purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
           </div>
+          <!-- «Разобрать лот» (план "Лоты/ИИ", Этап 3, 15.09.2026, по правке
+               VASY тем же днём — разбор нужен ЗДЕСЬ, в черновике, ДО
+               сохранения лота, не постфактум на уже созданной карточке).
+               Разбирает ссылку через ИИ (текст+фото ОДНИМ запросом) и
+               подставляет распознанные позиции ПРЯМО В СТРОКИ лота ниже —
+               той же свободнотекстовой строкой, что при ручном вводе
+               товара (никакой отдельной таблицы/сохранения на этом шаге,
+               см. JSDoc lot-parse-service.js на бэкенде). -->
+          <button type="button" class="lot-parse-btn w-full mt-1.5 py-1.5 rounded-lg border border-dashed border-indigo-200 text-indigo-600 text-xs font-medium inline-flex items-center justify-center gap-1">
+            <i data-lucide="wand-2" class="w-3.5 h-3.5"></i> Разобрать лот по ссылке
+          </button>
+          <div class="lot-parse-status hidden text-xs text-gray-400 mt-1.5"></div>
+          <div class="lot-parse-confirm hidden mt-1.5 pt-1.5 border-t border-gray-100">
+            <div class="text-[11px] text-gray-500 mb-1.5">
+              Проверьте разбор — товар подставится в строки лота ниже ТОЛЬКО после «Применить». Уверенность модели (%) — подсказка, не факт: она может ошибиться в названии, даже показывая высокий процент.
+            </div>
+            <div class="lot-parse-rows"></div>
+            <button type="button" class="lot-parse-add-row-btn w-full py-1.5 rounded-lg border-2 border-dashed border-indigo-200 text-indigo-600 text-xs font-medium mt-1">+ Добавить руками</button>
+            <div class="flex items-center gap-1.5 mt-2">
+              <button type="button" class="lot-parse-apply-btn flex-1 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium">Применить</button>
+              <button type="button" class="lot-parse-cancel-btn px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-xs">Отмена</button>
+            </div>
+          </div>
         </div>
         <!-- §5 D2 — поле в валюте, не в рублях, см. комментарий на
              .amount-input выше. -->
@@ -136,6 +159,10 @@ window.CartLot = {
     const body = wrapEl.querySelector('.lot-body');
     const lotPurchaseLinkInputEl = wrapEl.querySelector('.lot-purchase-link-input');
     const lotPurchaseLinkResolveBtn = wrapEl.querySelector('.lot-purchase-link-resolve-btn');
+    const lotParseBtn = wrapEl.querySelector('.lot-parse-btn');
+    const lotParseStatusEl = wrapEl.querySelector('.lot-parse-status');
+    const lotParseConfirmEl = wrapEl.querySelector('.lot-parse-confirm');
+    const lotParseRowsEl = wrapEl.querySelector('.lot-parse-rows');
     const amountInput = wrapEl.querySelector('.lot-amount-input');
     const amountSymbolEl = wrapEl.querySelector('.lot-amount-currency-symbol');
     const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
@@ -245,6 +272,132 @@ window.CartLot = {
       } finally {
         lotPurchaseLinkResolveBtn.disabled = false;
       }
+    });
+
+    // «Разобрать лот» (план "Лоты/ИИ", Этап 3, 15.09.2026, по правке VASY
+    // тем же днём: разбор должен работать здесь, в черновике корзины, ДО
+    // сохранения лота — "добавление ссылки на лот -> появление подпозиций
+    // -> заведение клиентов на них во время создания заказа"). ИИ только
+    // ПРЕДЛАГАЕТ (см. lotParseService.js на бэкенде) — ничего не попадает
+    // в строки лота без явного «Применить» на этом же экране.
+    const LOT_PARSE_ITEM_TYPE_LABELS = { product: 'Товар', accessory: 'Аксессуар', packaging: 'Упаковка' };
+
+    function createLotParseRow(position) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'flex items-start gap-1.5 bg-gray-50 rounded-lg p-2 mb-1.5';
+      const confidencePercent = position.confidence !== null && position.confidence !== undefined ? Math.round(position.confidence * 100) : null;
+      // «Спрос у N клиентов» (план "Лоты/ИИ", Этап 3, продолжение) —
+      // подмешивается ЛУЧШИМ УСИЛИЕМ отдельным запросом после разбора (см.
+      // lotParseBtn ниже), поэтому position.demand может отсутствовать —
+      // бейдж просто не рисуется, разбор от этого не зависит.
+      const demand = position.demand;
+      const demandTitle = demand && demand.clients.length > 0 ? demand.clients.map((c) => c.display).join(', ') : '';
+      rowEl.innerHTML = `
+        <input type="checkbox" class="lot-parse-row-check mt-2 w-3.5 h-3.5 accent-indigo-600" ${position.itemType === 'product' || position.itemType === undefined ? 'checked' : ''}>
+        <div class="flex-1 min-w-0">
+          <input type="text" class="lot-parse-row-name w-full bg-white rounded-lg px-2 py-1 text-sm outline-none border border-gray-200 mb-1" placeholder="Название" value="${escapeHtmlClient(position.name || '')}">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <input type="number" min="1" step="1" class="lot-parse-row-qty w-14 bg-white rounded-lg px-2 py-1 text-sm outline-none border border-gray-200" value="${position.quantity || 1}">
+            <select class="lot-parse-row-type flex-1 bg-white rounded-lg px-2 py-1 text-sm outline-none border border-gray-200">
+              ${Object.entries(LOT_PARSE_ITEM_TYPE_LABELS).map(([value, label]) => `<option value="${value}" ${position.itemType === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+            ${confidencePercent !== null ? `<span class="text-[10px] text-gray-400 shrink-0" title="Уверенность модели — только подсказка, не факт">${confidencePercent}%</span>` : ''}
+            ${demand && demand.count > 0 ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0" title="${escapeHtmlClient(demandTitle)}">спрос: ${demand.count}</span>` : ''}
+          </div>
+        </div>
+        <button type="button" class="lot-parse-row-remove-btn p-1 text-gray-300 hover:text-red-500 shrink-0"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+      `;
+      rowEl.querySelector('.lot-parse-row-remove-btn').addEventListener('click', () => rowEl.remove());
+      return rowEl;
+    }
+
+    function closeLotParseConfirm() {
+      lotParseConfirmEl.classList.add('hidden');
+      lotParseStatusEl.classList.add('hidden');
+      lotParseRowsEl.innerHTML = '';
+    }
+
+    lotParseBtn.addEventListener('click', async () => {
+      const url = lotPurchaseLinkInputEl.value.trim();
+      if (!url) { showSaveToast(false, 'Сначала вставьте ссылку на покупку.'); return; }
+      if (lotParseBtn.disabled) return;
+      lotParseBtn.disabled = true;
+      lotParseConfirmEl.classList.add('hidden');
+      lotParseStatusEl.classList.remove('hidden');
+      lotParseStatusEl.textContent = 'Разбираю лот — это может занять несколько секунд…';
+      try {
+        const result = await callServer('parseLotPositions', url);
+        lotParseStatusEl.classList.add('hidden');
+        lotParseRowsEl.innerHTML = '';
+        if (!result.positions || result.positions.length === 0) {
+          lotParseStatusEl.classList.remove('hidden');
+          lotParseStatusEl.textContent = 'Модель не смогла выделить ни одной позиции — добавьте вручную или закройте.';
+        }
+        const positions = result.positions || [];
+        // «Спрос у N клиентов» — лучшим усилием, ОТДЕЛЬНЫМ запросом ПОСЛЕ
+        // разбора: сбой этого запроса не должен блокировать сам разбор
+        // (спрос — подсказка, не обязательная часть фичи).
+        if (positions.length > 0) {
+          try {
+            const demandByName = await callServer('getWishlistDemandForNames', positions.map((p) => p.name));
+            positions.forEach((p, i) => { p.demand = demandByName[i]; });
+          } catch (_error) { /* нет спроса — не критично, бейджи просто не появятся */ }
+        }
+        positions.forEach((p) => lotParseRowsEl.appendChild(createLotParseRow(p)));
+        lotParseConfirmEl.classList.remove('hidden');
+        if (window.lucide) window.lucide.createIcons();
+      } catch (error) {
+        lotParseStatusEl.textContent = `Не удалось разобрать лот: ${error.message}`;
+      } finally {
+        lotParseBtn.disabled = false;
+      }
+    });
+
+    wrapEl.querySelector('.lot-parse-add-row-btn').addEventListener('click', () => {
+      lotParseRowsEl.appendChild(createLotParseRow({ name: '', quantity: 1, itemType: 'product', confidence: null }));
+      if (window.lucide) window.lucide.createIcons();
+    });
+
+    wrapEl.querySelector('.lot-parse-cancel-btn').addEventListener('click', closeLotParseConfirm);
+
+    // «Применить» — НЕ пишет ничего на сервер. Каждая отмеченная позиция
+    // становится ОБЫЧНОЙ строкой лота (addLotRow, та же функция, что и
+    // "+ Добавить позицию лота" ниже), товар — свободным текстом
+    // (productOriginal), ровно как при ручном вводе без выбора из каталога.
+    // Сохраняется всё это только вместе с целой корзиной, обычным путём.
+    wrapEl.querySelector('.lot-parse-apply-btn').addEventListener('click', () => {
+      const checkedRows = [...lotParseRowsEl.children].filter((rowEl) => rowEl.querySelector('.lot-parse-row-check').checked);
+      const positions = checkedRows
+        .map((rowEl) => ({
+          name: rowEl.querySelector('.lot-parse-row-name').value.trim(),
+          quantity: parseInt(rowEl.querySelector('.lot-parse-row-qty').value, 10) || 1
+        }))
+        .filter((p) => p.name !== '');
+      if (positions.length === 0) {
+        showSaveToast(false, 'Отметьте хотя бы одну позицию галочкой.');
+        return;
+      }
+
+      // Единственная строка лота, добавленная автоматически при создании
+      // (см. `addLotRow()` в самом низу), ещё совсем пустая — если менеджер
+      // её не тронул, заменяем разбором вместо того, чтобы оставлять лишнюю
+      // пустую строку рядом с распознанными.
+      if (lotRows.length === 1 && !lotRows[0].productOriginal && !lotRows[0].telegramId && !lotRows[0].manualClientData) {
+        removeLotRow(lotRows[0].id);
+      }
+
+      let addedCount = 0;
+      positions.forEach((p) => {
+        for (let i = 0; i < p.quantity; i++) {
+          const row = addLotRow();
+          row.productSearchEl.value = p.name;
+          row.productOriginal = p.name;
+          addedCount++;
+        }
+      });
+
+      closeLotParseConfirm();
+      showSaveToast(true, `Добавлено строк: ${addedCount}. Назначьте клиента и цену на каждой.`);
     });
 
     let expanded = false;
