@@ -132,8 +132,14 @@ window.Screens.cartNew = {
                   <option value="Фунт">GBP (£)</option>
                   <option value="Тенге">KZT (₸)</option>
                 </select>
+                <!-- Направление подписи курса — динамическое (репорт VASY,
+                     16.09.2026 вечер: "курс тенге все смотрят в тенге к
+                     рублю", не "рубль к тенге"). currentRate (₽ за 1 единицу
+                     валюты, реально участвует в расчёте сумм) НЕ меняется —
+                     меняется только то, что показано человеку, см.
+                     applyCurrentCurrencyRate ниже. -->
                 <div class="flex items-center gap-1 text-[11px] text-gray-500">
-                  Курс: <span id="cart-rate-display">—</span> ₽
+                  <span id="cart-rate-label">Курс:</span> <span id="cart-rate-display">—</span><span id="cart-rate-unit"> ₽</span>
                   <button id="cart-refresh-rate" title="Обновить курс" class="hover:text-indigo-600 transition-colors">
                     <i data-lucide="refresh-cw" class="w-3 h-3"></i>
                   </button>
@@ -450,6 +456,8 @@ window.Screens.cartNew = {
     // --- Общие поля шапки / курс ---
     const currencySelect = document.getElementById('cart-currency-select');
     const rateDisplay = document.getElementById('cart-rate-display');
+    const rateLabelEl = document.getElementById('cart-rate-label');
+    const rateUnitEl = document.getElementById('cart-rate-unit');
     const rateDateCaptionEl = document.getElementById('cart-rate-date-caption');
     const dateInput = document.getElementById('cart-date-input');
     const totalRubDisplay = document.getElementById('cart-total-rub');
@@ -978,6 +986,20 @@ window.Screens.cartNew = {
       }
     }
 
+    // Направление подписи (репорт VASY, 16.09.2026 вечер) — ТОЛЬКО для
+    // Тенге, остальные 4 валюты остаются в привычном "N ₽ за единицу".
+    function updateRateLabel() {
+      if (currentCurrency === 'Тенге' && currentRate > 0) {
+        rateLabelEl.textContent = 'Тенге к рублю:';
+        rateDisplay.textContent = (1 / currentRate).toFixed(4);
+        rateUnitEl.textContent = ' ₸';
+      } else {
+        rateLabelEl.textContent = 'Курс:';
+        rateDisplay.textContent = currentRate.toFixed(2);
+        rateUnitEl.textContent = ' ₽';
+      }
+    }
+
     // @returns {boolean} применился ли курс ТЕКУЩЕЙ валюты корзины
     function applyCurrentCurrencyRate() {
       const rawRate = currentRates[currentCurrency];
@@ -985,7 +1007,7 @@ window.Screens.cartNew = {
       const parsed = parseFloat(rawRate.toString().replace(',', '.'));
       if (isNaN(parsed)) return false;
       currentRate = parsed;
-      rateDisplay.textContent = currentRate.toFixed(2);
+      updateRateLabel();
       items.forEach((item) => item.onRateChanged());
       recomputeTotals();
       return true;

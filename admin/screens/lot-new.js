@@ -79,8 +79,14 @@ window.Screens.lotNew = {
                 <input type="number" id="lot-amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
               </div>
               <div class="flex flex-col sm:items-end">
+                <!-- Направление подписи курса — динамическое (repот VASY,
+                     16.09.2026 вечер: "курс тенге все смотрят в тенге к
+                     рублю", не "рубль к тенге"). currentRate САМ (число,
+                     используемое для реального расчёта ₽) НЕ меняется —
+                     меняется только то, что показано человеку, см.
+                     applyCurrentCurrencyRate ниже. -->
                 <div class="flex items-center gap-1 text-[11px] text-gray-500">
-                  Курс: <span id="lot-rate-display">—</span> ₽
+                  <span id="lot-rate-label">Курс:</span> <span id="lot-rate-display">—</span><span id="lot-rate-unit"> ₽</span>
                   <button id="lot-refresh-rate" title="Обновить курс" class="hover:text-indigo-600 transition-colors">
                     <i data-lucide="refresh-cw" class="w-3 h-3"></i>
                   </button>
@@ -196,6 +202,8 @@ window.Screens.lotNew = {
     const amountInput = document.getElementById('lot-amount-input');
     const currencySelect = document.getElementById('lot-currency-select');
     const rateDisplay = document.getElementById('lot-rate-display');
+    const rateLabelEl = document.getElementById('lot-rate-label');
+    const rateUnitEl = document.getElementById('lot-rate-unit');
     const calculatedRub = document.getElementById('lot-calculated-rub');
     const dateInput = document.getElementById('lot-date-input');
     const roundingSelect = document.getElementById('lot-rounding-select');
@@ -252,12 +260,29 @@ window.Screens.lotNew = {
       });
     }
 
+    // Направление подписи (repорт VASY, 16.09.2026 вечер: "курс тенге все
+    // смотрят в тенге к рублю", не "рубль к тенге") — ТОЛЬКО для Тенге,
+    // остальные 4 валюты остаются в привычном "N ₽ за единицу". currentRate
+    // (₽ за 1 ₸, реально участвует в расчёте "≈ ... ₽"/цены позиций) НЕ
+    // меняется, инвертируется только отображаемое число.
+    function updateRateLabel() {
+      if (currentCurrency === 'Тенге' && currentRate > 0) {
+        rateLabelEl.textContent = 'Тенге к рублю:';
+        rateDisplay.textContent = (1 / currentRate).toFixed(4);
+        rateUnitEl.textContent = ' ₸';
+      } else {
+        rateLabelEl.textContent = 'Курс:';
+        rateDisplay.textContent = currentRate.toFixed(2);
+        rateUnitEl.textContent = ' ₽';
+      }
+    }
+
     function applyCurrentCurrencyRate() {
       const rawRate = currentRates[currentCurrency];
       if (rawRate === undefined || rawRate === '') return;
       currentRate = parseFloat(rawRate.toString().replace(',', '.'));
       if (isNaN(currentRate)) return;
-      rateDisplay.textContent = currentRate.toFixed(2);
+      updateRateLabel();
       updateCalc();
       updateAllCurrencySymbolLabels();
       recalcAllKnownPricesFromCurrency();

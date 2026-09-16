@@ -930,6 +930,12 @@ window.Screens.orderEdit = {
     // валюты не вызывали путаницы, отдельный запрос по ним не просили).
     // kztToRubRate===0, пока курс ещё не загрузился/сбой — hint остаётся
     // скрытым, не показывает "NaN ₽" или 0.
+    //
+    // ИСПРАВЛЕНО тем же вечером (доп. репорт VASY: "курс тенге все смотрят
+    // в тенге к рублю", не "рубль к тенге") — kztToRubRate (₽ за 1 ₸, реально
+    // участвует в расчёте "≈ ... ₽") НЕ меняется, инвертируется только
+    // отображаемое число: 1/kztToRubRate = ₸ за 1 ₽, тот же приём, что
+    // applyCurrentCurrencyRate в cart-new.js/lot-new.js.
     function updateKztRateHint() {
       const isKzt = document.getElementById('currency-select').value === 'Тенге';
       if (!isKzt || kztToRubRate <= 0) {
@@ -939,7 +945,7 @@ window.Screens.orderEdit = {
       }
       const amount = parseFloat(amountInput.value) || 0;
       const approxLine = amount > 0 ? ` · ≈ ${(amount * kztToRubRate).toFixed(2)} ₽` : '';
-      amountKztRateHintEl.textContent = `Курс: ${kztToRubRate.toFixed(4)} ₽/₸${approxLine}`;
+      amountKztRateHintEl.textContent = `Тенге к рублю: ${(1 / kztToRubRate).toFixed(4)} ₸${approxLine}`;
       amountKztRateHintEl.classList.remove('hidden');
     }
     document.getElementById('currency-select').addEventListener('change', updateKztRateHint);

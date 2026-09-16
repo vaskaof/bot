@@ -655,8 +655,13 @@ window.Screens.collectiveDetail = {
         // занижал факт. расход — теперь здесь ТОТ ЖЕ механизм расчёта, что и
         // в $→₽-калькуляторе формы заказа (`currencyService.
         // getCalculatorKztToRubRate`, та же наценка `Маржа_RUB_KZT`).
+        //
+        // ИСПРАВЛЕНО 16.09.2026 вечером (репорт VASY: "курс тенге все
+        // смотрят в тенге к рублю", не "рубль к тенге") — kztToRubRate (₽ за
+        // 1 ₸, участвует в РАСЧЁТЕ costs[f.key]) не меняется, инвертируется
+        // только то, что написано в подсказке: 1/kztToRubRate = ₸ за 1 ₽.
         hint.textContent = kztToRubRate
-          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу ${kztToRubRate.toFixed(4)} ₽/₸ (тот же курс, что в калькуляторе формы заказа)`
+          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу тенге к рублю ${(1 / kztToRubRate).toFixed(4)} ₸ (тот же курс, что в калькуляторе формы заказа)`
           : 'Курс недоступен — переключите на ₽ или дождитесь курса, сохранение пока заблокировано';
       });
       const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
