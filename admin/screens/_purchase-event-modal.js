@@ -154,9 +154,15 @@ window.PurchaseEventModal = {
       const bufferLine = result.bufferFactPct === null
         ? 'Реализованный буфер появится, когда у заказа будет посчитан "Итог Руб".'
         : `Реализованный буфер по заказу: ${result.bufferFactPct.toFixed(2)}%`;
+      // ИСПРАВЛЕНО 16.09.2026 (доп. репорт VASY: "в WAC я тоже должен видеть
+      // сколько это будет инвертированно", то же направление, что уже
+      // применено в wallet.js/cart-new.js/lot-new.js/order-edit.js/
+      // collective-detail.js) — result.wacRateAtMoment (₽ за 1 ₸, реально
+      // использован сервером для списания) не меняется, инвертируется
+      // только отображаемое число.
       el.innerHTML = `
         <div>Себестоимость заказа: <b>${result.costActualRub.toFixed(2)} ₽</b></div>
-        <div>Курс WAC на момент списания: ${result.wacRateAtMoment.toFixed(4)} ₽/₸</div>
+        <div>Курс WAC на момент списания (тенге к рублю): ${(1 / result.wacRateAtMoment).toFixed(4)} ₸/₽</div>
         <div>Остаток в кошельке: ${result.walletBalanceKztAfter.toFixed(2)} ₸</div>
         <div>${bufferLine}</div>
       `;

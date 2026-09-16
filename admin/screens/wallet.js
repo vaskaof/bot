@@ -92,7 +92,13 @@ window.Screens.wallet = {
         </section>
 
         <section>
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Баланс кассы ₸${helpIcon('Баланс кассы ₸', '<p>Реальный остаток тенге в кассе — не рублёвый эквивалент по курсу ЦБ.</p><p><b>WAC</b> — средневзвешенная цена одного тенге в рублях по всем прошлым конвертациям. Например, WAC = 5.20 ₽/₸ значит: каждый потраченный сейчас тенге на самом деле обошёлся компании в 5.20 ₽ — это и есть настоящая себестоимость покупки, а не сегодняшний биржевой курс.</p>')}</div>
+          <!-- ИСПРАВЛЕНО 16.09.2026 (доп. репорт VASY) — текст-подсказка
+               описывал направление "₽/₸" с примером "5.20 ₽/₸", хотя реальный
+               порядок величины этого числа (5.2) — это ₸/₽ (WAC действительно
+               ₽/₸ обычно ≈0.19-0.20 ₽ за 1 ₸), пример был перепутан ещё ДО
+               этой сессии. Заодно поправлен под новое направление отображения
+               тайла ниже (см. его комментарий). -->
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 inline-flex items-center gap-1">Баланс кассы ₸${helpIcon('Баланс кассы ₸', '<p>Реальный остаток тенге в кассе — не рублёвый эквивалент по курсу ЦБ.</p><p><b>WAC</b> — средневзвешенная себестоимость тенге по всем прошлым конвертациям, показана в привычном направлении «тенге к рублю» (как и курс везде в приложении). Например, WAC = 5.20 ₸/₽ значит: на 1 потраченный сейчас рубль по факту прошлых закупок валюты в среднем пришлось 5.20 тенге — это и есть настоящая себестоимость покупки, а не сегодняшний биржевой курс. Чем БОЛЬШЕ число, тем ДЕШЕВЛЕ обошёлся тенге.</p>')}</div>
           <div id="wallet-balance-body" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-sm text-gray-400">Загрузка...</div>
         </section>
 
@@ -227,8 +233,16 @@ window.Screens.wallet = {
               <div class="text-lg font-semibold text-gray-900">${Number(balance.balanceKzt).toLocaleString('ru-RU')} ₸</div>
             </div>
             <div>
-              <div class="text-[11px] text-gray-400">WAC</div>
-              <div class="text-lg font-semibold text-gray-900">${Number(balance.wac).toFixed(4)} ₽/₸</div>
+              <div class="text-[11px] text-gray-400">WAC (тенге к рублю)</div>
+              <!-- ИСПРАВЛЕНО 16.09.2026 (доп. репорт VASY, тем же вечером,
+                   что и правка направления в cart-new.js/lot-new.js/
+                   order-edit.js/collective-detail.js: "в WAC я тоже должен
+                   видеть сколько это будет инвертированно") — показываем
+                   1/balance.wac (₸ за 1 ₽), не сам balance.wac (₽ за 1 ₸).
+                   Сама себестоимость (списание/учёт) считается на backend'е
+                   через balance.wac НАПРЯМУЮ, здесь меняется только то, что
+                   видит менеджер. -->
+              <div class="text-lg font-semibold text-gray-900">${(1 / Number(balance.wac)).toFixed(4)} ₸/₽</div>
             </div>
           </div>
           <div class="text-[11px] text-gray-400 mt-2 text-center">По состоянию на ${lastEntry}</div>
@@ -279,10 +293,13 @@ window.Screens.wallet = {
 
     function showFxResult(result) {
       const el = document.getElementById('fx-result');
+      // ИСПРАВЛЕНО 16.09.2026 — то же направление, что тайл "WAC" выше,
+      // см. её комментарий. result.effectiveRate/wacAfter (₽ за 1 ₸)
+      // остаются как пришли с сервера, инвертируется только то, что видно.
       el.innerHTML = `
-        <div>Эффективный курс: <b>${result.effectiveRate.toFixed(4)} ₽/₸</b></div>
+        <div>Эффективный курс (тенге к рублю): <b>${(1 / result.effectiveRate).toFixed(4)} ₸/₽</b></div>
         <div>Новый баланс кошелька: ${result.walletBalanceKztAfter.toFixed(2)} ₸</div>
-        <div>Новый WAC: ${result.wacAfter.toFixed(4)} ₽/₸</div>
+        <div>Новый WAC (тенге к рублю): ${(1 / result.wacAfter).toFixed(4)} ₸/₽</div>
       `;
       el.classList.remove('hidden');
     }
