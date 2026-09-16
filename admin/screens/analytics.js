@@ -297,6 +297,40 @@ function methodLabel(method) {
   return label ? `${label} (${method})` : method;
 }
 
+/**
+ * Блок "Бот: активность по командам" (план "Навигация бота", Этап Н5,
+ * 16.09.2026, запрос VASY "понимать активность пользователей") — читает
+ * `getBotUsageSummary(days)`, ОТДЕЛЬНЫЙ от `getUsageAnalytics` источник
+ * (таблица `bot_command_events`, не `analytics_events` — те два домена не
+ * смешиваются, см. миграцию `create-bot-command-events`). Те же
+ * "Название (technicalName)" подписи, что METHOD_LABELS выше (14.09.2026,
+ * запрос VASY) — тот же принцип, отдельный небольшой словарь, т.к. это
+ * команды бота, не методы API.
+ */
+const BOT_COMMAND_LABELS = {
+  start: 'Запуск бота',
+  menu: 'Команда /menu',
+  my_orders: 'Мои заказы (команда)',
+  history: 'Завершённые (команда)',
+  payments: 'Оплаты (команда)',
+  calc: 'Курс валют (команда)',
+  invite: 'Пригласить друга (команда)',
+  wishlist_photo: 'Фото в вишлист (команда)',
+  'menu:open': 'Открыть меню (кнопка на якоре)',
+  'menu:home': 'Главное меню',
+  'menu:ord:a': 'Меню → Мои заказы',
+  'menu:ord:c': 'Меню → Завершённые',
+  'menu:fx': 'Меню → Курс валют',
+  'menu:wish': 'Меню → Фото в вишлист',
+  'menu:bonus': 'Меню → Бонусы и друзья',
+  'menu:help': 'Меню → Связаться'
+};
+
+function botCommandLabel(command) {
+  const label = BOT_COMMAND_LABELS[command];
+  return label ? `${label} (${command})` : command;
+}
+
 window.Screens.analytics = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
@@ -400,14 +434,15 @@ window.Screens.analytics = {
           renderUser(summary);
         } else {
           subtitle.textContent = 'Кто и как пользуется приложением';
-          const [summary, topUsers, retention, errorTrend, funnel] = await Promise.all([
+          const [summary, topUsers, retention, errorTrend, funnel, botUsage] = await Promise.all([
             callServer('getUsageAnalytics', days),
             callServer('getUsageTopUsers', days, 10),
             callServer('getUsageRetention', days),
             callServer('getUsageErrorTrend', days),
-            callServer('getUsageFunnel', days)
+            callServer('getUsageFunnel', days),
+            callServer('getBotUsageSummary', days)
           ]);
-          render(summary, topUsers, retention, errorTrend, funnel, days);
+          render(summary, topUsers, retention, errorTrend, funnel, days, botUsage);
         }
       } catch (error) {
         body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -419,7 +454,7 @@ window.Screens.analytics = {
       load();
     }
 
-    function render(summary, topUsers, retention, errorTrend, funnel, days) {
+    function render(summary, topUsers, retention, errorTrend, funnel, days, botUsage) {
       const { totals, prevTotals, byMethod, byDay, recentErrors, slowMethods, byHourDow } = summary;
       const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
       const prevSuccessRate = prevTotals.total > 0 ? Math.round((prevTotals.success / prevTotals.total) * 100) : 0;
@@ -466,6 +501,11 @@ window.Screens.analytics = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Каталог → Вишлист → Заказ</div>
           ${funnelBlock(funnel)}
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="text-sm font-semibold text-gray-900 mb-3">Бот: активность по командам</div>
+          ${botUsageBlock(botUsage)}
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -756,6 +796,51 @@ window.Screens.analytics = {
                 <span class="text-gray-800 truncate">${escapeHtmlClient(methodLabel(m.method))}</span>
               </div>
               <div class="shrink-0 text-gray-500">${m.count}${m.failed > 0 ? ` <span class="text-red-500">(${m.failed} ошиб.)</span>` : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    /**
+     * "Бот: активность по командам" — см. JSDoc `botCommandLabel`/
+     * `BOT_COMMAND_LABELS` (модульный уровень, выше в файле) за обоснованием
+     * отдельного источника (`getBotUsageSummary`, таблица `bot_command_
+     * events`, НЕ `analytics_events`). Переиспользует `kpiTile`/`dayChart`/
+     * `topUsersList` этого же экрана — та же вёрстка, что у остальных
+     * блоков сводки, не второй визуальный язык ради одной новой секции.
+     */
+    function botUsageBlock(botUsage) {
+      if (!botUsage || botUsage.totals.total === 0) {
+        return '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>';
+      }
+      const { totals, byCommand, byDay, topUsers } = botUsage;
+
+      return `
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          ${kpiTile('activity', 'Нажатий/команд', totals.total)}
+          ${kpiTile('users', 'Уникальных пользователей', totals.uniqueUsers)}
+        </div>
+        ${byDay.length > 0 ? `<div class="mb-3">${dayChart(byDay)}</div>` : ''}
+        <div class="text-[11px] text-gray-400 mb-1.5 mt-3">По командам</div>
+        ${byCommand.length === 0 ? '<div class="text-center text-sm text-gray-400 py-2">Данных пока нет.</div>' : botCommandTable(byCommand)}
+        ${topUsers.length > 0 ? `
+          <div class="text-[11px] text-gray-400 mb-1.5 mt-3">Активнее всех в боте</div>
+          ${topUsersList(topUsers.map(u => ({ ...u, isAdmin: false })))}
+        ` : ''}
+      `;
+    }
+
+    function botCommandTable(byCommand) {
+      return `
+        <div class="space-y-1.5">
+          ${byCommand.map(c => `
+            <div class="flex items-center justify-between text-[13px]">
+              <span class="text-gray-800 truncate">${escapeHtmlClient(botCommandLabel(c.command))}</span>
+              <div class="shrink-0 text-right">
+                <div class="text-gray-500">${c.count}</div>
+                <div class="text-[10px] text-gray-400">${c.uniqueUsers} польз.</div>
+              </div>
             </div>
           `).join('')}
         </div>
