@@ -32,6 +32,14 @@
  * (`ordersService.reconcilePendingClientMoney`) — с этого момента тот же
  * клиент находится в поиске уже под реальным ID, история платежей идёт с ним.
  */
+// Бэклог плана "Лоты/ИИ", п.6 (16.09.2026, репорт VASY: "сейчас бардак по
+// позициям") — сортировка списка заявок. Чисто клиентская (заявок в очереди
+// мало, весь список и так грузится целиком) — тот же приём, что уже есть в
+// admin/screens/orders.js (`ordersListState`). Module-level — переживает
+// переключение вкладок "Клиент"/"Заявки" и повторный заход на экран в
+// рамках одной SPA-сессии.
+const claimsSortState = { field: 'createdAt', direction: 'asc' };
+
 window.Screens = window.Screens || {};
 window.Screens.payments = {
   render(root, dictionaries, params, signal) {
@@ -73,6 +81,17 @@ window.Screens.payments = {
         </div>
 
         <div id="claims-tab" class="hidden">
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
+            <select id="claims-sort-field" class="flex-1 bg-transparent border-none outline-none text-[14px] cursor-pointer">
+              <option value="createdAt">Дата подачи</option>
+              <option value="amountRub">Сумма</option>
+              <option value="clientDisplay">Клиент</option>
+            </select>
+            <button id="claims-sort-direction" title="Сменить направление сортировки" class="p-1.5 text-indigo-600 flex items-center gap-1 shrink-0">
+              <i data-lucide="arrow-up-wide-narrow" class="w-4 h-4"></i>
+              <span class="text-[11px] font-medium">По возрастанию</span>
+            </button>
+          </div>
           <div id="claims-list"></div>
           <div id="claims-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
         </div>
@@ -996,19 +1015,61 @@ window.Screens.payments = {
     // на комментарий) — переиспользуем намеренно, не изобретаем новый UI.
     const claimsList = document.getElementById('claims-list');
     const claimsEmpty = document.getElementById('claims-empty-message');
+    const claimsSortField = document.getElementById('claims-sort-field');
+    const claimsSortDirBtn = document.getElementById('claims-sort-direction');
+    let lastPendingClaims = [];
+    claimsSortField.value = claimsSortState.field;
+    renderClaimsSortDirButton();
     loadClaims();
+
+    function renderClaimsSortDirButton() {
+      const isDesc = claimsSortState.direction === 'desc';
+      claimsSortDirBtn.innerHTML = `
+        <i data-lucide="${isDesc ? 'arrow-down-wide-narrow' : 'arrow-up-wide-narrow'}" class="w-4 h-4"></i>
+        <span class="text-[11px] font-medium">${isDesc ? 'По убыванию' : 'По возрастанию'}</span>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    claimsSortField.addEventListener('change', () => {
+      claimsSortState.field = claimsSortField.value;
+      renderClaims(lastPendingClaims);
+    });
+    claimsSortDirBtn.addEventListener('click', () => {
+      claimsSortState.direction = claimsSortState.direction === 'desc' ? 'asc' : 'desc';
+      renderClaimsSortDirButton();
+      renderClaims(lastPendingClaims);
+    });
+
+    function sortClaims(list) {
+      const field = claimsSortState.field;
+      const sorted = list.slice().sort((a, b) => {
+        let result;
+        if (field === 'amountRub') {
+          result = (a.amountRub || 0) - (b.amountRub || 0);
+        } else if (field === 'createdAt') {
+          result = new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+        } else {
+          result = (a.clientDisplay || a.clientTelegramId || '').localeCompare(b.clientDisplay || b.clientTelegramId || '', 'ru');
+        }
+        return claimsSortState.direction === 'desc' ? -result : result;
+      });
+      return sorted;
+    }
 
     async function loadClaims() {
       claimsList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
         const pending = await callServer('getPendingPaymentClaims');
+        lastPendingClaims = pending;
         renderClaims(pending);
       } catch (error) {
         claimsList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
       }
     }
 
-    function renderClaims(pending) {
+    function renderClaims(pendingUnsorted) {
+      const pending = sortClaims(pendingUnsorted);
       const badge = document.getElementById('claims-count-badge');
       badge.textContent = pending.length > 0 ? `(${pending.length})` : '';
       // Зеркалим тот же счётчик на бейдж нижней навигации (20.08.2026,
@@ -1038,12 +1099,19 @@ window.Screens.payments = {
       const proofHtml = isLikelyUrl(c.proofText)
         ? `<a href="${escapeHtmlClient(c.proofText)}" target="_blank" rel="noopener" class="text-indigo-600 underline break-all">${escapeHtmlClient(c.proofText)}</a>`
         : escapeHtmlClient(c.proofText);
+      // Бэклог плана "Лоты/ИИ", п.5 (16.09.2026) — c.clientDisplay приходит
+      // с backend'а (LEFT JOIN clients в paymentClaimsRepository.
+      // getPendingClaims), пусто, если клиент не найден в clients — тогда
+      // показываем только telegramId, как и раньше.
+      const clientLabel = c.clientDisplay
+        ? `${escapeHtmlClient(c.clientDisplay)} (${escapeHtmlClient(c.clientTelegramId)})`
+        : escapeHtmlClient(c.clientTelegramId);
 
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <div class="font-semibold text-gray-900 text-[15px]">${money(c.amountRub)} ₽ — ${scopeLabel}</div>
-            <div class="text-[12px] text-gray-400 mt-0.5">Клиент: ${escapeHtmlClient(c.clientTelegramId)} · ${c.createdAt ? new Date(c.createdAt).toLocaleString('ru-RU') : ''}</div>
+            <div class="text-[12px] text-gray-400 mt-0.5">Клиент: ${clientLabel} · ${c.createdAt ? new Date(c.createdAt).toLocaleString('ru-RU') : ''}</div>
           </div>
           <button type="button" class="open-client-btn shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Открыть клиента</button>
         </div>
@@ -1057,7 +1125,12 @@ window.Screens.payments = {
       card.querySelector('.open-client-btn').addEventListener('click', () => {
         currentTab = 'client';
         updateTabStyles();
-        const item = { telegramId: c.clientTelegramId, username: '', name: '', displayName: c.clientTelegramId };
+        const item = {
+          telegramId: c.clientTelegramId,
+          username: c.clientUsername || '',
+          name: c.clientName || '',
+          displayName: c.clientDisplay || c.clientTelegramId
+        };
         clientSearch.value = item.displayName;
         selectClient(item);
       });
