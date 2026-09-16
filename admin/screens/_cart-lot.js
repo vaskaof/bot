@@ -63,6 +63,12 @@ window.CartLot = {
             <input type="text" class="lot-purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
             <button type="button" class="lot-purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
           </div>
+          <!-- Фото лота по ссылке (п.7 бэклога плана "Лоты/ИИ", 16.09.2026)
+               — чисто отображение, ничего не сохраняется и не привязывается
+               к конкретной позиции лота (см. JSDoc lotParseService.js за
+               обоснованием). Заполняется renderPhotoStrip() ниже, после
+               resolveOrderProductLink на клик «Найти». -->
+          <div class="lot-purchase-link-photos hidden flex items-center gap-1.5 overflow-x-auto pb-1 mt-1.5"></div>
           <!-- «Разобрать лот» (план "Лоты/ИИ", Этап 3, 15.09.2026, по правке
                VASY тем же днём — разбор нужен ЗДЕСЬ, в черновике, ДО
                сохранения лота, не постфактум на уже созданной карточке).
@@ -79,6 +85,13 @@ window.CartLot = {
             <div class="text-[11px] text-gray-500 mb-1.5">
               Проверьте разбор — товар подставится в строки лота ниже ТОЛЬКО после «Применить». Уверенность модели (%) — подсказка, не факт: она может ошибиться в названии, даже показывая высокий процент.
             </div>
+            <!-- Фото лота (п.7 бэклога, 16.09.2026) — ОДНА общая лента над
+                 позициями, не привязана к конкретной строке (см. JSDoc
+                 lotParseService.js — сопоставление фото↔позиция сознательно
+                 не делается, тот же риск "уверенно врёт", что уже виден на
+                 названиях релизов). Помогает менеджеру сверить текст с
+                 фото глазами, пока он проверяет/правит распознанное. -->
+            <div class="lot-parse-photos hidden flex items-center gap-1.5 overflow-x-auto pb-1 mb-1.5"></div>
             <div class="lot-parse-rows"></div>
             <button type="button" class="lot-parse-add-row-btn w-full py-1.5 rounded-lg border-2 border-dashed border-indigo-200 text-indigo-600 text-xs font-medium mt-1">+ Добавить руками</button>
             <div class="flex items-center gap-1.5 mt-2">
@@ -159,10 +172,30 @@ window.CartLot = {
     const body = wrapEl.querySelector('.lot-body');
     const lotPurchaseLinkInputEl = wrapEl.querySelector('.lot-purchase-link-input');
     const lotPurchaseLinkResolveBtn = wrapEl.querySelector('.lot-purchase-link-resolve-btn');
+    const lotPurchaseLinkPhotosEl = wrapEl.querySelector('.lot-purchase-link-photos');
     const lotParseBtn = wrapEl.querySelector('.lot-parse-btn');
     const lotParseStatusEl = wrapEl.querySelector('.lot-parse-status');
     const lotParseConfirmEl = wrapEl.querySelector('.lot-parse-confirm');
     const lotParseRowsEl = wrapEl.querySelector('.lot-parse-rows');
+    const lotParsePhotosEl = wrapEl.querySelector('.lot-parse-photos');
+
+    // Лента миниатюр фото лота (п.7 бэклога плана "Лоты/ИИ", 16.09.2026) —
+    // общая на оба места, где фото лота становится доступно («Найти» и
+    // «Разобрать лот»). Ничего не сохраняется — чистое отображение, клик по
+    // миниатюре открывает оригинал в новой вкладке (простейший лайтбокс).
+    function renderPhotoStrip(containerEl, urls) {
+      const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
+      containerEl.innerHTML = '';
+      containerEl.classList.toggle('hidden', list.length === 0);
+      list.forEach((url) => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.loading = 'lazy';
+        img.className = 'w-12 h-12 rounded-lg object-cover border border-gray-200 shrink-0 cursor-zoom-in';
+        img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+        containerEl.appendChild(img);
+      });
+    }
     const amountInput = wrapEl.querySelector('.lot-amount-input');
     const amountSymbolEl = wrapEl.querySelector('.lot-amount-currency-symbol');
     const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
@@ -226,13 +259,17 @@ window.CartLot = {
     // строку лота с пустым товаром и подставляем прямо в неё; только если
     // такой строки нет (все строки уже с товаром, или строк нет вовсе) —
     // прежнее поведение "только информирует".
+    lotPurchaseLinkInputEl.addEventListener('input', () => renderPhotoStrip(lotPurchaseLinkPhotosEl, []));
+
     lotPurchaseLinkResolveBtn.addEventListener('click', async () => {
       const url = lotPurchaseLinkInputEl.value.trim();
       if (!url) return;
       lotPurchaseLinkResolveBtn.disabled = true;
+      renderPhotoStrip(lotPurchaseLinkPhotosEl, []);
       try {
         const result = await callServer('resolveOrderProductLink', url);
         if (result.status === 'matched') {
+          renderPhotoStrip(lotPurchaseLinkPhotosEl, result.sku.imageUrl ? [result.sku.imageUrl] : []);
           const emptyRow = lotRows.find((r) => !(r.productOriginal || r.productSearchEl.value.trim()));
           const skuLabel = result.sku.value || result.sku.label || '';
           if (emptyRow) {
@@ -245,6 +282,10 @@ window.CartLot = {
             showSaveToast(true, `Ссылка распознана — товар в каталоге: «${skuLabel}». Все строки лота уже с товаром — выберите его в нужной строке вручную.`);
           }
         } else if (result.status === 'unmatched') {
+          const resolvedImageUrls = (result.resolved && (result.resolved.imageUrls && result.resolved.imageUrls.length > 0
+            ? result.resolved.imageUrls
+            : (result.resolved.imageUrl ? [result.resolved.imageUrl] : []))) || [];
+          renderPhotoStrip(lotPurchaseLinkPhotosEl, resolvedImageUrls);
           const skuModal = SkuModal.init({
             onSaved: (skuResult, action) => {
               if (action === 'create') {
@@ -315,6 +356,7 @@ window.CartLot = {
       lotParseConfirmEl.classList.add('hidden');
       lotParseStatusEl.classList.add('hidden');
       lotParseRowsEl.innerHTML = '';
+      renderPhotoStrip(lotParsePhotosEl, []);
     }
 
     lotParseBtn.addEventListener('click', async () => {
@@ -334,6 +376,7 @@ window.CartLot = {
           lotParseStatusEl.textContent = 'Модель не смогла выделить ни одной позиции — добавьте вручную или закройте.';
         }
         const positions = result.positions || [];
+        renderPhotoStrip(lotParsePhotosEl, result.imageUrls);
         // «Спрос у N клиентов» — лучшим усилием, ОТДЕЛЬНЫМ запросом ПОСЛЕ
         // разбора: сбой этого запроса не должен блокировать сам разбор
         // (спрос — подсказка, не обязательная часть фичи).
