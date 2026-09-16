@@ -528,6 +528,52 @@ window.Screens.wishlist = {
       photoScanModal.classList.add('flex');
     }
 
+    // idx -> принятый skuOriginal (сверка вишлиста с каталогом, 16.09.2026,
+    // дизайн одобрен VASY) — пусто, если совпадения не было или клиент его
+    // отклонил ("Не то — ввести вручную"). Держим отдельно от DOM, т.к.
+    // отклонённая позиция меняет разметку строки целиком (была карточка
+    // совпадения — становится обычное текстовое поле).
+    let scanRowSku = {};
+
+    function renderScanRowBody(row, idx, pos, matched) {
+      const confidencePct = pos.confidence !== null && pos.confidence !== undefined ? Math.round(pos.confidence * 100) : null;
+      const nameFieldHtml = matched
+        ? `
+          <div class="flex items-center gap-2 p-1.5 rounded-lg bg-indigo-50 border border-indigo-100">
+            ${matched.imageUrl ? `<img src="${escapeHtmlClient(matched.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+            <div class="flex-1 min-w-0">
+              <div class="text-[10px] text-indigo-500 font-medium">Похоже на позицию каталога</div>
+              <div class="text-sm font-medium text-indigo-900 truncate">${escapeHtmlClient(matched.shortName)}</div>
+            </div>
+          </div>
+          <button type="button" class="photo-scan-reject-match text-[11px] text-indigo-600 font-medium mt-1" data-idx="${idx}">Это другой товар — ввести вручную</button>
+          <input type="text" class="photo-scan-name hidden" data-idx="${idx}" value="${escapeHtmlClient(pos.name)}">
+        `
+        : `<input type="text" class="photo-scan-name w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" data-idx="${idx}" maxlength="150" value="${escapeHtmlClient(pos.name)}">`;
+
+      row.innerHTML = `
+        <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" checked>
+        <div class="flex-1 min-w-0">
+          ${nameFieldHtml}
+          <div class="flex items-center gap-2 mt-1">
+            <label class="text-[11px] text-gray-400">Кол-во</label>
+            <input type="number" min="1" max="20" class="photo-scan-qty w-14 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" data-idx="${idx}" value="${pos.quantity}">
+            ${confidencePct !== null ? `<span class="text-[11px] text-gray-400">уверенность ${confidencePct}%</span>` : ''}
+          </div>
+          ${pos.note ? `<div class="text-[11px] text-amber-600 mt-1">${escapeHtmlClient(pos.note)}</div>` : ''}
+        </div>
+      `;
+
+      const rejectBtn = row.querySelector('.photo-scan-reject-match');
+      if (rejectBtn) {
+        rejectBtn.addEventListener('click', () => {
+          scanRowSku[idx] = '';
+          renderScanRowBody(row, idx, pos, null);
+          if (window.lucide) window.lucide.createIcons();
+        });
+      }
+    }
+
     function renderPhotoScanPositions(positions) {
       photoScanLoading.classList.add('hidden');
       if (!positions || positions.length === 0) {
@@ -535,23 +581,14 @@ window.Screens.wishlist = {
         return;
       }
       photoScanList.innerHTML = '';
+      scanRowSku = {};
       positions.forEach((pos, idx) => {
+        const matched = pos.catalogMatch || null;
+        scanRowSku[idx] = matched ? matched.skuOriginal : '';
         const row = document.createElement('div');
         row.className = 'flex items-start gap-2 p-2 rounded-xl border border-gray-100';
-        const confidencePct = pos.confidence !== null && pos.confidence !== undefined ? Math.round(pos.confidence * 100) : null;
-        row.innerHTML = `
-          <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" checked>
-          <div class="flex-1 min-w-0">
-            <input type="text" class="photo-scan-name w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" data-idx="${idx}" maxlength="150" value="${escapeHtmlClient(pos.name)}">
-            <div class="flex items-center gap-2 mt-1">
-              <label class="text-[11px] text-gray-400">Кол-во</label>
-              <input type="number" min="1" max="20" class="photo-scan-qty w-14 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" data-idx="${idx}" value="${pos.quantity}">
-              ${confidencePct !== null ? `<span class="text-[11px] text-gray-400">уверенность ${confidencePct}%</span>` : ''}
-            </div>
-            ${pos.note ? `<div class="text-[11px] text-amber-600 mt-1">${escapeHtmlClient(pos.note)}</div>` : ''}
-          </div>
-        `;
         photoScanList.appendChild(row);
+        renderScanRowBody(row, idx, pos, matched);
       });
       photoScanActions.classList.remove('hidden');
       if (window.lucide) window.lucide.createIcons();
@@ -566,7 +603,8 @@ window.Screens.wishlist = {
         items.push({
           checked: checkbox.checked,
           name: nameInput ? nameInput.value.trim() : '',
-          quantity: qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1
+          quantity: qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1,
+          skuOriginal: scanRowSku[idx] || ''
         });
       });
       return items;
