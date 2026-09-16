@@ -529,7 +529,12 @@ window.SkuModal = {
             currentLinks = [result.link, ...currentLinks];
             renderLinksList(currentLinks, false);
           }
-          applyResolvedFields(result.imageUrl, result.description);
+          // suggestedTags (16.09.2026, репорт VASY при живой проверке Этапа
+          // 1 — "добавляю позицию по ссылке и туда не подтягиваются данные
+          // автоматически, хотя уже технически можем") — Бренд/Персонаж/
+          // Серия теперь тоже могут прийти сюда лучшим усилием (backend
+          // сам решает, писать ли — см. catalogService.addCatalogLinkWithResolve).
+          applyResolvedFields(result.imageUrl, result.description, { brand: result.brand, character: result.character, series: result.series });
         } catch (error) {
           errorText.textContent = error.message;
           errorText.classList.remove('hidden');

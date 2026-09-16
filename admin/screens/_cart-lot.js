@@ -764,17 +764,6 @@ window.CartLot = {
       row.onSale = false;
       lotRows.push(row);
 
-      // Комиссионный гейт Э6/D-10 на позиции лота — тот же приём, что на
-      // отдельной позиции корзины (§2.1), пороги — общие на весь лот (см.
-      // commissionThresholds выше, лот не запрашивает getOrderForecast на
-      // каждую строку отдельно).
-      row.commissionGate = FormHelpers.wireCommissionGate({
-        root: rowEl, idPrefix: `lot${id}-row${rowId}-`,
-        feePercentSelector: '.fee-percent-input', feeRubSelector: '.fee-rub-input'
-      });
-      row.commissionGate.setThresholds(commissionThresholds);
-      row.commissionGate.setBreakeven(commissionBreakeven);
-
       // "Личный заказ" — та же логика, что на отдельной позиции (§2.1).
       row.ownPurchaseCheckboxEl.addEventListener('change', () => {
         rowEl.querySelector('.client-row').classList.toggle('hidden', row.ownPurchaseCheckboxEl.checked);
@@ -886,6 +875,26 @@ window.CartLot = {
       row.feePercentEl.addEventListener('input', () => updateRowFeeRub(row));
       row.feeRubEl.addEventListener('input', () => updateRowFeePercent(row));
       row.totalPaymentEl.addEventListener('input', () => updateRowFromTotal(row));
+
+      // Комиссионный гейт Э6/D-10 на позиции лота — тот же приём, что на
+      // отдельной позиции корзины (§2.1), пороги — общие на весь лот (см.
+      // commissionThresholds выше, лот не запрашивает getOrderForecast на
+      // каждую строку отдельно). ВАЖНО: регистрируется ПОСЛЕ "треугольника"
+      // Сумма/Комиссия/Итог выше — найдено 16.09.2026 по репорту VASY
+      // (несовпадающие цифры "Комиссия %" и текста подсказки на позиции
+      // лота): DOM зовёт listener'ы одного поля в порядке регистрации, а
+      // `wireCommissionGate` тоже вешает 'input' на те же feePercentEl/
+      // feeRubEl. Раньше гейт стоял РАНЬШЕ треугольника — читал старое %
+      // ДО того, как треугольник успевал пересчитать его из нового ₽/Суммы,
+      // подсказка отставала на один шаг. `_cart-position.js` изначально
+      // регистрирует их в правильном порядке (см. её JSDoc-комментарий у
+      // wireCommissionGate) — здесь просто скопировали блок не в то место.
+      row.commissionGate = FormHelpers.wireCommissionGate({
+        root: rowEl, idPrefix: `lot${id}-row${rowId}-`,
+        feePercentSelector: '.fee-percent-input', feeRubSelector: '.fee-rub-input'
+      });
+      row.commissionGate.setThresholds(commissionThresholds);
+      row.commissionGate.setBreakeven(commissionBreakeven);
       row.totalPaymentEl.addEventListener('blur', () => clampRowTotalOnBlur(row));
 
       // §5 D3 — не полагаемся на то, что дефолтный текст в разметке
