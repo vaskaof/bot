@@ -386,6 +386,18 @@ window.Screens.orderEdit = {
                 </select>
                 <input type="number" id="amount-input" class="w-24 bg-transparent border-none outline-none text-lg font-semibold text-gray-900 placeholder-gray-300 py-1" placeholder="0.00" step="0.01">
               </div>
+              <!-- Курс Тенге (16.09.2026, п.8 бэклога плана «Лоты/ИИ», репорт
+                   VASY: "обратный курс тенге не везде виден") — до этой правки
+                   экран показывал только "Курсы (штамп)" ниже (историческая
+                   запись на момент СОЗДАНИЯ заказа), но не текущий курс рядом
+                   с самим вводом суммы — менеджер, меняющий сумму/валюту
+                   заказа СЕЙЧАС, не видел, сколько это в рублях по
+                   АКТУАЛЬНОМУ курсу. Видна ТОЛЬКО при выбранной "Тенге" (та
+                   же формула/наценка "Маржа_RUB_KZT", что уже использует
+                   currencyService.getCalculatorKztToRubRate — здесь взята из
+                   уже загружаемого этим экраном finalRates, второй запрос не
+                   нужен, см. updateKztRateHint ниже). -->
+              <div id="amount-kzt-rate-hint" class="hidden text-[11px] text-gray-500 sm:ml-2"></div>
             </div>
           </div>
 
@@ -609,6 +621,7 @@ window.Screens.orderEdit = {
     let clientSearch, selectedClientId = null, selectedClientUsername = '', selectedClientName = '';
     let manualClientData = null;
     let amountInput, feePercentInput, feeRubInput, totalPaymentInput;
+    let amountKztRateHintEl; // п.8 бэклога — hint курса Тенге рядом с "Количество", см. updateKztRateHint()
     let commissionGate; // Э6, D-10/F-24 — FormHelpers.wireCommissionGate(), пороги приходят в loadOrder()
     let refreshExistingWriteoffs = async () => {}; // Э8, M8.1 — переопределяется внутри loadOrder(), нужна снаружи для onRecorded/кнопки
     let originalBookingSum = 0; // снимок "Бронь/комиссия" на момент загрузки — для isDirty() ниже, тот же критерий, что на сервере
@@ -622,6 +635,7 @@ window.Screens.orderEdit = {
     // тот же паттерн, зеркало трёх строк выше.
     let taxiRfSendSumInput, shippingRfSumInput, taxiRfReceiveSumInput, deliveryRfTotalDisplay;
     let usdToRubRate = 0; // курс "Доллар" из finalRates (13.08.2026, $→₽ калькулятор веса) — этот экран раньше курсы вообще не запрашивал
+    let kztToRubRate = 0; // курс "Тенге" из ТОГО ЖЕ finalRates (16.09.2026, п.8 бэклога — hint рядом с "Количество")
     let collectiveSelectStage1, collectiveSelectStage2, sdekTypeSelect;
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
@@ -825,6 +839,7 @@ window.Screens.orderEdit = {
     shortNameInput = document.getElementById('short-name-input');
     clientSearch = document.getElementById('client-search');
     amountInput = document.getElementById('amount-input');
+    amountKztRateHintEl = document.getElementById('amount-kzt-rate-hint');
     feePercentInput = document.getElementById('fee-percent');
     feeRubInput = document.getElementById('fee-rub');
     totalPaymentInput = document.getElementById('total-payment-input');
@@ -893,6 +908,14 @@ window.Screens.orderEdit = {
         usdToRubRate = rate;
         weightUsdRateDisplay.textContent = rate.toFixed(2);
       }
+      // п.8 бэклога (16.09.2026) — тот же ответ УЖЕ содержит "Тенге"
+      // (computeCrossRates её всегда отдаёт, та же наценка "Маржа_RUB_KZT",
+      // что currencyService.getCalculatorKztToRubRate) — второй запрос не нужен.
+      const kztRate = rates && rates.finalRates ? parseFloat((rates.finalRates['Тенге'] || '').toString().replace(',', '.')) : NaN;
+      if (!isNaN(kztRate) && kztRate > 0) {
+        kztToRubRate = kztRate;
+        updateKztRateHint();
+      }
     }).catch(() => {}); // курс — необязательное удобство, сбой не должен мешать редактированию заказа
 
     weightUsdInput.addEventListener('input', () => {
@@ -901,6 +924,26 @@ window.Screens.orderEdit = {
         weightSumInput.value = (usd * usdToRubRate).toFixed(2);
       }
     });
+
+    // п.8 бэклога (16.09.2026, репорт VASY: "обратный курс тенге не везде
+    // виден") — видна ТОЛЬКО при выбранной валюте "Тенге" (остальные 4
+    // валюты не вызывали путаницы, отдельный запрос по ним не просили).
+    // kztToRubRate===0, пока курс ещё не загрузился/сбой — hint остаётся
+    // скрытым, не показывает "NaN ₽" или 0.
+    function updateKztRateHint() {
+      const isKzt = document.getElementById('currency-select').value === 'Тенге';
+      if (!isKzt || kztToRubRate <= 0) {
+        amountKztRateHintEl.classList.add('hidden');
+        amountKztRateHintEl.textContent = '';
+        return;
+      }
+      const amount = parseFloat(amountInput.value) || 0;
+      const approxLine = amount > 0 ? ` · ≈ ${(amount * kztToRubRate).toFixed(2)} ₽` : '';
+      amountKztRateHintEl.textContent = `Курс: ${kztToRubRate.toFixed(4)} ₽/₸${approxLine}`;
+      amountKztRateHintEl.classList.remove('hidden');
+    }
+    document.getElementById('currency-select').addEventListener('change', updateKztRateHint);
+    amountInput.addEventListener('input', updateKztRateHint);
 
     noteInput.addEventListener('input', (e) => {
       noteCounter.textContent = `${e.target.value.length}/300`;
@@ -1382,6 +1425,7 @@ window.Screens.orderEdit = {
       collectiveSelectStage1.value = (links.find((l) => l.stage === 'КЗ→РФ') || {}).collectiveId || '';
       collectiveSelectStage2.value = (links.find((l) => l.stage === 'По РФ') || {}).collectiveId || '';
       amountInput.value = details.amount || '';
+      updateKztRateHint(); // п.8 бэклога — программные .value-присвоения выше не бьют 'change'/'input', обновить hint явно, ПОСЛЕ валюты И суммы
       rateKztInput.value = details.rateKztToCurrency;
       rateRubInput.value = details.rateRubToKzt;
       originalCalcSnapshot = { amount: amountInput.value, rateKzt: rateKztInput.value, rateRub: rateRubInput.value };
