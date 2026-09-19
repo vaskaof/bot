@@ -1013,9 +1013,21 @@ window.Screens.orderEdit = {
         } else {
           const resolved = result.resolved;
           purchaseLinkHint.classList.add('hidden');
+          // suggestedTags — та же параллель с "+Новая позиция каталога", что
+          // уже была у "Найти" на лоте (_cart-lot.js, 15.09.2026), доведена
+          // 19.09.2026 и до этого экрана — SkuModal сама тихо игнорирует
+          // отсутствие (не-eBay ссылка без текстового фолбэка и т.п.).
+          const suggestedTags = resolved.suggestedTags;
           skuModal.open(
             'create', null,
-            { original: resolved.title, description: resolved.description, imageUrl: resolved.imageUrl },
+            {
+              original: resolved.title,
+              description: resolved.description,
+              imageUrl: resolved.imageUrl,
+              brand: suggestedTags && suggestedTags.brand,
+              character: suggestedTags && suggestedTags.character,
+              series: suggestedTags && suggestedTags.series
+            },
             { pendingLink: url }
           );
         }

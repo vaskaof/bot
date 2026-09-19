@@ -243,8 +243,8 @@ window.Screens.catalog = {
       return `
         <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 min-w-0">
           ${details.imageUrl ? `<img src="${escapeHtmlClient(details.imageUrl)}" alt="" class="w-16 h-16 rounded-lg object-cover bg-gray-100" onerror="this.style.display='none'">` : ''}
-          <div class="font-semibold text-gray-900 text-sm truncate">${escapeHtmlClient(details.shortName || details.original)}</div>
-          <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(details.original)}</div>
+          <div class="font-semibold text-gray-900 text-sm break-words">${escapeHtmlClient(details.shortName || details.original)}</div>
+          <div class="text-[11px] text-gray-400 break-words">${escapeHtmlClient(details.original)}</div>
           ${tags.length > 0 ? `<div class="flex flex-wrap gap-1">${tags.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
           ${details.description ? `<div class="text-[11px] text-gray-500">${escapeHtmlClient(details.description)}</div>` : ''}
           ${links.length > 0
@@ -633,7 +633,7 @@ window.Screens.catalog = {
             row.innerHTML = `
               <span class="flex items-center gap-2 min-w-0">
                 ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-                <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+                <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
                   <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
               </span>
               ${idx > 0 ? `<button type="button" class="merge-with-first-btn shrink-0 px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-idx="${idx}">Объединить</button>` : ''}
@@ -683,7 +683,7 @@ window.Screens.catalog = {
             row.className = 'flex items-center gap-2 text-xs';
             row.innerHTML = `
               ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-              <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+              <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
                 <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
             `;
             block.appendChild(row);
@@ -763,7 +763,7 @@ window.Screens.catalog = {
             row.className = 'flex items-center gap-2 text-xs';
             row.innerHTML = `
               ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-              <span class="text-gray-700 truncate">${escapeHtmlClient(item.shortName || item.original)}
+              <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
                 <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
             `;
             block.appendChild(row);

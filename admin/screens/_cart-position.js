@@ -688,7 +688,19 @@ window.CartPosition = {
               }
             }
           });
-          skuModal.open('create', null, { original: (result.resolved && result.resolved.title) || '', description: result.resolved && result.resolved.description, imageUrl: result.resolved && result.resolved.imageUrl });
+          // suggestedTags — та же параллель с "+Новая позиция каталога", что
+          // уже была у "Найти" на лоте (_cart-lot.js, 15.09.2026), доведена
+          // 19.09.2026 и до обычной позиции корзины — SkuModal сама тихо
+          // игнорирует отсутствие (не-eBay ссылка без текстового фолбэка и т.п.).
+          const suggestedTags = result.resolved && result.resolved.suggestedTags;
+          skuModal.open('create', null, {
+            original: (result.resolved && result.resolved.title) || '',
+            description: result.resolved && result.resolved.description,
+            imageUrl: result.resolved && result.resolved.imageUrl,
+            brand: suggestedTags && suggestedTags.brand,
+            character: suggestedTags && suggestedTags.character,
+            series: suggestedTags && suggestedTags.series
+          });
         }
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
