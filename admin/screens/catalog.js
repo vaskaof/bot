@@ -18,27 +18,40 @@ window.Screens.catalog = {
       <button id="refresh-catalog-btn" title="Обновить каталог" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
-      <button id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="copy-check" class="w-6 h-6"></i>
-      </button>
-      <button id="short-name-btn" title="Стандартизация коротких имён" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="wand-2" class="w-5 h-5"></i>
-      </button>
-      <button id="tag-suggestions-btn" title="Теги ИИ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="tags" class="w-5 h-5"></i>
-      </button>
-      <button id="wishlist-demand-btn" title="Спрос клиентов" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="heart" class="w-6 h-6"></i>
-      </button>
       <button id="add-sku-btn" title="Добавить позицию в каталог" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
     `;
     document.getElementById('back-btn').addEventListener('click', () => history.back());
-    document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <!-- 19.09.2026 (репорт VASY): 6 иконок в header-actions (фиксированная
+             h-14 шапка) перестали помещаться рядом с "Каталог" на узких экранах
+             Telegram Mini App — тот же класс переполнения, что уже чинили на
+             "Заказы" 07.09.2026 (см. orders.js). Тем же приёмом: в шапке
+             остаются только 2 самые частые кнопки (Обновить/Добавить), четыре
+             реже используемых инструмента переехали в свой ряд icon+подпись
+             внутри тела экрана. -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
+          <button type="button" id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="copy-check" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Дубли</span>
+          </button>
+          <button type="button" id="short-name-btn" title="Стандартизация коротких имён" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="wand-2" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Имена</span>
+          </button>
+          <button type="button" id="tag-suggestions-btn" title="Теги ИИ" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="tags" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Теги ИИ</span>
+          </button>
+          <button type="button" id="wishlist-demand-btn" title="Спрос клиентов" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="heart" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Спрос</span>
+          </button>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="catalog-search"
@@ -196,6 +209,10 @@ window.Screens.catalog = {
     }
 
     document.getElementById('add-sku-btn').addEventListener('click', () => skuModal.open('create'));
+    // wishlist-demand-btn переехал из header-actions в тело экрана 19.09.2026
+    // (см. комментарий у разметки выше) — слушатель теперь вешается здесь,
+    // после root.innerHTML, а не сразу за header-actions, как раньше.
+    document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
     // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).
@@ -494,7 +511,7 @@ window.Screens.catalog = {
           <div class="border border-gray-200 rounded-xl p-3">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0 flex-1">
-                <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(s.original)}</div>
+                <div class="text-[11px] text-gray-400 break-words">${escapeHtmlClient(s.original)}</div>
                 ${fieldsHtml}
               </div>
               <button type="button" class="tag-suggestion-reject-btn text-[11px] text-gray-400 hover:text-red-500 shrink-0" data-idx="${idx}">Отклонить</button>
