@@ -70,6 +70,17 @@ window.Screens.reminders = {
           </select>
         </div>
 
+        <!-- §1.1 (19.09.2026) — тот же паттерн, что manager-filter-select в
+             orders.js: сервер УЖЕ ограничил видимый набор карточек ролью
+             (getReminders(tenantId, user)), этот дропдаун сужает ЕГО же на
+             экране для admin/менеджера с can_view_all_clients — не отдельная
+             граница доступа, чисто отображение. Скрыт по умолчанию (canSeeAll
+             решает, см. render() ниже), обычному менеджеру не нужен — сервер
+             и так вернул только его заказы. -->
+        <select id="reminders-manager-filter" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 px-3 py-2 mb-3 text-sm outline-none focus:border-indigo-400">
+          <option value="">Все менеджеры</option>
+        </select>
+
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="reminders-count"></div>
         <div id="reminders-list"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Незакрытых пунктов нет 🎉</div>
@@ -83,10 +94,23 @@ window.Screens.reminders = {
     const recommendationsBlock = document.getElementById('recommendations-block');
     const clientFilterInput = document.getElementById('reminders-client-filter');
     const channelFilterSelect = document.getElementById('reminders-channel-filter');
+    const managerFilterSelect = document.getElementById('reminders-manager-filter');
     const tabsContainer = document.getElementById('reminders-tabs');
 
     let allCards = [];
     let activeTab = 'client';
+
+    // §1.1 — тот же canSeeAll, что orders.js/clients.js: admin ИЛИ менеджер
+    // с can_view_all_clients=true (глобалы выставляются router.js после
+    // initAccessCheck, см. её JSDoc там же).
+    const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
+    if (canSeeAll) {
+      callServer('getStaffFilterOptions').then((staffList) => {
+        managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
+          staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
+        managerFilterSelect.classList.remove('hidden');
+      }).catch(() => { /* фильтр необязателен — список напоминаний это не блокирует, см. orders.js за тем же приёмом */ });
+    }
 
     function setActiveTab(tab) {
       activeTab = tab;
@@ -107,6 +131,7 @@ window.Screens.reminders = {
 
     clientFilterInput.addEventListener('input', () => render());
     channelFilterSelect.addEventListener('change', () => render());
+    managerFilterSelect.addEventListener('change', () => render());
 
     loadReminders();
     loadRecommendations();
@@ -160,11 +185,13 @@ window.Screens.reminders = {
     function filteredCards() {
       const clientQuery = clientFilterInput.value.trim().toLowerCase();
       const channel = channelFilterSelect.value;
+      const manager = managerFilterSelect.value; // '' — "Все менеджеры" (или скрыт для обычного менеджера)
       return allCards.filter(c => {
         if (activeTab === 'client' && c.isOwnPurchase) return false;
         if (activeTab === 'own' && !c.isOwnPurchase) return false;
         if (clientQuery && !c.clientDisplay.toLowerCase().includes(clientQuery)) return false;
         if (channel && c.purchaseChannel !== channel) return false;
+        if (manager && c.managerId !== manager) return false;
         return true;
       });
     }

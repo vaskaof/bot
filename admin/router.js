@@ -71,6 +71,26 @@ const ROUTES = [
 const DEFAULT_ROUTE = 'home';
 
 /**
+ * §1.1 (19.09.2026, IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md) — "Мой
+ * день": менеджер, открыв приложение, должен сразу видеть СВОЮ рабочую
+ * очередь (getReminders теперь и правда её фильтрует, см. reminderService.js),
+ * не ленту новостей. Admin — без изменений, DEFAULT_ROUTE ('home') как раньше
+ * (у admin нет личной очереди в том же смысле — "Напоминания" там уже
+ * показывают ВСЁ, отдельная кнопка в нижней навигации никуда не делась).
+ * `window.CURRENT_ACCESS_ROLE` на момент вызова УЖЕ известен — matchRoute
+ * вызывается из renderRoute, которая сама вызывается только внутри
+ * initAccessCheck-колбэка (см. startAdminRouter ниже), не раньше.
+ * @returns {{screen:string, navKey:string, showNav:boolean, params:Object}}
+ */
+function resolveDefaultRoute() {
+  if (window.CURRENT_ACCESS_ROLE === 'manager') {
+    const remindersRoute = ROUTES.find((r) => r.path === 'reminders');
+    return { screen: remindersRoute.screen, navKey: remindersRoute.navKey, showNav: true, params: {} };
+  }
+  return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, showNav: true, params: {} };
+}
+
+/**
  * Собирает query-строку из плоского объекта — вручную (без URLSearchParams,
  * тот же принцип осторожности, что и на бэкенде — GAS его не имеет, а
  * тестовый vm-сэндбокс фронтенда его тоже не предоставляет). Пропускает
@@ -118,7 +138,7 @@ function matchRoute(hash) {
   const clean = qIndex === -1 ? raw : raw.slice(0, qIndex);
   const queryParams = qIndex === -1 ? {} : parseQueryString(raw.slice(qIndex + 1));
 
-  if (clean === '') return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, showNav: true, params: {} };
+  if (clean === '') return resolveDefaultRoute();
 
   const editMatch = clean.match(/^orders\/([^/]+)\/edit$/);
   if (editMatch) {
@@ -160,7 +180,7 @@ function matchRoute(hash) {
   const route = ROUTES.find((r) => r.path === clean);
   if (route) return { screen: route.screen, navKey: route.navKey, showNav: route.showNav, params: queryParams };
 
-  return { screen: DEFAULT_ROUTE, navKey: DEFAULT_ROUTE, showNav: true, params: {} };
+  return resolveDefaultRoute();
 }
 
 /**
