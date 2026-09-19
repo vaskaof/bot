@@ -628,13 +628,22 @@ window.Screens.catalog = {
           const block = document.createElement('div');
           block.className = 'border border-amber-200 bg-amber-50 rounded-xl p-3 mb-2 space-y-1.5';
           cluster.forEach((item, idx) => {
+            // 19.09.2026 (репорт VASY: не видно, с чем сравнивается) — первая
+            // позиция кластера ("Объединить" у остальных мержит ИМЕННО в неё,
+            // см. openMergeCompare(cluster[0].original, ...) ниже) выделена
+            // визуально, чтобы было видно, что это эталон, а не просто первая
+            // строка списка.
+            const isAnchor = idx === 0;
             const row = document.createElement('div');
-            row.className = 'flex items-center justify-between gap-2 text-xs';
+            row.className = `flex items-center justify-between gap-2 text-xs${isAnchor ? ' bg-white border border-amber-300 rounded-lg px-2 py-1.5' : ''}`;
             row.innerHTML = `
               <span class="flex items-center gap-2 min-w-0">
                 ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-                <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
-                  <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+                <span class="min-w-0">
+                  ${isAnchor ? '<span class="block text-[9px] font-semibold text-amber-700 uppercase tracking-wide">Сравниваем с</span>' : ''}
+                  <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
+                    <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+                </span>
               </span>
               ${idx > 0 ? `<button type="button" class="merge-with-first-btn shrink-0 px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-idx="${idx}">Объединить</button>` : ''}
             `;
@@ -678,13 +687,20 @@ window.Screens.catalog = {
         conflicts.forEach((pair, pairIdx) => {
           const block = document.createElement('div');
           block.className = 'border border-sky-200 bg-sky-50 rounded-xl p-3 mb-2 space-y-1.5';
-          [pair.a, pair.b].forEach((item) => {
+          // 19.09.2026 (репорт VASY: не видно, с чем сравнивается) — pair.a
+          // выделена как эталон, pair.b — кандидат, который с ним сверяется
+          // (та же пара идёт в openMergeCompare(pair.a.original, pair.b.original)).
+          [pair.a, pair.b].forEach((item, idx) => {
+            const isAnchor = idx === 0;
             const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 text-xs';
+            row.className = `flex items-center gap-2 text-xs${isAnchor ? ' bg-white border border-sky-300 rounded-lg px-2 py-1.5' : ''}`;
             row.innerHTML = `
               ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-              <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
-                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              <span class="min-w-0">
+                ${isAnchor ? '<span class="block text-[9px] font-semibold text-sky-700 uppercase tracking-wide">Сравниваем с</span>' : ''}
+                <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
+                  <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              </span>
             `;
             block.appendChild(row);
           });
@@ -758,13 +774,19 @@ window.Screens.catalog = {
         aiSuggestedMerges.forEach((pair, pairIdx) => {
           const block = document.createElement('div');
           block.className = 'border border-violet-200 bg-violet-50 rounded-xl p-3 mb-2 space-y-1.5';
-          [pair.a, pair.b].forEach((item) => {
+          // 19.09.2026 (репорт VASY: не видно, с чем сравнивается) — та же
+          // разметка эталон/кандидат, что у "Спорных пар" выше.
+          [pair.a, pair.b].forEach((item, idx) => {
+            const isAnchor = idx === 0;
             const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 text-xs';
+            row.className = `flex items-center gap-2 text-xs${isAnchor ? ' bg-white border border-violet-300 rounded-lg px-2 py-1.5' : ''}`;
             row.innerHTML = `
               ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-              <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
-                <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              <span class="min-w-0">
+                ${isAnchor ? '<span class="block text-[9px] font-semibold text-violet-700 uppercase tracking-wide">Сравниваем с</span>' : ''}
+                <span class="text-gray-700 break-words">${escapeHtmlClient(item.shortName || item.original)}
+                  <span class="text-gray-400">— ${escapeHtmlClient(item.original)}</span></span>
+              </span>
             `;
             block.appendChild(row);
           });
