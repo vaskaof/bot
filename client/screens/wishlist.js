@@ -18,9 +18,6 @@ window.Screens.wishlist = {
       <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       </button>
-      <button id="photo-scan-btn" title="Добавить по фото" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="camera" class="w-5 h-5"></i>
-      </button>
       <button id="add-item-btn" title="Добавить в вишлист" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="plus" class="w-6 h-6"></i>
       </button>
@@ -42,6 +39,38 @@ window.Screens.wishlist = {
           ${buildEmptyState('heart', 'Список желаний пуст.', { label: 'Добавить куклу', btnId: 'empty-add-item-btn' })}
         </div>
       </main>
+
+      <!-- Единая точка входа "Добавить в вишлист" (репорт VASY 19.09.2026 —
+           раньше фото и ручной ввод были ДВУМЯ независимыми кнопками
+           в шапке, не единым флоу). Выбор способа — первый шаг, дальше
+           оба уже существующих сценария (item-modal/photo-scan-modal)
+           не тронуты. -->
+      <div id="add-method-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Добавить в вишлист</h2>
+            <button id="add-method-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-2.5">
+            <button type="button" id="add-method-photo-btn" class="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-left transition-colors">
+              <span class="shrink-0 w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center"><i data-lucide="camera" class="w-5 h-5"></i></span>
+              <span>
+                <span class="block text-sm font-medium text-gray-900">Добавить по фото</span>
+                <span class="block text-xs text-gray-400">ИИ распознает куклу на фото</span>
+              </span>
+            </button>
+            <button type="button" id="add-method-manual-btn" class="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-left transition-colors">
+              <span class="shrink-0 w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center"><i data-lucide="pencil-line" class="w-5 h-5"></i></span>
+              <span>
+                <span class="block text-sm font-medium text-gray-900">Ввести вручную</span>
+                <span class="block text-xs text-gray-400">Поиск по каталогу, ссылка или название</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div id="item-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -258,8 +287,28 @@ window.Screens.wishlist = {
       return card;
     }
 
-    document.getElementById('add-item-btn').addEventListener('click', () => openModalForCreate());
-    document.getElementById('empty-add-item-btn').addEventListener('click', () => openModalForCreate());
+    const addMethodModal = document.getElementById('add-method-modal');
+    function openAddMethodModal() {
+      addMethodModal.classList.remove('hidden');
+      addMethodModal.classList.add('flex');
+    }
+    function closeAddMethodModal() {
+      addMethodModal.classList.add('hidden');
+      addMethodModal.classList.remove('flex');
+    }
+    document.getElementById('add-item-btn').addEventListener('click', openAddMethodModal);
+    document.getElementById('empty-add-item-btn').addEventListener('click', openAddMethodModal);
+    document.getElementById('add-method-modal-close').addEventListener('click', closeAddMethodModal);
+    document.getElementById('add-method-manual-btn').addEventListener('click', () => {
+      closeAddMethodModal();
+      openModalForCreate();
+    });
+    document.getElementById('add-method-photo-btn').addEventListener('click', () => {
+      closeAddMethodModal();
+      // Инпут фото объявлен ниже по файлу (const photoScanInput) — доступен
+      // здесь по замыканию, срабатывает уже ПОСЛЕ полной инициализации экрана.
+      photoScanInput.click();
+    });
 
     // --- Модалка добавления/редактирования ---
     const itemModal = document.getElementById('item-modal');
@@ -497,7 +546,6 @@ window.Screens.wishlist = {
     });
 
     // --- Вишлист по фото (план "Лоты/ИИ", Этап 6, 16.09.2026) ---
-    const photoScanBtn = document.getElementById('photo-scan-btn');
     const photoScanInput = document.getElementById('photo-scan-input');
     const photoScanModal = document.getElementById('photo-scan-modal');
     const photoScanLoading = document.getElementById('photo-scan-loading');
@@ -669,7 +717,6 @@ window.Screens.wishlist = {
       });
     }
 
-    photoScanBtn.addEventListener('click', () => photoScanInput.click());
     photoScanInput.addEventListener('change', async () => {
       const file = photoScanInput.files[0];
       if (!file) return;

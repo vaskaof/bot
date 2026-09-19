@@ -483,7 +483,18 @@ window.SkuModal = {
     // сохраняет само (менеджер по-прежнему должен нажать "Сохранить").
     // Данные площадки (eBay) — то, что заполнил ПРОДАВЕЦ, не проверенный
     // факт (позиция VASY 15.09.2026) — отсюда и это правило, не автозапись.
-    function applyResolvedFields(imageUrl, description, suggestedTags) {
+    // РАСШИРЕНО 19.09.2026 (репорт VASY: "+Новая позиция каталога" не
+    // подтягивает полное название, хотя кнопка "Найти" на позиции лота/
+    // заказа делает это годами тем же резолвером) — необязательный 4-й
+    // параметр `title`, тот же принцип "пишем ТОЛЬКО пустое поле": здесь
+    // (в отличие от "Найти", где prefill идёт в заведомо пустую форму) поле
+    // "Выпуск" уже МОЖЕТ быть заполнено человеком (типичный порядок — сперва
+    // название, потом ссылки), перезаписывать его нельзя. После подстановки
+    // — сразу зовём тот же живой поиск по каталогу, что и при ручном наборе
+    // (handleOriginalSearch), иначе новое название на экране не проверяется
+    // на совпадения, пока менеджер не тронет поле руками (пункт 3 репорта:
+    // "сравнение с имеющимися позициями").
+    function applyResolvedFields(imageUrl, description, suggestedTags, title) {
       const imageInput = document.getElementById('sku-image-input');
       const descriptionInput = document.getElementById('sku-description-input');
       if (imageInput.value.trim() === '' && imageUrl) {
@@ -499,6 +510,11 @@ window.SkuModal = {
         if (characterChips.length === 0 && suggestedTags.character) addCharacterChip(suggestedTags.character);
         const seriesInput = document.getElementById('sku-series-input');
         if (seriesInput.value.trim() === '' && suggestedTags.series) seriesInput.value = suggestedTags.series;
+      }
+      const originalInput = document.getElementById('sku-original-input');
+      if (originalInput.value.trim() === '' && title) {
+        originalInput.value = title;
+        handleOriginalSearch({ target: { value: title } });
       }
     }
 
@@ -534,6 +550,8 @@ window.SkuModal = {
           // автоматически, хотя уже технически можем") — Бренд/Персонаж/
           // Серия теперь тоже могут прийти сюда лучшим усилием (backend
           // сам решает, писать ли — см. catalogService.addCatalogLinkWithResolve).
+          // Заголовок площадки НЕ подставляется здесь (в отличие от create-
+          // ветки ниже) — позиция УЖЕ существует, "Выпуск" уже её ключ.
           applyResolvedFields(result.imageUrl, result.description, { brand: result.brand, character: result.character, series: result.series });
         } catch (error) {
           errorText.textContent = error.message;
@@ -555,18 +573,24 @@ window.SkuModal = {
         renderLinksList(pendingLinks, true);
 
         // Позиции ещё нет — сохранять на сервер нечего, только подтягиваем
-        // Фото/Описание в форму. Не блокирует добавление ссылки в список —
-        // оно уже произошло выше. Запускается ТОЛЬКО если пусты ОБА поля (по
-        // фидбеку VASY 03.08.2026) — если данные уже есть хотя бы с одной
-        // ссылки, повторный парсинг для следующей — трата лимита без пользы.
+        // форму. Не блокирует добавление ссылки в список — оно уже произошло
+        // выше. Запускается, если есть хоть одно ЕЩЁ ПУСТОЕ поле из
+        // Фото/Описание/Выпуск (по фидбеку VASY 03.08.2026 — если все три
+        // уже заполнены хотя бы с одной ссылки, повторный парсинг для
+        // следующей — трата лимита без пользы; условие РАСШИРЕНО 19.09.2026,
+        // раньше проверяло только Фото+Описание).
         // РАСШИРЕНО 15.09.2026 — если ссылка с eBay и продавец заполнил
         // характеристики, ответ несёт ещё и suggestedTags (Бренд/Персонаж/
-        // Серия) — applyResolvedFields сама решает, куда их применять, и
-        // не перезаписывает уже введённое.
+        // Серия). РАСШИРЕНО 19.09.2026 (репорт VASY: "+Новая позиция
+        // каталога" должна вести себя не хуже "Найти" на позиции лота/
+        // заказа, тот же резолвер) — ответ теперь несёт ещё и `title`,
+        // applyResolvedFields сама решает, куда их применять, и не
+        // перезаписывает уже введённое.
         if (document.getElementById('sku-image-input').value.trim() === ''
-          && document.getElementById('sku-description-input').value.trim() === '') {
+          || document.getElementById('sku-description-input').value.trim() === ''
+          || document.getElementById('sku-original-input').value.trim() === '') {
           callServer('resolveProductLinkForAdmin', url)
-            .then(result => applyResolvedFields(result.imageUrl, result.description, result.suggestedTags))
+            .then(result => applyResolvedFields(result.imageUrl, result.description, result.suggestedTags, result.title))
             .catch(() => {
               // Распознавание — удобство, не критичная функциональность; тихо не показываем при сбое.
             });
