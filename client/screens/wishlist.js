@@ -115,6 +115,20 @@ window.Screens.wishlist = {
               <input type="text" id="manual-title-input" maxlength="150"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Например: Monster High Ghoulia Yelps">
+              <!-- Сверка с каталогом при ручном вводе (план "Лоты/ИИ",
+                   расширение 19.09.2026) — тот же принцип, что у фото-скана:
+                   только явное предложение, ничего не выбирается само. -->
+              <div id="manual-catalog-match" class="hidden mt-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center gap-2">
+                <img id="manual-catalog-match-image" src="" alt="" class="w-9 h-9 rounded-lg object-cover shrink-0 bg-white hidden">
+                <div class="flex-1 min-w-0">
+                  <div class="text-[11px] text-indigo-700">Похоже, уже есть в каталоге:</div>
+                  <div id="manual-catalog-match-name" class="text-sm font-medium text-indigo-900 truncate"></div>
+                </div>
+                <button type="button" id="manual-catalog-match-use-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium">Это она</button>
+                <button type="button" id="manual-catalog-match-dismiss-btn" class="shrink-0 p-1 text-indigo-400 hover:text-indigo-600" title="Не то">
+                  <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+              </div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Короткое название RU</label>
@@ -325,6 +339,16 @@ window.Screens.wishlist = {
     const manualImageInput = document.getElementById('manual-image-input');
     const urlHintBlock = document.getElementById('url-hint-block');
     const urlHintResolveBtn = document.getElementById('url-hint-resolve-btn');
+    const manualCatalogMatch = document.getElementById('manual-catalog-match');
+    const manualCatalogMatchImage = document.getElementById('manual-catalog-match-image');
+    const manualCatalogMatchName = document.getElementById('manual-catalog-match-name');
+    const manualCatalogMatchUseBtn = document.getElementById('manual-catalog-match-use-btn');
+    const manualCatalogMatchDismissBtn = document.getElementById('manual-catalog-match-dismiss-btn');
+    let manualCatalogMatchDismissedFor = null;
+
+    function hideManualCatalogMatch() {
+      manualCatalogMatch.classList.add('hidden');
+    }
 
     function looksLikeUrl(value) {
       return /^https?:\/\//i.test(value.trim());
@@ -346,6 +370,8 @@ window.Screens.wishlist = {
       searchBlock.classList.remove('hidden');
       manualBlock.classList.add('hidden');
       resolveLinkBtn.disabled = true;
+      hideManualCatalogMatch();
+      manualCatalogMatchDismissedFor = null;
     }
 
     function openModalForCreate() {
@@ -388,12 +414,68 @@ window.Screens.wishlist = {
     document.getElementById('switch-to-search-btn').addEventListener('click', () => {
       manualBlock.classList.add('hidden');
       searchBlock.classList.remove('hidden');
+      hideManualCatalogMatch();
+    });
+
+    // Сверка ручного ввода с каталогом (план "Лоты/ИИ", расширение
+    // 19.09.2026, репорт VASY) — тот же матчер и тот же принцип, что уже
+    // работает для распознавания по фото (matchNamesToCatalog): только
+    // 'match' (высокая уверенность), НИЧЕГО не выбирается само — только
+    // явное предложение с кнопкой "Это она"/"Не то". На blur, не на каждую
+    // букву — короткие промежуточные обрывки текста ("Draculaur") давали бы
+    // мусорные непопадания и лишние запросы к серверу на каждый чих.
+    manualTitleInput.addEventListener('blur', async () => {
+      const title = manualTitleInput.value.trim();
+      if (title.length < 4 || title === manualCatalogMatchDismissedFor) { return; }
+
+      let match;
+      try {
+        match = await callServer('matchWishlistNameToCatalog', title);
+      } catch (_error) {
+        return; // сверка — удобство, не критичная функциональность, тихо пропускаем сбой
+      }
+      // Пока ждали ответ, поле могло измениться/скрыться (переключение на
+      // поиск, закрытие модалки) — проверяем ещё раз, чтобы не показать
+      // подсказку не по адресу.
+      if (manualBlock.classList.contains('hidden') || manualTitleInput.value.trim() !== title) return;
+
+      if (!match) { hideManualCatalogMatch(); return; }
+      manualCatalogMatchImage.src = match.imageUrl || '';
+      manualCatalogMatchImage.classList.toggle('hidden', !match.imageUrl);
+      manualCatalogMatchName.textContent = match.shortName;
+      manualCatalogMatch.classList.remove('hidden');
+      manualCatalogMatch.dataset.skuOriginal = match.skuOriginal;
+      manualCatalogMatch.dataset.label = match.shortName;
+    });
+
+    manualCatalogMatchUseBtn.addEventListener('click', () => {
+      const skuOriginal = manualCatalogMatch.dataset.skuOriginal;
+      const label = manualCatalogMatch.dataset.label;
+      hideManualCatalogMatch();
+      manualBlock.classList.add('hidden');
+      searchBlock.classList.remove('hidden');
+      selectedSkuValue = skuOriginal;
+      itemSearch.value = label;
+      selectedSkuDisplay.textContent = `Выбрано: ${label}`;
+      selectedSkuDisplay.classList.remove('hidden');
+    });
+
+    manualCatalogMatchDismissBtn.addEventListener('click', () => {
+      manualCatalogMatchDismissedFor = manualTitleInput.value.trim();
+      hideManualCatalogMatch();
     });
 
     // Авто-распознавание товара по ссылке (Phase A: OG-теги/JSON-LD, без AI —
     // см. LinkResolverService.js). Перезаписывает поля формы результатом,
     // пользователь видит и может поправить перед Сохранить. Общая функция —
     // вызывается и с кнопки в ручном режиме, и с подсказки над поиском по каталогу.
+    //
+    // РАСШИРЕНО 19.09.2026 (репорт VASY) — resolveWishlistLink теперь сначала
+    // проверяет каталог по ссылке (см. catalogService.resolveWishlistLinkForClient):
+    // status:'matched' — ссылка уже привязана к позиции каталога, переходим
+    // в состояние "выбрано из каталога" (та же ветка, что явный выбор из
+    // поиска), поля формы не трогаем. status:'unmatched' — как раньше,
+    // подставляем распознанный текст в ручные поля.
     async function performLinkResolve(url) {
       errorText.classList.add('hidden');
       resolveLinkBtn.disabled = true;
@@ -402,9 +484,21 @@ window.Screens.wishlist = {
 
       try {
         const result = await callServer('resolveWishlistLink', url);
-        manualTitleInput.value = result.title.slice(0, 150);
-        manualDescriptionInput.value = result.description.slice(0, 300);
-        if (result.imageUrl) manualImageInput.value = result.imageUrl;
+        if (result.status === 'matched') {
+          manualBlock.classList.add('hidden');
+          searchBlock.classList.remove('hidden');
+          hideManualCatalogMatch();
+          selectedSkuValue = result.sku.original;
+          const label = result.sku.shortName || result.sku.original;
+          itemSearch.value = label;
+          selectedSkuDisplay.textContent = `Выбрано: ${label}`;
+          selectedSkuDisplay.classList.remove('hidden');
+          return;
+        }
+        const { resolved } = result;
+        manualTitleInput.value = resolved.title.slice(0, 150);
+        manualDescriptionInput.value = resolved.description.slice(0, 300);
+        if (resolved.imageUrl) manualImageInput.value = resolved.imageUrl;
       } catch (error) {
         errorText.textContent = error.message;
         errorText.classList.remove('hidden');
