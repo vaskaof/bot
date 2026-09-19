@@ -24,6 +24,9 @@ window.Screens.catalog = {
       <button id="short-name-btn" title="Стандартизация коротких имён" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="wand-2" class="w-5 h-5"></i>
       </button>
+      <button id="tag-suggestions-btn" title="Теги ИИ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+        <i data-lucide="tags" class="w-5 h-5"></i>
+      </button>
       <button id="wishlist-demand-btn" title="Спрос клиентов" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="heart" class="w-6 h-6"></i>
       </button>
@@ -86,6 +89,28 @@ window.Screens.catalog = {
           <div id="short-name-body" class="p-4 space-y-2"></div>
           <div class="p-4 pt-0">
             <button type="button" id="short-name-apply-btn" class="hidden w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить выбранные</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Тег-агент (репорт VASY 19.09.2026, вариант 1 развилки — "я не
+           доверяю конечное решение ИИ") — предложения Бренда/Персонажа/
+           Серии считает ФОНОВЫЙ периодический job (catalogTagSuggestionJob.js,
+           раз в сутки), экран только читает уже готовое и применяет по
+           явному выбору администратора. "Обновить сейчас" — тот же код
+           путь, что периодический job, для тех, кто не хочет ждать. -->
+      <div id="tag-suggestions-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 inline-flex items-center gap-1.5">Теги ИИ${helpIcon('Что это', '<p>Бренд/Персонаж/Серия, которые ИИ предлагает для позиций каталога с пустыми тегами — считается автоматически раз в сутки в фоне, здесь только уже готовые предложения.</p><p>Ничего не применяется автоматически. Отметьте нужные поля и нажмите «Применить выбранные», или отклоните позицию целиком (тогда ИИ больше не предложит по ней снова, пока название не изменится). Уже заполненные вручную теги предложение никогда не перезапишет.</p>')}</h2>
+            <button id="tag-suggestions-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="tag-suggestions-body" class="p-4 space-y-2"></div>
+          <div class="p-4 pt-0 flex gap-2">
+            <button type="button" id="tag-suggestions-scan-btn" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium">Обновить сейчас (ИИ)</button>
+            <button type="button" id="tag-suggestions-apply-btn" class="hidden flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить выбранные</button>
           </div>
         </div>
       </div>
@@ -407,6 +432,136 @@ window.Screens.catalog = {
         }
       };
     }
+
+    // Тег-агент (репорт VASY 19.09.2026, вариант 1 развилки — "я не доверяю
+    // конечное решение ИИ") — предложения уже посчитаны фоновым job'ом,
+    // экран только читает (МГНОВЕННО, без Gemini) и применяет по явному
+    // выбору. НИЧЕГО не применяется автоматически — тот же принцип, что у
+    // "Коротких имён" выше, просто три независимых поля на позицию вместо
+    // одного значения.
+    const tagSuggestionsModal = document.getElementById('tag-suggestions-modal');
+    const tagSuggestionsBody = document.getElementById('tag-suggestions-body');
+    const tagSuggestionsApplyBtn = document.getElementById('tag-suggestions-apply-btn');
+    const tagSuggestionsScanBtn = document.getElementById('tag-suggestions-scan-btn');
+    let currentTagSuggestions = [];
+
+    function closeTagSuggestionsModal() {
+      tagSuggestionsModal.classList.add('hidden');
+      tagSuggestionsModal.classList.remove('flex');
+    }
+    document.getElementById('tag-suggestions-close').addEventListener('click', closeTagSuggestionsModal);
+
+    document.getElementById('tag-suggestions-btn').addEventListener('click', () => {
+      tagSuggestionsModal.classList.remove('hidden');
+      tagSuggestionsModal.classList.add('flex');
+      loadTagSuggestions();
+    });
+
+    async function loadTagSuggestions() {
+      tagSuggestionsBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка предложений...</div>';
+      tagSuggestionsApplyBtn.classList.add('hidden');
+      try {
+        currentTagSuggestions = await callServer('getPendingCatalogTagSuggestions');
+        renderTagSuggestions();
+      } catch (error) {
+        tagSuggestionsBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    const TAG_FIELD_LABELS = { brand: 'Бренд', character: 'Персонаж', series: 'Серия' };
+
+    function renderTagSuggestions() {
+      if (currentTagSuggestions.length === 0) {
+        tagSuggestionsBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Нет ожидающих предложений. Следующий фоновый прогон — раз в сутки, либо нажмите «Обновить сейчас».</div>';
+        tagSuggestionsApplyBtn.classList.add('hidden');
+        return;
+      }
+
+      tagSuggestionsBody.innerHTML = currentTagSuggestions.map((s, idx) => {
+        const fields = ['brand', 'character', 'series'].filter((f) => s[`suggested${f[0].toUpperCase()}${f.slice(1)}`]);
+        const fieldsHtml = fields.map((f) => {
+          const suggestedValue = s[`suggested${f[0].toUpperCase()}${f.slice(1)}`];
+          return `
+            <label class="flex items-center gap-2 text-sm mt-1">
+              <input type="checkbox" class="tag-suggestion-checkbox" data-idx="${idx}" data-field="${f}" checked>
+              <span class="text-gray-500">${TAG_FIELD_LABELS[f]}:</span>
+              <span class="font-medium text-gray-900">${escapeHtmlClient(suggestedValue)}</span>
+            </label>
+          `;
+        }).join('');
+
+        return `
+          <div class="border border-gray-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(s.original)}</div>
+                ${fieldsHtml}
+              </div>
+              <button type="button" class="tag-suggestion-reject-btn text-[11px] text-gray-400 hover:text-red-500 shrink-0" data-idx="${idx}">Отклонить</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      tagSuggestionsApplyBtn.classList.remove('hidden');
+      wireTagSuggestionRowEvents();
+    }
+
+    function wireTagSuggestionRowEvents() {
+      tagSuggestionsBody.querySelectorAll('.tag-suggestion-reject-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          const idx = parseInt(btn.dataset.idx, 10);
+          const item = currentTagSuggestions[idx];
+          try {
+            await callServer('rejectCatalogTagSuggestion', item.original);
+            currentTagSuggestions = currentTagSuggestions.filter((_, i) => i !== idx);
+            renderTagSuggestions();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            btn.disabled = false;
+          }
+        });
+      });
+
+      tagSuggestionsApplyBtn.onclick = async () => {
+        if (tagSuggestionsApplyBtn.disabled) return;
+        tagSuggestionsApplyBtn.disabled = true;
+        try {
+          let appliedCount = 0;
+          for (const [index, item] of currentTagSuggestions.entries()) {
+            const checked = [...tagSuggestionsBody.querySelectorAll(`.tag-suggestion-checkbox[data-idx="${index}"]:checked`)];
+            if (checked.length === 0) continue;
+            const accepted = {};
+            for (const cb of checked) accepted[cb.dataset.field] = item[`suggested${cb.dataset.field[0].toUpperCase()}${cb.dataset.field.slice(1)}`];
+            await callServer('applyCatalogTagSuggestion', item.original, accepted);
+            appliedCount++;
+          }
+          showSaveToast(true, `Применено: ${appliedCount}`);
+          await loadTagSuggestions();
+          loadCatalog(); // теги изменились — обновить список каталога
+        } catch (error) {
+          showSaveToast(false, error.message);
+        } finally {
+          tagSuggestionsApplyBtn.disabled = false;
+        }
+      };
+    }
+
+    tagSuggestionsScanBtn.addEventListener('click', async () => {
+      if (tagSuggestionsScanBtn.disabled) return;
+      tagSuggestionsScanBtn.disabled = true;
+      tagSuggestionsBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Прогоняю ИИ по каталогу...</div>';
+      try {
+        await callServer('runCatalogTagSuggestionScanNow');
+        await loadTagSuggestions();
+      } catch (error) {
+        tagSuggestionsBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
+      } finally {
+        tagSuggestionsScanBtn.disabled = false;
+      }
+    });
 
     // Вынесено из клика "find-duplicates-btn" (16.09.2026, Этап 5, Часть А)
     // — "Сверить с ИИ" тоже должна перезагрузить весь отчёт после ответа

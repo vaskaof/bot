@@ -676,6 +676,13 @@ window.Screens.wishlist = {
     // отклонённая позиция меняет разметку строки целиком (была карточка
     // совпадения — становится обычное текстовое поле).
     let scanRowSku = {};
+    // idx -> true, если клиент явно нажал "Распознано неверно" (репорт
+    // VASY 19.09.2026: обратная связь, что ИИ не всегда правильно
+    // распознаёт куклу на фото) — логируется на confirmScan для анализа,
+    // ГДЕ именно ИИ ошибается. Отдельно от простого редактирования текста —
+    // тихая правка (опечатка/регистр) не должна тонуть сигнал "ИИ реально
+    // ошиблась" в шуме.
+    let scanRowMisrecognized = {};
 
     function renderScanRowBody(row, idx, pos, matched) {
       const confidencePct = pos.confidence !== null && pos.confidence !== undefined ? Math.round(pos.confidence * 100) : null;
@@ -693,6 +700,8 @@ window.Screens.wishlist = {
         `
         : `<input type="text" class="photo-scan-name w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" data-idx="${idx}" maxlength="150" value="${escapeHtmlClient(pos.name)}">`;
 
+      const isFlagged = Boolean(scanRowMisrecognized[idx]);
+
       row.innerHTML = `
         <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" checked>
         <div class="flex-1 min-w-0">
@@ -703,8 +712,13 @@ window.Screens.wishlist = {
             ${confidencePct !== null ? `<span class="text-[11px] text-gray-400">уверенность ${confidencePct}%</span>` : ''}
           </div>
           ${pos.note ? `<div class="text-[11px] text-amber-600 mt-1">${escapeHtmlClient(pos.note)}</div>` : ''}
+          <button type="button" class="photo-scan-misrecognized-btn text-[11px] mt-1.5 font-medium ${isFlagged ? 'text-red-600' : 'text-gray-400'}" data-idx="${idx}">
+            ${isFlagged ? '✓ Отмечено как неверно распознанное — снять пометку' : 'Распознано неверно?'}
+          </button>
         </div>
       `;
+      row.classList.toggle('border-red-200', isFlagged);
+      row.classList.toggle('bg-red-50/30', isFlagged);
 
       const rejectBtn = row.querySelector('.photo-scan-reject-match');
       if (rejectBtn) {
@@ -714,6 +728,21 @@ window.Screens.wishlist = {
           if (window.lucide) window.lucide.createIcons();
         });
       }
+
+      row.querySelector('.photo-scan-misrecognized-btn').addEventListener('click', () => {
+        scanRowMisrecognized[idx] = !scanRowMisrecognized[idx];
+        // ИИ ошиблась в самом названии — предложенное по нему совпадение с
+        // каталогом почти наверняка тоже не то, снимаем его и открываем
+        // поле для правки, чтобы не нужно было нажимать оба переключателя.
+        if (scanRowMisrecognized[idx] && matched) {
+          scanRowSku[idx] = '';
+          matched = null;
+        }
+        renderScanRowBody(row, idx, pos, matched);
+        const nameInput = row.querySelector('.photo-scan-name');
+        if (scanRowMisrecognized[idx] && nameInput) nameInput.focus();
+        if (window.lucide) window.lucide.createIcons();
+      });
     }
 
     function renderPhotoScanPositions(positions) {
@@ -724,6 +753,7 @@ window.Screens.wishlist = {
       }
       photoScanList.innerHTML = '';
       scanRowSku = {};
+      scanRowMisrecognized = {};
       positions.forEach((pos, idx) => {
         const matched = pos.catalogMatch || null;
         scanRowSku[idx] = matched ? matched.skuOriginal : '';
@@ -746,7 +776,8 @@ window.Screens.wishlist = {
           checked: checkbox.checked,
           name: nameInput ? nameInput.value.trim() : '',
           quantity: qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1,
-          skuOriginal: scanRowSku[idx] || ''
+          skuOriginal: scanRowSku[idx] || '',
+          misrecognized: Boolean(scanRowMisrecognized[idx])
         });
       });
       return items;
