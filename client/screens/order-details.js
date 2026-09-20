@@ -77,6 +77,15 @@ window.Screens.orderDetails = {
           <div id="d-pool-rollup" class="hidden text-sm mt-3 pt-3 border-t border-gray-100"></div>
         </div>
 
+        <!-- §2.1 (20.09.2026) — "Получено" от клиента. Скрыта/заменена
+             инфо-плашкой в render() в зависимости от d.statusDelivery/
+             d.pendingReceiptClaim, см. updateReceivedButtonState(). -->
+        <button id="mark-received-btn" type="button"
+          class="hidden w-full mt-4 py-3 rounded-2xl bg-amber-500 text-white text-sm font-medium">
+          Отметить получение
+        </button>
+        <div id="receipt-pending-note" class="hidden mt-4 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 text-xs"></div>
+
         <button id="report-payment-btn" type="button"
           class="w-full mt-4 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-medium">
           Сообщить об оплате
@@ -87,6 +96,34 @@ window.Screens.orderDetails = {
           Задать вопрос по заказу
         </button>
       </main>
+
+      <!-- Модалка "Отметить получение" (§2.1, 20.09.2026) — дата по
+           умолчанию сегодня, редактируема (клиент мог забыть отметить
+           сразу). Долг > 0 на сервере — статус НЕ применяется напрямую,
+           уходит на сверку менеджеру, см. JSDoc ordersService.claimOrderReceived. -->
+      <div id="mark-received-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Отметить получение</h2>
+            <button id="mr-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-3">
+            <p class="text-xs text-gray-400">Если по оплате всё сойдётся — статус заказа сразу обновится. Если останется расхождение, менеджер сверит его вручную и подтвердит.</p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Дата получения</label>
+              <input type="date" id="mr-modal-date"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
+            </div>
+            <p id="mr-modal-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="mr-modal-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="mr-modal-confirm" class="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium">Подтвердить</button>
+          </div>
+        </div>
+      </div>
 
       <div id="question-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
@@ -300,9 +337,33 @@ window.Screens.orderDetails = {
       }
 
       renderOrderRollup(d);
+      updateReceivedButtonState(d);
 
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('app-content').classList.remove('hidden');
+    }
+
+    // §2.1 (20.09.2026) — три взаимоисключающих состояния: заказ уже
+    // "Получено клиентом" (ничего не показываем, статус и так виден в
+    // d-status-delivery выше), заявка уже висит на сверке у менеджера
+    // (info-плашка, БЕЗ кнопки — не давать плодить повторные заявки тем же
+    // тапом), иначе — кнопка.
+    function updateReceivedButtonState(d) {
+      const btn = document.getElementById('mark-received-btn');
+      const note = document.getElementById('receipt-pending-note');
+      const alreadyReceived = d.statusDelivery === 'Получено клиентом';
+
+      if (alreadyReceived) {
+        btn.classList.add('hidden');
+        note.classList.add('hidden');
+      } else if (d.pendingReceiptClaim) {
+        btn.classList.add('hidden');
+        note.classList.remove('hidden');
+        note.textContent = `По приложению не отмечена оплата, отметка о получении (${escapeHtmlClient(d.pendingReceiptClaim.claimedReceivedAt)}) направлена менеджеру на сверку.`;
+      } else {
+        btn.classList.remove('hidden');
+        note.classList.add('hidden');
+      }
     }
 
     // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 4): "Приоритетно сейчас" была
@@ -532,6 +593,48 @@ window.Screens.orderDetails = {
         rpModalError.classList.remove('hidden');
       } finally {
         sendBtn.disabled = false;
+      }
+    });
+
+    // --- Модалка "Отметить получение" (§2.1) ---
+    const markReceivedModal = document.getElementById('mark-received-modal');
+    const mrModalDate = document.getElementById('mr-modal-date');
+    const mrModalError = document.getElementById('mr-modal-error');
+
+    function openMarkReceivedModal() {
+      mrModalDate.value = new Date().toISOString().slice(0, 10);
+      mrModalError.classList.add('hidden');
+      markReceivedModal.classList.remove('hidden');
+      markReceivedModal.classList.add('flex');
+    }
+    document.getElementById('mark-received-btn').addEventListener('click', openMarkReceivedModal);
+
+    function closeMarkReceivedModal() {
+      markReceivedModal.classList.add('hidden');
+      markReceivedModal.classList.remove('flex');
+    }
+    document.getElementById('mr-modal-close').addEventListener('click', closeMarkReceivedModal);
+    document.getElementById('mr-modal-cancel').addEventListener('click', closeMarkReceivedModal);
+
+    const mrModalConfirmBtn = document.getElementById('mr-modal-confirm');
+    mrModalConfirmBtn.addEventListener('click', async () => {
+      if (mrModalConfirmBtn.disabled) return;
+      mrModalError.classList.add('hidden');
+      const dateISO = mrModalDate.value || new Date().toISOString().slice(0, 10);
+
+      mrModalConfirmBtn.disabled = true;
+      try {
+        const result = await callServer('claimOrderReceived', currentOrderId, dateISO, generateRequestId());
+        closeMarkReceivedModal();
+        showSaveToast(true, result.applied
+          ? 'Спасибо! Отметили получение заказа.'
+          : 'По приложению не отмечена оплата, направила статус для сверки менеджером.');
+        await initApp(); // перечитать детали — статус/плашка "на сверке" обновятся
+      } catch (error) {
+        mrModalError.textContent = error.message;
+        mrModalError.classList.remove('hidden');
+      } finally {
+        mrModalConfirmBtn.disabled = false;
       }
     });
   }

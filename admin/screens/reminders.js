@@ -328,6 +328,58 @@ window.Screens.reminders = {
         </div>
       `;
 
+      // §2.1 (20.09.2026) — клиент отметил "Получено" при долге > 0
+      // (claimOrderReceived НЕ применил статус напрямую, см. её JSDoc).
+      // Менеджер решает прямо с карточки: "Подтвердить" — форсирует переход
+      // в "Получено клиентом" (тот же смысл, что уже принятое "Всё равно
+      // закрыть" в _delivery-status-modal.js) + пишет дату получения;
+      // "Отклонить" — заявка просто перестаёт быть pending, статус не трогается.
+      if (item.kind === 'client_claimed_received_with_debt' && item.claimId) {
+        const holder = row.querySelector('[data-inline-fill]');
+        holder.innerHTML = `
+          <div class="flex items-center gap-1.5 mt-1">
+            <button type="button" class="claim-approve-btn text-xs text-emerald-600 font-medium px-2 py-1 rounded-lg hover:bg-emerald-50">Подтвердить</button>
+            <button type="button" class="claim-reject-btn text-xs text-red-500 font-medium px-2 py-1 rounded-lg hover:bg-red-50">Отклонить</button>
+          </div>
+        `;
+        const approveBtn = holder.querySelector('.claim-approve-btn');
+        const rejectBtn = holder.querySelector('.claim-reject-btn');
+
+        approveBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          approveBtn.disabled = true;
+          rejectBtn.disabled = true;
+          approveBtn.textContent = 'Подтверждаю...';
+          try {
+            await callServer('approveOrderReceiptClaim', item.claimId);
+            showSaveToast(true, 'Заказ переведён в «Получено клиентом».');
+            await loadReminders();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            approveBtn.disabled = false;
+            rejectBtn.disabled = false;
+            approveBtn.textContent = 'Подтвердить';
+          }
+        });
+
+        rejectBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          approveBtn.disabled = true;
+          rejectBtn.disabled = true;
+          rejectBtn.textContent = 'Отклоняю...';
+          try {
+            await callServer('rejectOrderReceiptClaim', item.claimId, '');
+            showSaveToast(true, 'Заявка отклонена, статус заказа не изменён.');
+            await loadReminders();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            approveBtn.disabled = false;
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Отклонить';
+          }
+        });
+      }
+
       const inlineConfig = item.stage ? INLINE_FILL_FIELDS[item.stage] : null;
       if (inlineConfig) {
         const holder = row.querySelector('[data-inline-fill]');
