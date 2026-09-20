@@ -273,9 +273,13 @@ window.Screens.orderDetails = {
         productImage.classList.remove('hidden');
         productImage.addEventListener('error', () => productImage.classList.add('hidden'), { once: true });
       }
-      document.getElementById('d-status-delivery').textContent = d.statusDelivery || '—';
+      // 20.09.2026 (VASY) — клиент видит УКРУПНЁННЫЙ шаг (d.progressStep,
+      // те же контрольные точки, что уже уходят уведомлениями), не сырой
+      // "Статус доставки"/12-позиционную лестницу — та осталась только на
+      // admin-экранах, менеджеру нужна позиционная точность.
+      document.getElementById('d-status-delivery').textContent = (d.progressStep ? d.progressStep.label : d.statusDelivery) || '—';
       document.getElementById('d-status-order').textContent = d.statusOrder || '—';
-      document.getElementById('d-delivery-ladder').innerHTML = buildDeliveryLadder(d.deliveryLadder, d.statusDelivery, {});
+      document.getElementById('d-delivery-ladder').innerHTML = buildClientProgressSteps(d.progressStep, d.statusDelivery, {});
       document.getElementById('d-date-order').textContent = d.dateOrderDisplay || '—';
 
       if (d.dateReceivedDisplay) {

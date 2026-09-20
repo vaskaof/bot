@@ -124,6 +124,14 @@ window.Screens.profile = {
             </div>
             <div id="notify-news-toggle" class="toggle-switch on" data-key="news"><div class="knob"></div></div>
           </div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Путь заказа</div>
+              <div class="text-[11px] text-gray-400">Короткие сообщения по пути к вам — выкуплен, едет в Казахстан/Россию и т.д.</div>
+            </div>
+            <div id="notify-stage-updates-toggle" class="toggle-switch on" data-key="orderStageUpdates"><div class="knob"></div></div>
+          </div>
         </div>
 
         <!-- ИЗМЕНЕНО 19.08.2026 (п.6 бета-фидбека, round 7) — раньше здесь
@@ -277,9 +285,10 @@ window.Screens.profile = {
       ordersPayments: document.getElementById('notify-orders-payments-toggle'),
       questionAnswers: document.getElementById('notify-question-answers-toggle'),
       lottery: document.getElementById('notify-lottery-toggle'),
-      news: document.getElementById('notify-news-toggle')
+      news: document.getElementById('notify-news-toggle'),
+      orderStageUpdates: document.getElementById('notify-stage-updates-toggle')
     };
-    let notifyPrefs = { ordersPayments: true, questionAnswers: true, lottery: true, news: true };
+    let notifyPrefs = { ordersPayments: true, questionAnswers: true, lottery: true, news: true, orderStageUpdates: true };
 
     async function loadNotificationSettings() {
       try {

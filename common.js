@@ -466,6 +466,49 @@ function buildDeliveryLadder(ladder, statusText, opts) {
 }
 
 /**
+ * Клиентский прогресс заказа — УКРУПНЁННЫЕ контрольные точки (20.09.2026,
+ * прямая просьба VASY: "клиенты видели не статус доставки, а те шаги,
+ * которые внедрены" — те же 8 шагов, что backend уже шлёт уведомлениями,
+ * server/src/orders/orderStageMessages.js), НЕ 12-позиционная лестница
+ * `buildDeliveryLadder` выше — та остаётся ТОЛЬКО для admin-экранов
+ * (менеджеру нужна позиционная точность операционно, клиенту — нет).
+ * `step` — объект `{index, total, label}` от backend
+ * (`getClientProgressStep`, поле `progressStep` в контракте
+ * `getClientOrdersList`/`getClientOrderDetails`), null — заказ вне
+ * лестницы (например "возврат средств") — тот же fallback на сырой
+ * `statusText`, что уже был у `buildDeliveryLadder` при `!ladder`.
+ * @param {{index:number, total:number, label:string}|null} step
+ * @param {string} statusText Фолбэк вне лестницы
+ * @param {{compact?: boolean}} [opts]
+ * @returns {string} HTML
+ */
+function buildClientProgressSteps(step, statusText, opts) {
+    opts = opts || {};
+    const compact = !!opts.compact;
+
+    if (!step) {
+        if (!statusText) return '';
+        return `<div class="${compact ? 'text-[10px]' : 'text-[11px]'} text-red-500 font-medium">${escapeHtmlClient(statusText)}</div>`;
+    }
+
+    const segments = [];
+    for (let i = 0; i < step.total; i++) {
+        const filled = i <= step.index;
+        segments.push(`<div class="flex-1 ${compact ? 'h-1' : 'h-1.5'} rounded-full ${filled ? 'bg-indigo-500' : 'bg-gray-200'}"></div>`);
+    }
+    const bar = `<div class="flex gap-0.5">${segments.join('')}</div>`;
+
+    if (compact) return bar;
+
+    return `
+        <div>
+            ${bar}
+            <div class="text-[11px] text-gray-500 mt-1">Шаг ${step.index + 1} из ${step.total} · ${escapeHtmlClient(step.label)}</div>
+        </div>
+    `;
+}
+
+/**
  * Единый паттерн пустого состояния (UX-аудит, Шаг 7, 16.08.2026) — иконка +
  * текст + опциональная CTA-кнопка. До этой правки каждый список ("Мои
  * заказы"/"Вишлист"/"Мои вопросы"/"Новости"/лотереи/задания) рисовал пустое

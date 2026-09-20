@@ -240,10 +240,10 @@ window.Screens.orders = {
               <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
             </div>
             <div class="flex flex-wrap items-center gap-1.5 mt-2">
-              ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+              ${(o.progressStep ? o.progressStep.label : o.statusDelivery) ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.progressStep ? o.progressStep.label : o.statusDelivery)}</span>` : ''}
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
             </div>
-            <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
+            <div class="mt-2">${buildClientProgressSteps(o.progressStep, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] font-medium mt-2 ${debtColor}">${escapeHtmlClient(o.debtSummary)}</div>
             ${sovHtml}
           </div>
