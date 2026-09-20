@@ -1,42 +1,81 @@
 'use strict';
 
 /**
- * Экран "Мой вишлист" — перенесён из client/wishlist.html (Phase 2 SPA,
- * 02.08.2026). В оригинале часть состояния (selectedSkuValue, editingWishlistId,
- * reloadWishlist) и обвязка модалки жили на верхнем уровне <script> страницы —
- * это было безопасно, т.к. каждая навигация была полной перезагрузкой страницы
- * (свежий JS-контекст). В SPA все screens/*.js грузятся ОДИН раз и живут в общем
- * global scope весь сеанс — поэтому всё, что раньше было "top-level для страницы",
- * здесь обязано быть ВНУТРИ render(), иначе состояние одного захода на экран
- * утечёт в следующий. showSaveToast — общая функция из router.js.
+ * Экран "Мои куклы" (переименован из "Мой вишлист" — §3 плана "Систематизация
+ * процесса + Мои куклы", 20.09.2026) — перенесён из client/wishlist.html
+ * (Phase 2 SPA, 02.08.2026). В оригинале часть состояния (selectedSkuValue,
+ * editingWishlistId, reloadWishlist) и обвязка модалки жили на верхнем уровне
+ * <script> страницы — это было безопасно, т.к. каждая навигация была полной
+ * перезагрузкой страницы (свежий JS-контекст). В SPA все screens/*.js грузятся
+ * ОДИН раз и живут в общем global scope весь сеанс — поэтому всё, что раньше
+ * было "top-level для страницы", здесь обязано быть ВНУТРИ render(), иначе
+ * состояние одного захода на экран утечёт в следующий. showSaveToast — общая
+ * функция из router.js.
+ *
+ * Два таба — «Вишлист» (status="Хочу") и «Чеклист» (status IN ("Куплено",
+ * "Есть") — куплено через нас ИЛИ отмечено клиентом как уже имеющееся не у
+ * нас), тот же паттерн `currentTab`/`.tab-btn`, что admin/screens/home.js.
+ * Фильтрация — чисто на фронтенде поверх уже полученного getClientWishlist,
+ * contract не менялся.
  */
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
   render(root, _context, params) {
-    document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мой вишлист</h1>';
-    document.getElementById('header-actions').innerHTML = `
-      <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-      </button>
-      <button id="add-item-btn" title="Добавить в вишлист" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="plus" class="w-6 h-6"></i>
-      </button>
-    `;
+    let currentTab = 'wishlist'; // 'wishlist' | 'checklist'
+
+    function renderHeaderActions() {
+      document.getElementById('header-actions').innerHTML = `
+        <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+          <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+        </button>
+        <button id="add-item-btn" title="${currentTab === 'checklist' ? 'Добавить в коллекцию' : 'Добавить в вишлист'}" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+          <i data-lucide="plus" class="w-6 h-6"></i>
+        </button>
+      `;
+      document.getElementById('refresh-btn').addEventListener('click', () => {
+        const icon = document.querySelector('#refresh-btn svg');
+        if (icon) icon.classList.add('animate-spin');
+        loadWishlist().finally(() => {
+          const liveIcon = document.querySelector('#refresh-btn svg');
+          if (liveIcon) liveIcon.classList.remove('animate-spin');
+        });
+      });
+      document.getElementById('add-item-btn').addEventListener('click', () => {
+        if (currentTab === 'checklist') {
+          openModalForCreate({ addToChecklist: true });
+        } else {
+          openAddMethodModal();
+        }
+      });
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Мои куклы</h1>';
+    renderHeaderActions();
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="active-section">
-          <div class="text-[11px] text-gray-400 px-1 mb-2">Хочу</div>
+        <div id="tab-switcher" class="flex gap-1.5 mb-3">
+          <button type="button" data-tab="wishlist" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
+            Вишлист <span id="wishlist-count-badge"></span>
+          </button>
+          <button type="button" data-tab="checklist" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
+            Чеклист <span id="checklist-count-badge"></span>
+          </button>
+        </div>
+
+        <div id="wishlist-tab">
           <div id="active-list"></div>
+          <div id="wishlist-empty-message" class="hidden">
+            ${buildEmptyState('heart', 'Список желаний пуст.', { label: 'Добавить куклу', btnId: 'empty-add-item-btn' })}
+          </div>
         </div>
 
-        <div id="purchased-section" class="mt-6">
-          <div class="text-[11px] text-gray-400 px-1 mb-2">Куплено</div>
-          <div id="purchased-list"></div>
-        </div>
-
-        <div id="empty-message" class="hidden">
-          ${buildEmptyState('heart', 'Список желаний пуст.', { label: 'Добавить куклу', btnId: 'empty-add-item-btn' })}
+        <div id="checklist-tab" class="hidden">
+          <div id="checklist-list"></div>
+          <div id="checklist-empty-message" class="hidden text-center text-sm text-gray-400 py-10 px-4">
+            Отметь кукол, которые у тебя уже есть — куплены у нас или получены другим способом.
+          </div>
         </div>
       </main>
 
@@ -187,32 +226,42 @@ window.Screens.wishlist = {
 
     let selectedSkuValue = null;
     let editingWishlistId = null;
+    let addingToChecklist = false;
     let reloadWishlist = null;
 
     const activeList = document.getElementById('active-list');
-    const purchasedList = document.getElementById('purchased-list');
-    const activeSection = document.getElementById('active-section');
-    const purchasedSection = document.getElementById('purchased-section');
-    const emptyMessage = document.getElementById('empty-message');
-    const refreshBtn = document.getElementById('refresh-btn');
+    const checklistList = document.getElementById('checklist-list');
+    const wishlistEmptyMessage = document.getElementById('wishlist-empty-message');
+    const checklistEmptyMessage = document.getElementById('checklist-empty-message');
 
     let allItems = [];
 
     loadWishlist();
     reloadWishlist = loadWishlist;
 
-    refreshBtn.addEventListener('click', () => {
-      const icon = refreshBtn.querySelector('svg');
-      if (icon) icon.classList.add('animate-spin');
-      loadWishlist().finally(() => {
-        const liveIcon = refreshBtn.querySelector('svg');
-        if (liveIcon) liveIcon.classList.remove('animate-spin');
+    // --- Переключатель вкладок (тот же паттерн, что admin/screens/home.js) ---
+    const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.tab === currentTab) return;
+        currentTab = btn.dataset.tab;
+        updateTabStyles();
+        renderHeaderActions();
       });
     });
+    function updateTabStyles() {
+      tabButtons.forEach(btn => {
+        const active = btn.dataset.tab === currentTab;
+        btn.className = `tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`;
+      });
+      document.getElementById('wishlist-tab').classList.toggle('hidden', currentTab !== 'wishlist');
+      document.getElementById('checklist-tab').classList.toggle('hidden', currentTab !== 'checklist');
+    }
+    updateTabStyles();
 
     async function loadWishlist() {
       activeList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
-      purchasedList.innerHTML = '';
+      checklistList.innerHTML = '';
       try {
         allItems = await callServer('getClientWishlist');
         renderList();
@@ -222,25 +271,20 @@ window.Screens.wishlist = {
     }
 
     function renderList() {
-      const active = allItems.filter(i => i.status !== 'Куплено');
-      const purchased = allItems.filter(i => i.status === 'Куплено');
+      const wishlistItems = allItems.filter(i => i.status === 'Хочу');
+      const checklistItems = allItems.filter(i => i.status === 'Куплено' || i.status === 'Есть');
 
-      if (allItems.length === 0) {
-        activeSection.classList.add('hidden');
-        purchasedSection.classList.add('hidden');
-        emptyMessage.classList.remove('hidden');
-        return;
-      }
-      emptyMessage.classList.add('hidden');
+      document.getElementById('wishlist-count-badge').textContent = wishlistItems.length > 0 ? `· ${wishlistItems.length}` : '';
+      document.getElementById('checklist-count-badge').textContent = checklistItems.length > 0 ? `· ${checklistItems.length}` : '';
 
-      activeSection.classList.toggle('hidden', active.length === 0);
-      purchasedSection.classList.toggle('hidden', purchased.length === 0);
+      wishlistEmptyMessage.classList.toggle('hidden', wishlistItems.length > 0);
+      checklistEmptyMessage.classList.toggle('hidden', checklistItems.length > 0);
 
       activeList.innerHTML = '';
-      active.forEach(item => activeList.appendChild(buildCard(item)));
+      wishlistItems.forEach(item => activeList.appendChild(buildCard(item)));
 
-      purchasedList.innerHTML = '';
-      purchased.forEach(item => purchasedList.appendChild(buildCard(item)));
+      checklistList.innerHTML = '';
+      checklistItems.forEach(item => checklistList.appendChild(buildCard(item)));
 
       if (window.lucide) window.lucide.createIcons();
     }
@@ -249,7 +293,7 @@ window.Screens.wishlist = {
       const card = document.createElement('div');
       card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex gap-3';
 
-      const isPurchased = item.status === 'Куплено';
+      const isChecklist = item.status === 'Куплено' || item.status === 'Есть';
 
       card.innerHTML = `
         ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
@@ -257,15 +301,17 @@ window.Screens.wishlist = {
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
           ${item.isUnknown && item.rawTitle && item.rawTitle !== item.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(item.rawTitle)}</div>` : ''}
           ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
+          ${item.status === 'Куплено' ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Куплено у нас</span>' : ''}
           ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
           ${!item.isUnknown ? '<div class="text-[11px] text-gray-300 mt-1">Данные обновляются по каталогу — редактирование недоступно, только удаление</div>' : ''}
           <div class="flex flex-wrap gap-3 mt-1">
             ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
           </div>
           <div class="flex items-center gap-2 mt-3">
-            <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isPurchased ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
-              ${isPurchased ? 'Вернуть в «Хочу»' : 'Отметить купленным'}
+            <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isChecklist ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
+              ${isChecklist ? 'Вернуть в «Вишлист»' : 'Отметить купленным'}
             </button>
+            ${!isChecklist ? '<button type="button" class="mark-owned-btn p-2 text-gray-400 hover:text-indigo-600" title="Уже есть — в Чеклист"><i data-lucide="check-circle-2" class="w-4 h-4"></i></button>' : ''}
             ${item.isUnknown ? '<button type="button" class="edit-item-btn p-2 text-gray-400 hover:text-indigo-600" title="Редактировать"><i data-lucide="pencil" class="w-4 h-4"></i></button>' : ''}
             <button type="button" class="delete-item-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
           </div>
@@ -276,7 +322,7 @@ window.Screens.wishlist = {
         const btn = e.currentTarget;
         btn.disabled = true;
         try {
-          const newStatus = isPurchased ? 'Хочу' : 'Куплено';
+          const newStatus = isChecklist ? 'Хочу' : 'Куплено';
           await callServer('updateWishlistItemStatus', item.wishlistId, newStatus);
           loadWishlist();
         } catch (error) {
@@ -285,8 +331,24 @@ window.Screens.wishlist = {
         }
       });
 
+      const markOwnedBtn = card.querySelector('.mark-owned-btn');
+      if (markOwnedBtn) {
+        markOwnedBtn.addEventListener('click', async () => {
+          markOwnedBtn.disabled = true;
+          try {
+            // Переключает уже существующую запись на месте (VASY, 20.09.2026:
+            // "переносить в коллекцию") — НЕ создаёт вторую позицию.
+            await callServer('updateWishlistItemStatus', item.wishlistId, 'Есть');
+            loadWishlist();
+          } catch (error) {
+            markOwnedBtn.disabled = false;
+            showSaveToast(false, `Не удалось отметить: ${error.message}`);
+          }
+        });
+      }
+
       card.querySelector('.delete-item-btn').addEventListener('click', async () => {
-        if (!(await showConfirmModal('Удалить позицию из вишлиста?', { confirmLabel: 'Удалить', danger: true }))) return;
+        if (!(await showConfirmModal('Удалить позицию?', { confirmLabel: 'Удалить', danger: true }))) return;
         try {
           await callServer('deleteWishlistItem', item.wishlistId);
           loadWishlist();
@@ -310,7 +372,8 @@ window.Screens.wishlist = {
       addMethodModal.classList.add('hidden');
       addMethodModal.classList.remove('flex');
     }
-    document.getElementById('add-item-btn').addEventListener('click', openAddMethodModal);
+    // add-item-btn слушатель — внутри renderHeaderActions() (контекстное
+    // поведение по currentTab), не здесь.
     document.getElementById('empty-add-item-btn').addEventListener('click', openAddMethodModal);
     document.getElementById('add-method-modal-close').addEventListener('click', closeAddMethodModal);
     document.getElementById('add-method-manual-btn').addEventListener('click', () => {
@@ -357,6 +420,7 @@ window.Screens.wishlist = {
     function resetModalState() {
       selectedSkuValue = null;
       editingWishlistId = null;
+      addingToChecklist = false;
       itemSearch.value = '';
       selectedSkuDisplay.classList.add('hidden');
       itemSearchDropdown.classList.remove('active');
@@ -374,9 +438,10 @@ window.Screens.wishlist = {
       manualCatalogMatchDismissedFor = null;
     }
 
-    function openModalForCreate() {
+    function openModalForCreate(options) {
       resetModalState();
-      document.getElementById('item-modal-title').textContent = 'Добавить в вишлист';
+      addingToChecklist = Boolean(options && options.addToChecklist);
+      document.getElementById('item-modal-title').textContent = addingToChecklist ? 'Добавить в коллекцию' : 'Добавить в вишлист';
       itemModal.classList.remove('hidden');
       itemModal.classList.add('flex');
     }
@@ -601,6 +666,9 @@ window.Screens.wishlist = {
         sourceUrl: document.getElementById('manual-url-input').value.trim(),
         rawImageUrl: document.getElementById('manual-image-input').value.trim()
       };
+      // Только на создании — редактирование не должно тихо переносить позицию
+      // между табами (см. wishlistService.addWishlistItem's JSDoc).
+      if (!editingWishlistId && addingToChecklist) payload.addToChecklist = true;
 
       if (!isManualMode && !payload.skuOriginal) {
         errorText.textContent = 'Выберите позицию из списка или переключитесь на ручной ввод.';
@@ -629,7 +697,7 @@ window.Screens.wishlist = {
           await callServer('addWishlistItem', payload);
         }
         closeItemModal();
-        showSaveToast(true, editingWishlistId ? 'Позиция обновлена' : 'Добавлено в вишлист');
+        showSaveToast(true, editingWishlistId ? 'Позиция обновлена' : (addingToChecklist ? 'Добавлено в коллекцию' : 'Добавлено в вишлист'));
         if (reloadWishlist) reloadWishlist();
       } catch (error) {
         errorText.textContent = error.message;
