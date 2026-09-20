@@ -363,6 +363,11 @@ window.Screens.staff = {
               ${r.isActive === false ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 ml-1">отключён</span>' : ''}
             </div>
             <div class="text-[11px] text-gray-400">Заказов: ${r.ordersCount}</div>
+            ${r.openOrdersCount > 0 ? `
+              <div class="text-[11px] mt-0.5 ${r.overdueOrdersCount > 0 ? 'text-red-500 font-medium' : 'text-gray-400'}" title="Открытые заказы прямо сейчас, не зависит от выбранного периода">
+                Просрочено: ${r.overdueOrdersCount}/${r.openOrdersCount}
+              </div>
+            ` : ''}
           </div>
           <div class="text-right shrink-0">
             <div class="text-sm font-medium text-gray-900">${money(r.totalRevenueRub)} ₽</div>
