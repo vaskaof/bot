@@ -21,32 +21,40 @@
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
   render(root, _context, params) {
-    let currentTab = 'wishlist'; // 'wishlist' | 'checklist'
+    let currentTab = 'wishlist'; // 'wishlist' | 'checklist' | 'collections'
 
     function renderHeaderActions() {
+      // «Коллекции» курируются только вручную администратором (§4.5 плана
+      // "Систематизация процесса + Мои куклы", 20.09.2026) — на этой вкладке
+      // клиент ничего не добавляет, кнопка "+" не нужна.
+      const isCollectionsTab = currentTab === 'collections';
       document.getElementById('header-actions').innerHTML = `
         <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
           <i data-lucide="refresh-cw" class="w-5 h-5"></i>
         </button>
+        ${isCollectionsTab ? '' : `
         <button id="add-item-btn" title="${currentTab === 'checklist' ? 'Добавить в коллекцию' : 'Добавить в вишлист'}" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
           <i data-lucide="plus" class="w-6 h-6"></i>
-        </button>
+        </button>`}
       `;
       document.getElementById('refresh-btn').addEventListener('click', () => {
         const icon = document.querySelector('#refresh-btn svg');
         if (icon) icon.classList.add('animate-spin');
-        loadWishlist().finally(() => {
+        const reload = isCollectionsTab ? loadCollections : loadWishlist;
+        reload().finally(() => {
           const liveIcon = document.querySelector('#refresh-btn svg');
           if (liveIcon) liveIcon.classList.remove('animate-spin');
         });
       });
-      document.getElementById('add-item-btn').addEventListener('click', () => {
-        // §3.7 плана (20.09.2026) — Чеклист теперь тоже открывает выбор
-        // способа (раньше сразу вёл в ручной ввод/поиск), т.к. фото-скан и
-        // массовый выбор из каталога тоже доступны для Чеклиста, не только
-        // для Вишлиста.
-        openAddMethodModal({ addToChecklist: currentTab === 'checklist' });
-      });
+      if (!isCollectionsTab) {
+        document.getElementById('add-item-btn').addEventListener('click', () => {
+          // §3.7 плана (20.09.2026) — Чеклист теперь тоже открывает выбор
+          // способа (раньше сразу вёл в ручной ввод/поиск), т.к. фото-скан и
+          // массовый выбор из каталога тоже доступны для Чеклиста, не только
+          // для Вишлиста.
+          openAddMethodModal({ addToChecklist: currentTab === 'checklist' });
+        });
+      }
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -61,6 +69,9 @@ window.Screens.wishlist = {
           </button>
           <button type="button" data-tab="checklist" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
             Чеклист <span id="checklist-count-badge"></span>
+          </button>
+          <button type="button" data-tab="collections" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
+            Коллекции
           </button>
         </div>
 
@@ -84,6 +95,15 @@ window.Screens.wishlist = {
           <div id="checklist-list"></div>
           <div id="checklist-empty-message" class="hidden text-center text-sm text-gray-400 py-10 px-4">
             Отметь кукол, которые у тебя уже есть — куплены у нас или получены другим способом.
+          </div>
+        </div>
+
+        <!-- «Коллекции» (§4 плана "Систематизация процесса + Мои куклы",
+             20.09.2026) — только чтение, курируются администратором. -->
+        <div id="collections-tab" class="hidden">
+          <div id="collections-list"></div>
+          <div id="collections-empty-message" class="hidden text-center text-sm text-gray-400 py-10 px-4">
+            Коллекций пока нет — загляните позже.
           </div>
         </div>
       </main>
@@ -421,8 +441,68 @@ window.Screens.wishlist = {
       });
       document.getElementById('wishlist-tab').classList.toggle('hidden', currentTab !== 'wishlist');
       document.getElementById('checklist-tab').classList.toggle('hidden', currentTab !== 'checklist');
+      document.getElementById('collections-tab').classList.toggle('hidden', currentTab !== 'collections');
     }
     updateTabStyles();
+
+    // --- «Коллекции» (§4 плана, 20.09.2026) — только чтение, прогресс из
+    // уже загруженного Чеклиста/Вишлиста клиента (getClientCollections). ---
+    async function loadCollections() {
+      const list = document.getElementById('collections-list');
+      list.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        const result = await callServer('getClientCollections');
+        renderCollections(result);
+      } catch (error) {
+        list.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+
+    function renderCollections(result) {
+      const list = document.getElementById('collections-list');
+      const empty = document.getElementById('collections-empty-message');
+      empty.classList.toggle('hidden', result.collections.length > 0);
+      list.innerHTML = '';
+      result.collections.forEach((c) => list.appendChild(buildCollectionCard(c, result.hasChecklistItems)));
+    }
+
+    function buildCollectionCard(c, hasChecklistItems) {
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+
+      // Мягкая заглушка вместо "0%" (§3.7 плана, п.5) — пока у клиента вообще
+      // нет ни одной позиции Чеклиста ни в одной коллекции, демотивирующий
+      // ноль на КАЖДОЙ карточке не показывается, вместо него один и тот же
+      // нейтральный призыв заполнить Чеклист.
+      const showPlaceholder = !hasChecklistItems;
+      const wantHint = c.wantCount > 0 ? `<div class="text-[11px] text-gray-400 mt-1">Ещё ${c.wantCount} в вишлисте на эту коллекцию</div>` : '';
+
+      card.innerHTML = `
+        <div class="flex items-start gap-3">
+          ${c.coverImageUrl ? `<img src="${escapeHtmlClient(c.coverImageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(c.name)}</div>
+            ${c.description ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(c.description)}</div>` : ''}
+          </div>
+        </div>
+        ${showPlaceholder ? `
+          <div class="mt-3 text-[12px] text-indigo-600 bg-indigo-50 rounded-xl p-2.5">Отметьте кукол, которые у вас уже есть, на вкладке «Чеклист» — и здесь появится прогресс.</div>
+        ` : `
+          <div class="mt-3">
+            <div class="flex items-center justify-between text-[11px] text-gray-400 mb-1">
+              <span>${c.ownedCount} из ${c.totalCount}</span>
+              <span>${c.progressPercent}%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div class="h-full rounded-full bg-indigo-500" style="width: ${c.progressPercent}%"></div>
+            </div>
+            ${wantHint}
+          </div>
+        `}
+      `;
+      return card;
+    }
+    loadCollections();
 
     async function loadWishlist() {
       activeList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';

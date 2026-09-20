@@ -66,6 +66,10 @@ const ROUTES = [
   { path: 'carts', screen: 'carts', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
   { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
+  // «Коллекции» (§4 IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md, 20.09.2026)
+  // — тот же паттерн, что 'wishlist-demand': не в нижней навигации, вход
+  // иконкой с catalog.js.
+  { path: 'catalog/collections', screen: 'catalogCollections', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';

@@ -33,7 +33,7 @@ window.Screens.catalog = {
              остаются только 2 самые частые кнопки (Обновить/Добавить), четыре
              реже используемых инструмента переехали в свой ряд icon+подпись
              внутри тела экрана. -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-5 gap-1">
           <button type="button" id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="copy-check" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Дубли</span>
@@ -49,6 +49,11 @@ window.Screens.catalog = {
           <button type="button" id="wishlist-demand-btn" title="Спрос клиентов" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="heart" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Спрос</span>
+          </button>
+          <!-- «Коллекции» (§4 IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md, 20.09.2026) -->
+          <button type="button" id="collections-nav-btn" title="Коллекции" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Коллекции</span>
           </button>
         </div>
 
@@ -213,6 +218,7 @@ window.Screens.catalog = {
     // (см. комментарий у разметки выше) — слушатель теперь вешается здесь,
     // после root.innerHTML, а не сразу за header-actions, как раньше.
     document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
+    document.getElementById('collections-nav-btn').addEventListener('click', () => navigateTo('catalog/collections'));
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
     // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).
