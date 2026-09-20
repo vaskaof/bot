@@ -247,11 +247,16 @@ window.Screens.reminders = {
       const positionLabel = card.statusPosition
         ? `<span class="text-[11px] text-gray-400">${card.statusPosition}/${DELIVERY_LADDER_TOTAL} — ${escapeHtmlClient(card.statusDelivery || '')}</span>`
         : (card.statusDelivery ? `<span class="text-[11px] text-gray-400">${escapeHtmlClient(card.statusDelivery)}</span>` : '');
+      // §1.3 (20.09.2026) — укрупнённая «Стадия», отдельно от точной позиции
+      // лестницы выше (та остаётся, менеджеры уже к ней привыкли).
+      const stageLabel = card.stage
+        ? `<span class="text-[11px] text-violet-600 font-medium ml-1">· ${escapeHtmlClient(card.stage.label)}</span>`
+        : '';
 
       el.innerHTML = `
         <div class="flex items-start justify-between gap-2 cursor-pointer" data-open>
           <div class="min-w-0">
-            ${positionLabel}
+            ${positionLabel}${stageLabel}
             <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(card.productDisplay)}</div>
             <div class="text-[13px] text-gray-500 mt-0.5">${escapeHtmlClient(card.clientDisplay || 'Клиент не привязан')}</div>
           </div>

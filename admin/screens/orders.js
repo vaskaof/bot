@@ -479,6 +479,7 @@ window.Screens.orders = {
             <div class="flex flex-wrap gap-1.5 mt-2">
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
+              ${o.stage ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${escapeHtmlClient(o.stage.label)}</span>` : ''}
               ${o.purchaseChannel ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">${escapeHtmlClient(o.purchaseChannel)}</span>` : ''}
               ${o.inCatalog
                 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">в каталоге</span>`

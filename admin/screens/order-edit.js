@@ -166,6 +166,7 @@ window.Screens.orderEdit = {
             <div class="flex-1 w-full">
               <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
               <div id="delivery-ladder" class="mt-2"></div>
+              <div id="order-stage-label" class="text-[11px] text-violet-600 font-medium mt-1"></div>
             </div>
           </div>
 
@@ -1360,6 +1361,14 @@ window.Screens.orderEdit = {
       const deliveryLadderEl = document.getElementById('delivery-ladder');
       const statusDeliverySelect = document.querySelector('select[data-dict="statusDelivery"]');
       deliveryLadderEl.innerHTML = buildDeliveryLadder(details.deliveryLadder, details.statusDelivery, {});
+      // §1.3 (20.09.2026) — «Стадия» показывается как снимок с сервера,
+      // НЕ пересчитывается на смене select (та же причина, что раньше была
+      // у самой лестницы до правки VASY 13.08.2026 — граница Э2/Э3 зависит
+      // от "Была ли основная оплата?", которого нет в этой форме, дублировать
+      // на клиенте нечем; статус доставки сам по себе уже даёт актуальную
+      // лестницу выше).
+      const stageEl = document.getElementById('order-stage-label');
+      if (stageEl) stageEl.textContent = details.stage ? details.stage.label : '';
       statusDeliverySelect.addEventListener('change', () => {
         const ladder = computeDeliveryLadderPosition(statusDeliverySelect.value);
         deliveryLadderEl.innerHTML = buildDeliveryLadder(ladder, statusDeliverySelect.value, {});
