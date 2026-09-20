@@ -41,11 +41,11 @@ window.Screens.wishlist = {
         });
       });
       document.getElementById('add-item-btn').addEventListener('click', () => {
-        if (currentTab === 'checklist') {
-          openModalForCreate({ addToChecklist: true });
-        } else {
-          openAddMethodModal();
-        }
+        // §3.7 плана (20.09.2026) — Чеклист теперь тоже открывает выбор
+        // способа (раньше сразу вёл в ручной ввод/поиск), т.к. фото-скан и
+        // массовый выбор из каталога тоже доступны для Чеклиста, не только
+        // для Вишлиста.
+        openAddMethodModal({ addToChecklist: currentTab === 'checklist' });
       });
       if (window.lucide) window.lucide.createIcons();
     }
@@ -72,6 +72,15 @@ window.Screens.wishlist = {
         </div>
 
         <div id="checklist-tab" class="hidden">
+          <!-- Автоимпорт-предложение (§3.7 плана, 20.09.2026) — показывается,
+               только пока есть непредложенные позиции из уже полученных
+               заказов, которых нет в Чеклисте. -->
+          <div id="import-suggest-banner" class="hidden mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-3">
+            <span class="shrink-0 w-9 h-9 rounded-full bg-white text-indigo-600 flex items-center justify-center"><i data-lucide="sparkles" class="w-4 h-4"></i></span>
+            <div class="flex-1 min-w-0 text-sm text-indigo-900">Нашли <span id="import-suggest-banner-count">0</span> кукол(ы) из ваших заказов — добавить в Чеклист?</div>
+            <button type="button" id="import-suggest-banner-view-btn" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium">Посмотреть</button>
+            <button type="button" id="import-suggest-banner-dismiss-btn" class="shrink-0 p-1 text-indigo-300 hover:text-indigo-600" title="Не сейчас"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
           <div id="checklist-list"></div>
           <div id="checklist-empty-message" class="hidden text-center text-sm text-gray-400 py-10 px-4">
             Отметь кукол, которые у тебя уже есть — куплены у нас или получены другим способом.
@@ -87,7 +96,7 @@ window.Screens.wishlist = {
       <div id="add-method-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Добавить в вишлист</h2>
+            <h2 id="add-method-modal-title" class="text-base font-semibold text-gray-900">Добавить в вишлист</h2>
             <button id="add-method-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
@@ -97,7 +106,17 @@ window.Screens.wishlist = {
               <span class="shrink-0 w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center"><i data-lucide="camera" class="w-5 h-5"></i></span>
               <span>
                 <span class="block text-sm font-medium text-gray-900">Добавить по фото</span>
-                <span class="block text-xs text-gray-400">ИИ распознает куклу на фото</span>
+                <span class="block text-xs text-gray-400">ИИ распознает куклу на фото — можно сразу несколько</span>
+              </span>
+            </button>
+            <!-- §3.7 плана (20.09.2026) — только на Чеклисте: массовое
+                 добавление того, что у клиента уже есть, без ограничения
+                 "одна позиция за заход". -->
+            <button type="button" id="add-method-bulk-btn" class="hidden w-full flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-left transition-colors">
+              <span class="shrink-0 w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center"><i data-lucide="list-checks" class="w-5 h-5"></i></span>
+              <span>
+                <span class="block text-sm font-medium text-gray-900">Выбрать несколько из каталога</span>
+                <span class="block text-xs text-gray-400">Отметьте всё, что у вас уже есть</span>
               </span>
             </button>
             <button type="button" id="add-method-manual-btn" class="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-left transition-colors">
@@ -106,6 +125,56 @@ window.Screens.wishlist = {
                 <span class="block text-sm font-medium text-gray-900">Ввести вручную</span>
                 <span class="block text-xs text-gray-400">Поиск по каталогу, ссылка или название</span>
               </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Массовый выбор из каталога (§3.7 плана, 20.09.2026) — чеклист-only. -->
+      <div id="bulk-add-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Выбрать несколько</h2>
+            <button id="bulk-add-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 shrink-0">
+            <input type="text" id="bulk-add-search"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
+              placeholder="Поиск куклы в каталоге" autocomplete="off">
+          </div>
+          <div id="bulk-add-results" class="px-4 pb-2 overflow-y-auto custom-scrollbar flex-1 space-y-1"></div>
+          <div id="bulk-add-selected-wrap" class="hidden px-4 pb-2">
+            <div class="text-[11px] font-medium text-gray-400 mb-1">Отмечено</div>
+            <div id="bulk-add-selected-list" class="space-y-1"></div>
+          </div>
+          <div id="bulk-add-error" class="px-4 pb-2 text-xs text-red-500 hidden"></div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <button id="bulk-add-confirm-btn" disabled
+              class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+              Добавить отмеченные (<span id="bulk-add-count">0</span>)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Автоимпорт-предложение из заказов (§3.7 плана, 20.09.2026). -->
+      <div id="import-suggest-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Уже куплено у нас</h2>
+            <button id="import-suggest-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 pt-3 text-xs text-gray-400 shrink-0">Уберите то, что заказывали не себе — остальное добавим в Чеклист.</div>
+          <div id="import-suggest-list" class="px-4 pb-2 overflow-y-auto custom-scrollbar flex-1 space-y-1.5"></div>
+          <div id="import-suggest-error" class="px-4 pb-2 text-xs text-red-500 hidden"></div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <button id="import-suggest-confirm-btn"
+              class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+              Добавить отмеченные (<span id="import-suggest-count">0</span>)
             </button>
           </div>
         </div>
@@ -207,7 +276,7 @@ window.Screens.wishlist = {
       <div id="photo-scan-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Похоже на фото</h2>
+            <h2 id="photo-scan-modal-title" class="text-base font-semibold text-gray-900">Похоже на фото</h2>
             <button id="photo-scan-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
@@ -238,6 +307,102 @@ window.Screens.wishlist = {
 
     loadWishlist();
     reloadWishlist = loadWishlist;
+
+    // --- Автоимпорт-предложение из заказов (§3.7 плана, 20.09.2026) ---
+    // Best-effort, не блокирует основную загрузку экрана — тот же принцип,
+    // что остальные необязательные фоновые запросы в проекте.
+    let importSuggestions = [];
+    let importSuggestSelected = new Map(); // skuOriginal||rawTitle -> позиция
+
+    function importSuggestKey(p) {
+      return p.skuOriginal ? 'sku:' + p.skuOriginal : 'title:' + p.rawTitle;
+    }
+
+    async function loadImportSuggestions() {
+      try {
+        importSuggestions = await callServer('getChecklistImportSuggestions');
+      } catch (_error) {
+        importSuggestions = []; // тихо — это необязательное предложение, не критичная загрузка
+      }
+      renderImportBanner();
+    }
+    loadImportSuggestions();
+
+    const importSuggestBanner = document.getElementById('import-suggest-banner');
+    function renderImportBanner() {
+      const show = importSuggestions.length > 0;
+      importSuggestBanner.classList.toggle('hidden', !show);
+      if (show) document.getElementById('import-suggest-banner-count').textContent = importSuggestions.length;
+    }
+    document.getElementById('import-suggest-banner-dismiss-btn').addEventListener('click', () => {
+      importSuggestBanner.classList.add('hidden');
+    });
+
+    const importSuggestModal = document.getElementById('import-suggest-modal');
+    const importSuggestList = document.getElementById('import-suggest-list');
+    const importSuggestConfirmBtn = document.getElementById('import-suggest-confirm-btn');
+    const importSuggestCount = document.getElementById('import-suggest-count');
+    const importSuggestError = document.getElementById('import-suggest-error');
+
+    function renderImportSuggestList() {
+      importSuggestCount.textContent = importSuggestSelected.size;
+      importSuggestConfirmBtn.disabled = importSuggestSelected.size === 0;
+      importSuggestList.innerHTML = '';
+      importSuggestions.forEach((p) => {
+        const key = importSuggestKey(p);
+        const row = document.createElement('label');
+        row.className = 'flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100 cursor-pointer';
+        row.innerHTML = `
+          <input type="checkbox" class="import-suggest-check" ${importSuggestSelected.has(key) ? 'checked' : ''}>
+          ${p.imageUrl ? `<img src="${escapeHtmlClient(p.imageUrl)}" alt="" class="w-9 h-9 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <span class="text-sm text-gray-800 flex-1 min-w-0 truncate">${escapeHtmlClient(p.productDisplay)}</span>
+        `;
+        row.querySelector('.import-suggest-check').addEventListener('change', (ev) => {
+          if (ev.target.checked) importSuggestSelected.set(key, p);
+          else importSuggestSelected.delete(key);
+          importSuggestCount.textContent = importSuggestSelected.size;
+          importSuggestConfirmBtn.disabled = importSuggestSelected.size === 0;
+        });
+        importSuggestList.appendChild(row);
+      });
+    }
+
+    function openImportSuggestModal() {
+      // Всё отмечено по умолчанию — клиент убирает то, что не нужно (VASY,
+      // 20.09.2026: "вдруг заказывали не себе"), не наоборот.
+      importSuggestSelected = new Map(importSuggestions.map((p) => [importSuggestKey(p), p]));
+      importSuggestError.classList.add('hidden');
+      renderImportSuggestList();
+      importSuggestModal.classList.remove('hidden');
+      importSuggestModal.classList.add('flex');
+    }
+    function closeImportSuggestModal() {
+      importSuggestModal.classList.add('hidden');
+      importSuggestModal.classList.remove('flex');
+    }
+    document.getElementById('import-suggest-banner-view-btn').addEventListener('click', openImportSuggestModal);
+    document.getElementById('import-suggest-modal-close').addEventListener('click', closeImportSuggestModal);
+
+    importSuggestConfirmBtn.addEventListener('click', async () => {
+      if (importSuggestSelected.size === 0) return;
+      importSuggestError.classList.add('hidden');
+      importSuggestConfirmBtn.disabled = true;
+      try {
+        const items = Array.from(importSuggestSelected.values()).map((p) => ({
+          skuOriginal: p.skuOriginal, rawTitle: p.rawTitle, rawImageUrl: p.imageUrl
+        }));
+        const result = await callServer('addWishlistItemsBulk', items);
+        closeImportSuggestModal();
+        importSuggestions = []; // подтверждённые/отклонённые — не показываем баннер снова в этом заходе на экран
+        renderImportBanner();
+        showSaveToast(true, `Добавлено в коллекцию: ${result.added}`);
+        loadWishlist();
+      } catch (error) {
+        importSuggestError.textContent = error.message;
+        importSuggestError.classList.remove('hidden');
+        importSuggestConfirmBtn.disabled = false;
+      }
+    });
 
     // --- Переключатель вкладок (тот же паттерн, что admin/screens/home.js) ---
     const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
@@ -364,7 +529,18 @@ window.Screens.wishlist = {
     }
 
     const addMethodModal = document.getElementById('add-method-modal');
-    function openAddMethodModal() {
+    const addMethodBulkBtn = document.getElementById('add-method-bulk-btn');
+    // Контекст текущего открытия add-method-modal — прочитан обработчиками
+    // трёх кнопок способа внутри неё (фото/массово/вручную). Отдельная
+    // переменная от addingToChecklist (та относится к item-modal, живёт
+    // своим циклом открытие/закрытие) и от currentScanAddToChecklist (та
+    // относится к фото-скану, взводится в момент клика "Добавить по фото",
+    // не в момент открытия этой модалки).
+    let addMethodAddToChecklist = false;
+    function openAddMethodModal(options) {
+      addMethodAddToChecklist = Boolean(options && options.addToChecklist);
+      document.getElementById('add-method-modal-title').textContent = addMethodAddToChecklist ? 'Добавить в коллекцию' : 'Добавить в вишлист';
+      addMethodBulkBtn.classList.toggle('hidden', !addMethodAddToChecklist);
       addMethodModal.classList.remove('hidden');
       addMethodModal.classList.add('flex');
     }
@@ -374,17 +550,139 @@ window.Screens.wishlist = {
     }
     // add-item-btn слушатель — внутри renderHeaderActions() (контекстное
     // поведение по currentTab), не здесь.
-    document.getElementById('empty-add-item-btn').addEventListener('click', openAddMethodModal);
+    document.getElementById('empty-add-item-btn').addEventListener('click', () => openAddMethodModal({ addToChecklist: currentTab === 'checklist' }));
     document.getElementById('add-method-modal-close').addEventListener('click', closeAddMethodModal);
     document.getElementById('add-method-manual-btn').addEventListener('click', () => {
       closeAddMethodModal();
-      openModalForCreate();
+      openModalForCreate({ addToChecklist: addMethodAddToChecklist });
     });
     document.getElementById('add-method-photo-btn').addEventListener('click', () => {
       closeAddMethodModal();
+      // currentScanAddToChecklist объявлена ниже по файлу (секция фото-
+      // скана) — доступна здесь по замыканию, тот же приём, что уже
+      // применён к photoScanInput строкой ниже.
+      currentScanAddToChecklist = addMethodAddToChecklist;
       // Инпут фото объявлен ниже по файлу (const photoScanInput) — доступен
       // здесь по замыканию, срабатывает уже ПОСЛЕ полной инициализации экрана.
       photoScanInput.click();
+    });
+    addMethodBulkBtn.addEventListener('click', () => {
+      closeAddMethodModal();
+      openBulkAddModal();
+    });
+
+    // --- Массовый выбор из каталога (§3.7 плана, 20.09.2026) ---
+    const bulkAddModal = document.getElementById('bulk-add-modal');
+    const bulkAddSearch = document.getElementById('bulk-add-search');
+    const bulkAddResults = document.getElementById('bulk-add-results');
+    const bulkAddSelectedWrap = document.getElementById('bulk-add-selected-wrap');
+    const bulkAddSelectedList = document.getElementById('bulk-add-selected-list');
+    const bulkAddConfirmBtn = document.getElementById('bulk-add-confirm-btn');
+    const bulkAddCount = document.getElementById('bulk-add-count');
+    const bulkAddError = document.getElementById('bulk-add-error');
+    // value(skuOriginal) -> label — Map, не Set, чтобы показать выбранное
+    // списком под поиском (клиент видит итог, не только галочки в
+    // прокручиваемом списке результатов).
+    let bulkAddSelected = new Map();
+
+    function openBulkAddModal() {
+      bulkAddSelected = new Map();
+      bulkAddSearch.value = '';
+      bulkAddResults.innerHTML = '';
+      bulkAddError.classList.add('hidden');
+      renderBulkAddSelected();
+      bulkAddModal.classList.remove('hidden');
+      bulkAddModal.classList.add('flex');
+    }
+    function closeBulkAddModal() {
+      bulkAddModal.classList.add('hidden');
+      bulkAddModal.classList.remove('flex');
+    }
+    document.getElementById('bulk-add-modal-close').addEventListener('click', closeBulkAddModal);
+
+    function renderBulkAddSelected() {
+      bulkAddCount.textContent = bulkAddSelected.size;
+      bulkAddConfirmBtn.disabled = bulkAddSelected.size === 0;
+      bulkAddSelectedWrap.classList.toggle('hidden', bulkAddSelected.size === 0);
+      bulkAddSelectedList.innerHTML = '';
+      bulkAddSelected.forEach((label, sku) => {
+        const chip = document.createElement('div');
+        chip.className = 'flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-indigo-50 text-sm text-indigo-900';
+        chip.innerHTML = `<span class="truncate">${escapeHtmlClient(label)}</span>`;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'shrink-0 p-0.5 text-indigo-400 hover:text-indigo-600';
+        removeBtn.innerHTML = '<i data-lucide="x" class="w-3.5 h-3.5"></i>';
+        removeBtn.addEventListener('click', () => {
+          bulkAddSelected.delete(sku);
+          renderBulkAddSelected();
+          renderBulkAddResultsCheckedState();
+        });
+        chip.appendChild(removeBtn);
+        bulkAddSelectedList.appendChild(chip);
+      });
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Уже отмеченные результаты остаются отмеченными, даже когда клиент
+    // меняет текст поиска и список результатов перерисовывается — иначе
+    // выбор "терялся бы из виду" (сам выбор не терялся, см. bulkAddSelected,
+    // но чекбокс визуально выглядел бы снятым, что вводит в заблуждение).
+    function renderBulkAddResultsCheckedState() {
+      bulkAddResults.querySelectorAll('.bulk-add-check').forEach((cb) => {
+        cb.checked = bulkAddSelected.has(cb.dataset.sku);
+      });
+    }
+
+    const handleBulkAddSearch = debounce(async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 2) { bulkAddResults.innerHTML = ''; return; }
+      let results;
+      try {
+        results = await callServer('searchSkuForClient', query);
+      } catch (error) {
+        bulkAddResults.innerHTML = `<div class="p-3 text-sm text-red-500 text-center">${escapeHtmlClient(error.message)}</div>`;
+        return;
+      }
+      if (results.length === 0) {
+        bulkAddResults.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
+        return;
+      }
+      bulkAddResults.innerHTML = '';
+      results.forEach((item) => {
+        const row = document.createElement('label');
+        row.className = 'flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer';
+        row.innerHTML = `
+          <input type="checkbox" class="bulk-add-check" data-sku="${escapeHtmlClient(item.value)}" ${bulkAddSelected.has(item.value) ? 'checked' : ''}>
+          <span class="text-sm text-gray-800 flex-1 min-w-0 truncate">${escapeHtmlClient(item.label)}</span>
+        `;
+        row.querySelector('.bulk-add-check').addEventListener('change', (ev) => {
+          if (ev.target.checked) bulkAddSelected.set(item.value, item.label);
+          else bulkAddSelected.delete(item.value);
+          renderBulkAddSelected();
+        });
+        bulkAddResults.appendChild(row);
+      });
+    }, 300);
+    bulkAddSearch.addEventListener('input', handleBulkAddSearch);
+
+    bulkAddConfirmBtn.addEventListener('click', async () => {
+      if (bulkAddSelected.size === 0) return;
+      bulkAddError.classList.add('hidden');
+      bulkAddConfirmBtn.disabled = true;
+      try {
+        const items = Array.from(bulkAddSelected.keys()).map((skuOriginal) => ({ skuOriginal }));
+        const result = await callServer('addWishlistItemsBulk', items);
+        closeBulkAddModal();
+        showSaveToast(true, result.skipped > 0
+          ? `Добавлено в коллекцию: ${result.added} (уже было: ${result.skipped})`
+          : `Добавлено в коллекцию: ${result.added}`);
+        loadWishlist();
+      } catch (error) {
+        bulkAddError.textContent = error.message;
+        bulkAddError.classList.remove('hidden');
+        bulkAddConfirmBtn.disabled = false;
+      }
     });
 
     // --- Модалка добавления/редактирования ---
@@ -719,16 +1017,23 @@ window.Screens.wishlist = {
     const photoScanConfirmBtn = document.getElementById('photo-scan-confirm-btn');
 
     let currentScanId = null;
+    // §3.7 плана (20.09.2026) — взводится ПЕРЕД photoScanInput.click() из
+    // add-method-photo-btn (см. выше), читается только на confirm — сам
+    // scanWishlistPhoto (распознавание) от таба не зависит.
+    let currentScanAddToChecklist = false;
 
     function closePhotoScanModal() {
       photoScanModal.classList.add('hidden');
       photoScanModal.classList.remove('flex');
       currentScanId = null;
+      currentScanAddToChecklist = false;
       photoScanInput.value = '';
     }
     document.getElementById('photo-scan-modal-close').addEventListener('click', closePhotoScanModal);
 
     function openPhotoScanModalLoading() {
+      document.getElementById('photo-scan-modal-title').textContent = currentScanAddToChecklist ? 'Похоже на фото — в коллекцию' : 'Похоже на фото';
+      photoScanConfirmBtn.textContent = currentScanAddToChecklist ? 'Добавить в коллекцию' : 'Добавить в вишлист';
       photoScanLoading.classList.remove('hidden');
       photoScanEmpty.classList.add('hidden');
       photoScanList.innerHTML = '';
@@ -754,6 +1059,11 @@ window.Screens.wishlist = {
 
     function renderScanRowBody(row, idx, pos, matched) {
       const confidencePct = pos.confidence !== null && pos.confidence !== undefined ? Math.round(pos.confidence * 100) : null;
+      // §3.7 плана (20.09.2026) — дедуп при фото-скане: позиция уже есть в
+      // Чеклисте клиента (wishlistPhotoService.attachCatalogMatches). Только
+      // подсказка, чекбокс по умолчанию снят — клиент всё равно может
+      // отметить и добавить второй раз осознанно.
+      const alreadyInChecklist = Boolean(matched && pos.alreadyInChecklist);
       const nameFieldHtml = matched
         ? `
           <div class="flex items-center gap-2 p-1.5 rounded-lg bg-indigo-50 border border-indigo-100">
@@ -761,6 +1071,7 @@ window.Screens.wishlist = {
             <div class="flex-1 min-w-0">
               <div class="text-[10px] text-indigo-500 font-medium">Похоже на позицию каталога</div>
               <div class="text-sm font-medium text-indigo-900 truncate">${escapeHtmlClient(matched.shortName)}</div>
+              ${alreadyInChecklist ? '<div class="text-[10px] text-emerald-600 font-medium mt-0.5">Уже добавлено в Чеклист</div>' : ''}
             </div>
           </div>
           <button type="button" class="photo-scan-reject-match text-[11px] text-indigo-600 font-medium mt-1" data-idx="${idx}">Это другой товар — ввести вручную</button>
@@ -771,7 +1082,7 @@ window.Screens.wishlist = {
       const isFlagged = Boolean(scanRowMisrecognized[idx]);
 
       row.innerHTML = `
-        <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" checked>
+        <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" ${alreadyInChecklist ? '' : 'checked'}>
         <div class="flex-1 min-w-0">
           ${nameFieldHtml}
           <div class="flex items-center gap-2 mt-1">
@@ -944,9 +1255,10 @@ window.Screens.wishlist = {
       }
       photoScanConfirmBtn.disabled = true;
       try {
-        const result = await callServer('confirmWishlistPhotoScan', currentScanId, items);
+        const result = await callServer('confirmWishlistPhotoScan', currentScanId, items, currentScanAddToChecklist);
+        const wasAddingToChecklist = currentScanAddToChecklist;
         closePhotoScanModal();
-        showSaveToast(true, `Добавлено в вишлист: ${result.added}`);
+        showSaveToast(true, wasAddingToChecklist ? `Добавлено в коллекцию: ${result.added}` : `Добавлено в вишлист: ${result.added}`);
         loadWishlist();
       } catch (error) {
         showPhotoScanError(error.message);
