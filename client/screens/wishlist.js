@@ -18,21 +18,70 @@
  * Фильтрация — чисто на фронтенде поверх уже полученного getClientWishlist,
  * contract не менялся.
  */
+// "Поделиться картинкой" (§5 плана "Систематизация процесса + Мои куклы",
+// 21.09.2026) — потолок ЗЕРКАЛИТ backend wishlistShareService.MAX_SHARE_ITEMS
+// (не запрашивается с сервера — единственное значение всего контракта,
+// проверяемое чисто клиентски перед отправкой, дублирование числа дешевле
+// лишнего запроса; сервер всё равно перепроверяет сам, это не единственная
+// линия защиты).
+const MAX_SHARE_ITEMS = 12;
+
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
   render(root, _context, params) {
     let currentTab = 'wishlist'; // 'wishlist' | 'checklist' | 'collections'
+    let selectionMode = false;
+    let selectedForShare = new Set();
+
+    function exitSelectionMode() {
+      selectionMode = false;
+      selectedForShare = new Set();
+      renderHeaderActions();
+      renderShareBar();
+      renderList();
+    }
+
+    function enterSelectionMode() {
+      selectionMode = true;
+      selectedForShare = new Set();
+      renderHeaderActions();
+      renderShareBar();
+      renderList();
+    }
+
+    function renderShareBar() {
+      const bar = document.getElementById('share-bar');
+      if (!selectionMode) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+      const count = selectedForShare.size;
+      document.getElementById('share-bar-count').textContent = count > 0 ? `Поделиться (${count})` : 'Поделиться';
+      document.getElementById('share-bar-confirm-btn').disabled = count === 0;
+    }
 
     function renderHeaderActions() {
+      if (selectionMode) {
+        document.getElementById('header-actions').innerHTML = `
+          <button id="share-cancel-btn" class="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:bg-white/50 transition-colors">Отмена</button>
+        `;
+        document.getElementById('share-cancel-btn').addEventListener('click', exitSelectionMode);
+        return;
+      }
+
       // «Коллекции» курируются только вручную администратором (§4.5 плана
       // "Систематизация процесса + Мои куклы", 20.09.2026) — на этой вкладке
-      // клиент ничего не добавляет, кнопка "+" не нужна.
+      // клиент ничего не добавляет, кнопка "+" не нужна. "Поделиться" тоже
+      // скрыта — делится содержимым текущего таба Вишлист/Чеклист, у
+      // «Коллекций» своя, уже готовая витрина с прогресс-баром (§5.4 плана,
+      // 21.09.2026: "делится содержимым именно текущего открытого таба").
       const isCollectionsTab = currentTab === 'collections';
       document.getElementById('header-actions').innerHTML = `
         <button id="refresh-btn" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
           <i data-lucide="refresh-cw" class="w-5 h-5"></i>
         </button>
         ${isCollectionsTab ? '' : `
+        <button id="share-btn" title="Поделиться" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
+          <i data-lucide="share-2" class="w-5 h-5"></i>
+        </button>
         <button id="add-item-btn" title="${currentTab === 'checklist' ? 'Добавить в коллекцию' : 'Добавить в вишлист'}" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
           <i data-lucide="plus" class="w-6 h-6"></i>
         </button>`}
@@ -47,6 +96,7 @@ window.Screens.wishlist = {
         });
       });
       if (!isCollectionsTab) {
+        document.getElementById('share-btn').addEventListener('click', enterSelectionMode);
         document.getElementById('add-item-btn').addEventListener('click', () => {
           // §3.7 плана (20.09.2026) — Чеклист теперь тоже открывает выбор
           // способа (раньше сразу вёл в ручной ввод/поиск), т.к. фото-скан и
@@ -107,6 +157,17 @@ window.Screens.wishlist = {
           </div>
         </div>
       </main>
+
+      <!-- "Поделиться картинкой" (§5 плана "Систематизация процесса + Мои
+           куклы", 21.09.2026) — панель выбора, поверх нижней навигации
+           (z-50, тот же приём, что модалки z-[60] — bottom-nav её не
+           перекрывает). Видна только пока selectionMode===true. -->
+      <div id="share-bar" class="hidden fixed bottom-0 inset-x-0 z-50 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex gap-2">
+        <button type="button" id="share-bar-confirm-btn" disabled
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+          <span id="share-bar-count">Поделиться</span>
+        </button>
+      </div>
 
       <!-- Единая точка входа "Добавить в вишлист" (репорт VASY 19.09.2026 —
            раньше фото и ручной ввод были ДВУМЯ независимыми кнопками
@@ -328,6 +389,21 @@ window.Screens.wishlist = {
     loadWishlist();
     reloadWishlist = loadWishlist;
 
+    // --- "Поделиться картинкой" (§5 плана, 21.09.2026) ---
+    const shareBarConfirmBtn = document.getElementById('share-bar-confirm-btn');
+    shareBarConfirmBtn.addEventListener('click', async () => {
+      if (selectedForShare.size === 0) return;
+      shareBarConfirmBtn.disabled = true;
+      try {
+        await callServer('shareWishlistCollage', Array.from(selectedForShare));
+        showSaveToast(true, 'Отправлено в чат с ботом — перешлите сообщение, кому захотите');
+        exitSelectionMode();
+      } catch (error) {
+        showSaveToast(false, error.message);
+        shareBarConfirmBtn.disabled = selectedForShare.size === 0;
+      }
+    });
+
     // --- Автоимпорт-предложение из заказов (§3.7 плана, 20.09.2026) ---
     // Best-effort, не блокирует основную загрузку экрана — тот же принцип,
     // что остальные необязательные фоновые запросы в проекте.
@@ -429,6 +505,10 @@ window.Screens.wishlist = {
     tabButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.tab === currentTab) return;
+        // "Поделиться" всегда про содержимое ОДНОГО таба (§5.4 плана,
+        // 21.09.2026) — смена таба посреди выбора сбрасывает его, не
+        // переносит отметки на чужой список.
+        if (selectionMode) exitSelectionMode();
         currentTab = btn.dataset.tab;
         updateTabStyles();
         renderHeaderActions();
@@ -541,6 +621,7 @@ window.Screens.wishlist = {
       const isChecklist = item.status === 'Куплено' || item.status === 'Есть';
 
       card.innerHTML = `
+        ${selectionMode ? `<input type="checkbox" class="share-select-check w-5 h-5 mt-1 shrink-0 accent-indigo-600" ${selectedForShare.has(item.wishlistId) ? 'checked' : ''}>` : ''}
         ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
         <div class="flex-1 min-w-0">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
@@ -552,6 +633,7 @@ window.Screens.wishlist = {
           <div class="flex flex-wrap gap-3 mt-1">
             ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
           </div>
+          ${selectionMode ? '' : `
           <div class="flex items-center gap-2 mt-3">
             <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isChecklist ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
               ${isChecklist ? 'Вернуть в «Вишлист»' : 'Отметить купленным'}
@@ -559,9 +641,29 @@ window.Screens.wishlist = {
             ${!isChecklist ? '<button type="button" class="mark-owned-btn p-2 text-gray-400 hover:text-indigo-600" title="Уже есть — в Чеклист"><i data-lucide="check-circle-2" class="w-4 h-4"></i></button>' : ''}
             ${item.isUnknown ? '<button type="button" class="edit-item-btn p-2 text-gray-400 hover:text-indigo-600" title="Редактировать"><i data-lucide="pencil" class="w-4 h-4"></i></button>' : ''}
             <button type="button" class="delete-item-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-          </div>
+          </div>`}
         </div>
       `;
+
+      // Режим выбора для "Поделиться" (§5 плана, 21.09.2026) — карточка
+      // показывает ТОЛЬКО чекбокс, без обычных действий (статус/удаление
+      // и т.п.), чтобы не путать намерение клика во время выбора позиций.
+      if (selectionMode) {
+        card.querySelector('.share-select-check').addEventListener('change', (ev) => {
+          if (ev.target.checked) {
+            if (selectedForShare.size >= MAX_SHARE_ITEMS) {
+              ev.target.checked = false;
+              showSaveToast(false, `Можно выбрать не больше ${MAX_SHARE_ITEMS} позиций за раз`);
+              return;
+            }
+            selectedForShare.add(item.wishlistId);
+          } else {
+            selectedForShare.delete(item.wishlistId);
+          }
+          renderShareBar();
+        });
+        return card;
+      }
 
       card.querySelector('.toggle-status-btn').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
