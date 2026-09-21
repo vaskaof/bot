@@ -455,7 +455,19 @@ window.Screens.orderEdit = {
           </div>
           ${FormHelpers.commissionGateHtml()}
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <!-- "Оплачена ли бронь?" — скрыт на экране для new-model заказов
+               (21.09.2026, репорт VASY: тумблер путал менеджеров, реальные
+               деньги по брони уже видны в бейдже "Основная" ниже). Блок и
+               его #booking-paid-toggle НЕ удалены из разметки/JS (initTagToggle/
+               setTagToggle/чтение на сохранении — без изменений) — только
+               визуально скрыт тем же классом, что applyNewModelReadonlyStage
+               использует для main/weight/deliveryKzRf/deliveryRf, чтобы
+               сохранённое значение на save оставалось тем же, что было
+               загружено, а не тихо сбрасывалось в "Нет". Old-model (если
+               когда-то встретится) — тумблер уже был единственным источником
+               данных по брони и не имеет замены здесь, поэтому скрывается
+               без исключения по isNewModel: сегодня isNewModel всегда "Да".) -->
+          <div class="field-row hidden flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
                 <i data-lucide="badge-check" class="w-5 h-5"></i>
