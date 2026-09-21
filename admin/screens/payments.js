@@ -40,6 +40,12 @@
 // рамках одной SPA-сессии.
 const claimsSortState = { field: 'createdAt', direction: 'asc' };
 
+// Сортировка заказов клиента на вкладке "Клиент" (22.09.2026, репорт VASY —
+// "нужна сортировка заказов по необходимости оплатить") — тот же
+// module-level приём, что claimsSortState выше: переживает смену клиента и
+// повторный заход на экран в рамках одной SPA-сессии.
+const paymentsOrdersSortState = { field: 'default', direction: 'desc' };
+
 window.Screens = window.Screens || {};
 window.Screens.payments = {
   render(root, dictionaries, params, signal) {
@@ -334,12 +340,28 @@ window.Screens.payments = {
       if (!clientSearch.contains(e.target) && !clientDropdown.contains(e.target)) clientDropdown.classList.remove('active');
     }, { signal });
 
-    // Точка входа из другого экрана (например, будущая кнопка "Оплаты" на карточке заказа) —
-    // тот же приём, что navigateTo('orders/new', {...}) в wishlist-demand.js.
+    // Точка входа из другого экрана (напр. кнопка "Записать оплату" на карточке
+    // напоминания, admin/screens/reminders.js) — тот же приём, что
+    // navigateTo('orders/new', {...}) в wishlist-demand.js.
+    // highlightOrderId (22.09.2026) — reminders.js уже присылал orderId, этот
+    // экран его раньше просто игнорировал (принятый пробел из «Напоминания
+    // 2.0» Р5 — "manager видит все заказы клиента, ищет визуально"). Теперь
+    // после загрузки подсвечивается и скроллится именно та карточка, что
+    // стояла в напоминании — см. scrollToAndHighlightOrder ниже.
+    let highlightOrderId = params && params.orderId ? params.orderId : null;
     if (params && params.telegramId) {
       const displayName = params.name || params.username || params.telegramId;
       clientSearch.value = displayName;
       selectClient({ telegramId: params.telegramId, username: params.username || '', name: params.name || '', displayName });
+    }
+
+    function scrollToAndHighlightOrder(orderId) {
+      const cards = Array.from(clientView.querySelectorAll('[data-order-card]'));
+      const el = cards.find((c) => c.dataset.orderCard === orderId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-indigo-400');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400'), 2500);
     }
 
     function selectClient(item) {
@@ -389,6 +411,66 @@ window.Screens.payments = {
       const totalAllocated = newModelOrders.reduce((sum, o) =>
         sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
       const poolLeftover = Math.max(0, totalPoolPayments - currentCreditBalance - totalAllocated);
+
+      // "Долг по закрытым заказам" (22.09.2026, продолжение задачи «Напоминания
+      // 2.0» — VASY: "напоминания не должны копиться лишний раз") — автосбор
+      // (recomputeForClient) закрытые заказы НЕ трогает по дизайну, единственный
+      // путь погасить такой долг — ручная метка "Закрепить" (createManualAllocation,
+      // УЖЕ умеет settle'иться на закрытых заказах, см. фикс 21.09.2026). Здесь —
+      // НЕ автоматика, а ПРЕДЛОЖЕНИЕ: список долгов по закрытым заказам, старые
+      // первыми, с суммой, которую можно закрыть из уже свободного остатка пула
+      // прямо сейчас (жадно разбираем poolLeftover по возрасту — тот же принцип
+      // FIFO, что earmark-цикл recomputeForClient уже применяет к меткам).
+      // Решение с VASY 22.09.2026: закрытие остаётся действием менеджера (кнопка
+      // "Закрыть" ниже только ПРЕДЗАПОЛНЯЕТ уже существующую модалку "Закрепить"),
+      // не пишет ничего сама по себе.
+      const STATUS_RECEIVED = 'Получено клиентом';
+      const closedDebtItems = [];
+      let freePoolForSuggestions = poolLeftover;
+      const closedOrdersOldestFirst = newModelOrders
+        .filter((o) => o.details.statusDelivery === STATUS_RECEIVED && !o.details.isOwnPurchase)
+        .slice()
+        .sort((a, b) => new Date(a.details.dateOrder || 0) - new Date(b.details.dateOrder || 0));
+      for (const o of closedOrdersOldestFirst) {
+        for (const s of (o.details.stagesBalance || [])) {
+          const earmarked = earmarksForStage(o.orderId, s.stage).reduce((sum, m) => sum + m.amount, 0);
+          const debt = Math.round(Math.max(0, s.remaining - earmarked) * 100) / 100;
+          if (debt <= 0.01) continue;
+          const suggested = Math.round(Math.min(debt, Math.max(0, freePoolForSuggestions)) * 100) / 100;
+          freePoolForSuggestions -= suggested;
+          closedDebtItems.push({ orderId: o.orderId, stage: s.stage, debt, suggested });
+        }
+      }
+
+      // Сортировка списка "Новая финансовая модель" (22.09.2026, тот же запрос
+      // VASY) — по умолчанию порядок с бэкенда (без сортировки), либо по одной
+      // из денежных метрик ниже. "Обязательные" — сумма стадий, уже допущенных
+      // к сбору по позиции статуса (`eligible`, см. ordersService.getOrderDetails)
+      // — закрытые заказы сюда попадают ЦЕЛИКОМ (их statusPosition всегда выше
+      // любого порога), поэтому сортировка "по обязательным" естественно поднимает
+      // и долг по закрытым заказам наверх списка, не только open-стадии.
+      // "Любые" — весь известный остаток по заказу, включая ещё не допущенные
+      // (прогнозные) стадии — "сколько вообще копится", не только то, что можно
+      // просить прямо сейчас.
+      function orderObligatoryRemaining(o) {
+        return (o.details.stagesBalance || []).reduce((sum, s) => sum + (s.eligible && s.remaining > 0.01 ? s.remaining : 0), 0);
+      }
+      function orderAnyRemaining(o) {
+        return (o.details.stagesBalance || []).reduce((sum, s) => sum + Math.max(s.remaining, 0), 0);
+      }
+      function sortNewModelOrders(list) {
+        const { field, direction } = paymentsOrdersSortState;
+        if (field === 'default') return list;
+        const sorted = list.slice().sort((a, b) => {
+          let result;
+          if (field === 'obligatory') result = orderObligatoryRemaining(a) - orderObligatoryRemaining(b);
+          else if (field === 'any') result = orderAnyRemaining(a) - orderAnyRemaining(b);
+          else result = new Date(a.details.dateOrder || 0) - new Date(b.details.dateOrder || 0); // 'date'
+          return direction === 'desc' ? -result : result;
+        });
+        return sorted;
+      }
+      const sortedNewModelOrders = sortNewModelOrders(newModelOrders);
 
       // "Сколько надо заплатить" — по запросу VASY, чтобы менеджер сразу видел
       // итог, не складывая стадии в уме. Один и тот же цикл по stagesBalance
@@ -440,6 +522,24 @@ window.Screens.payments = {
           </div>
         ` : ''}
 
+        ${closedDebtItems.length > 0 ? `
+          <div class="bg-red-50 rounded-2xl border border-red-100 p-4 mb-3">
+            <div class="text-[11px] font-semibold text-red-700 uppercase tracking-wide mb-1">Долг по закрытым заказам</div>
+            <p class="text-[11px] text-red-600 mb-2">Заказ закрыт («Получено клиентом»), автосбор его больше не трогает — погасить можно только вручную. Ниже — самые старые долги первыми; если рядом с суммой есть «предложено закрыть», в пуле клиента уже достаточно свободных денег.</p>
+            <div class="space-y-1.5">
+              ${closedDebtItems.map((item) => `
+                <div class="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm text-gray-800 truncate">№ ${escapeHtmlClient(item.orderId)} · ${escapeHtmlClient(stageLabel(item.stage))}</div>
+                    <div class="text-[11px] text-gray-500">Долг: ${money(item.debt)} ₽${item.suggested > 0.01 ? ` · предложено закрыть: ${money(item.suggested)} ₽` : ''}</div>
+                  </div>
+                  <button data-action="open-earmark" data-order-id="${item.orderId}" data-stage="${item.stage}" data-remaining="${item.debt}" ${item.suggested > 0.01 ? `data-suggested="${item.suggested}"` : ''} class="shrink-0 text-[11px] font-medium text-red-700 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white">${item.suggested > 0.01 ? 'Закрыть' : 'Закрыть вручную'}</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-4">
             <div>
@@ -480,8 +580,23 @@ window.Screens.payments = {
         </button>
 
         ${newModelOrders.length > 0 ? `
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Новая финансовая модель</div>
-          ${newModelOrders.map((o) => renderNewModelOrderCard(o)).join('')}
+          <div class="flex items-center justify-between gap-2 mb-2 px-1">
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Новая финансовая модель</div>
+            ${newModelOrders.length > 1 ? `
+              <div class="flex items-center gap-1 shrink-0">
+                <select id="payments-orders-sort-field" class="bg-transparent border-none outline-none text-[11px] text-gray-500 cursor-pointer">
+                  <option value="default">По умолчанию</option>
+                  <option value="obligatory">По обязательным оплатам</option>
+                  <option value="any">По любым неоплаченным суммам</option>
+                  <option value="date">По давности заказа</option>
+                </select>
+                <button id="payments-orders-sort-direction" title="Сменить направление сортировки" class="p-1 text-indigo-600 flex items-center shrink-0">
+                  <i data-lucide="${paymentsOrdersSortState.direction === 'desc' ? 'arrow-down-wide-narrow' : 'arrow-up-wide-narrow'}" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+          ${sortedNewModelOrders.map((o) => renderNewModelOrderCard(o)).join('')}
         ` : ''}
 
         ${currentEarmarks.length > 0 ? `
@@ -524,7 +639,28 @@ window.Screens.payments = {
       document.getElementById('open-refund-btn').addEventListener('click', openRefundModal);
       document.getElementById('open-record-payment-btn').addEventListener('click', openRecordPaymentModal);
 
+      const ordersSortField = document.getElementById('payments-orders-sort-field');
+      if (ordersSortField) {
+        ordersSortField.value = paymentsOrdersSortState.field;
+        ordersSortField.addEventListener('change', () => {
+          paymentsOrdersSortState.field = ordersSortField.value;
+          renderClientView();
+        });
+        document.getElementById('payments-orders-sort-direction').addEventListener('click', () => {
+          paymentsOrdersSortState.direction = paymentsOrdersSortState.direction === 'desc' ? 'asc' : 'desc';
+          renderClientView();
+        });
+      }
+
       if (window.lucide) window.lucide.createIcons();
+
+      // Подсветка карточки заказа, с которой пришли из "Напоминаний" (см.
+      // highlightOrderId выше) — срабатывает один раз, на первый рендер после
+      // захода с deep-link, не на каждую перерисовку (смена сортировки и т.п.).
+      if (highlightOrderId) {
+        scrollToAndHighlightOrder(highlightOrderId);
+        highlightOrderId = null;
+      }
     }
 
     function renderPaymentRow(p, scope, orderId) {
@@ -557,7 +693,7 @@ window.Screens.payments = {
       const orderTarget = stages.reduce((sum, s) => sum + s.target, 0);
       const orderPaid = stages.reduce((sum, s) => sum + s.paid, 0);
       return `
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+        <div data-order-card="${escapeHtmlClient(o.orderId)}" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 transition-shadow">
           <div class="flex items-center justify-between gap-2 mb-2">
             <div class="min-w-0 flex items-start gap-1.5">
               ${renderEditOrderButton(o.orderId)}
@@ -649,7 +785,7 @@ window.Screens.payments = {
       const orderPaid = stagesBalance.reduce((sum, s) => sum + s.paid, 0);
       const orderRemaining = Math.max(0, orderTarget - orderPaid);
       return `
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+        <div data-order-card="${escapeHtmlClient(o.orderId)}" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 transition-shadow">
           <div class="flex items-center justify-between gap-2 mb-2">
             <div class="min-w-0 flex items-start gap-1.5">
               ${renderEditOrderButton(o.orderId)}
@@ -690,7 +826,8 @@ window.Screens.payments = {
       } else if (action === 'apply-credit-to-order') {
         openApplyCreditModal(btn.dataset.orderId, parseFloat(btn.dataset.remaining));
       } else if (action === 'open-earmark') {
-        openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining));
+        const suggested = btn.dataset.suggested !== undefined ? parseFloat(btn.dataset.suggested) : undefined;
+        openEarmarkModal(btn.dataset.orderId, btn.dataset.stage, parseFloat(btn.dataset.remaining), suggested);
       } else if (action === 'cancel-earmark') {
         if (!(await showConfirmModal('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.', { confirmLabel: 'Отменить метку', danger: true }))) return;
         try {
@@ -973,10 +1110,17 @@ window.Screens.payments = {
     const emNote = document.getElementById('em-note');
     const emError = document.getElementById('em-error');
 
-    function openEarmarkModal(orderId, stage, remaining) {
+    // prefillAmount (22.09.2026, предложение закрытия долга по закрытым
+    // заказам) — необязательное: когда передано, ИМЕННО оно идёт в поле суммы
+    // (a "remaining" остаётся верхней границей `max` — полная сумма долга
+    // стадии, не только предложенная из свободного остатка пула). Без 4-го
+    // аргумента поведение не меняется (старые вызывающие — обычная кнопка
+    // "Закрепить" — по-прежнему предзаполняют полным остатком).
+    function openEarmarkModal(orderId, stage, remaining, prefillAmount) {
       earmarkContext = { orderId, stage, remaining };
       emError.classList.add('hidden');
-      emAmount.value = remaining > 0 ? remaining.toFixed(2) : '';
+      const initial = (prefillAmount !== undefined && !isNaN(prefillAmount) && prefillAmount > 0) ? prefillAmount : remaining;
+      emAmount.value = initial > 0 ? initial.toFixed(2) : '';
       emAmount.max = remaining;
       emNote.value = '';
       emTargetText.textContent = `Заказ ${orderId} — ${stageLabel(stage)}`;
