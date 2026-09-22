@@ -380,6 +380,41 @@ window.Screens.reminders = {
         });
       }
 
+      // "Пропустить с причиной" (22.09.2026) — ТОЛЬКО для purchase_event_missing
+      // (см. серверный DISMISSIBLE_KINDS за обоснованием, почему это не
+      // общая кнопка на любом пункте). Постоянно, в отличие от "Отложить" на
+      // всей карточке — для старых заказов, где курс на момент выкупа
+      // физически не восстановить, откладывать нечем закрывать.
+      if (item.kind === 'purchase_event_missing') {
+        const holder = row.querySelector('[data-inline-fill]');
+        holder.innerHTML = `
+          <div class="flex items-center gap-1.5 mt-1">
+            <button type="button" class="dismiss-item-btn text-xs text-gray-500 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Пропустить (данные утеряны)</button>
+          </div>
+        `;
+        const dismissBtn = holder.querySelector('.dismiss-item-btn');
+        dismissBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const reason = await showPromptModal(
+            'Почему этот пункт нельзя закрыть? (например: "курс на момент выкупа не восстановить, заказ старше 2 месяцев")',
+            { confirmLabel: 'Пропустить', cancelLabel: 'Отмена' }
+          );
+          if (reason === null) return;
+          if (!reason.trim()) { showSaveToast(false, 'Причина обязательна.'); return; }
+          dismissBtn.disabled = true;
+          dismissBtn.textContent = 'Пропускаю...';
+          try {
+            await callServer('dismissReminderItem', card.orderId, item.kind, reason.trim());
+            showSaveToast(true, 'Пункт пропущен — отменить можно на самой карточке заказа.');
+            await loadReminders();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            dismissBtn.disabled = false;
+            dismissBtn.textContent = 'Пропустить (данные утеряны)';
+          }
+        });
+      }
+
       const inlineConfig = item.stage ? INLINE_FILL_FIELDS[item.stage] : null;
       if (inlineConfig) {
         const holder = row.querySelector('[data-inline-fill]');

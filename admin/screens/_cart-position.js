@@ -244,6 +244,17 @@ window.CartPosition = {
         Личный заказ (без плательщика)
         ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
       </label>
+      <!-- "Товар выкупил сам клиент" (22.09.2026) — НЕ то же, что "Личный
+           заказ": клиент реальный, платит за доставку/комиссию как обычно
+           (комиссию в этом случае вводите суммой в "Комиссия ₽" — курсы для
+           расчёта её % компания не знает, т.к. сама не покупала). Скрывает
+           ТОЛЬКО напоминание "Курсы и сумма не подтверждены" по этому
+           заказу — на клиента/оплату/уведомление не влияет. -->
+      <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
+        <input type="checkbox" class="client-self-purchased-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
+        Товар выкупил сам клиент (мы только доставляем)
+        ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически, т.к. сама не покупала.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
+      </label>
       <div class="mb-2">
         <label class="text-[11px] text-gray-500">Сколько уже оплачено, ₽</label>
         <input type="number" class="already-paid-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
@@ -300,6 +311,7 @@ window.CartPosition = {
       // СЫРАЯ сумма (getTotalRub). Заполнен — база берётся отсюда.
       reconciledShareRub: null,
       ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
+      clientSelfPurchasedCheckboxEl: rowEl.querySelector('.client-self-purchased-checkbox'),
       alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
       purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
       purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
@@ -1169,6 +1181,7 @@ window.CartPosition = {
             ? { telegramId: '', username: item.manualClientData.username, name: item.manualClientData.name }
             : { telegramId: item.telegramId || '', username: item.username, name: item.name }),
         isOwnPurchase: item.ownPurchaseCheckboxEl.checked,
+        clientSelfPurchased: item.clientSelfPurchasedCheckboxEl.checked,
         // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2) — statusOrder,
         // НЕ isOwnPurchase. Пусто, если не отмечено — createCart/createOrder
         // ведут себя как раньше (не задаём "" вместо undefined намеренно,

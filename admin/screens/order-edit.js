@@ -29,6 +29,11 @@ const ORDER_EDIT_DRAFT_KEY = 'pendingOrderEditDraft';
 // за ту же проверку и найденное расхождение с исходным черновиком DDL).
 const WRITEOFF_REASON_STATUSES = new Set(['Не найдено', 'Заказ отменён магазином', 'Отказ клиента', 'Потеряно']);
 
+// "Пропустить с причиной" (22.09.2026) — та же строка, что серверный
+// reminderService.DISMISSIBLE_KINDS/reminderItems.js's kind, читаемая подпись
+// для баннера на карточке заказа.
+const DISMISSIBLE_KIND_LABELS = { purchase_event_missing: 'Факт выкупа не зафиксирован' };
+
 window.Screens = window.Screens || {};
 window.Screens.orderEdit = {
   render(root, dictionaries, params, signal) {
@@ -228,6 +233,11 @@ window.Screens.orderEdit = {
             </button>
           </div>
 
+          <!-- "Пропустить с причиной" (22.09.2026) — пункты напоминаний,
+               явно признанные неразрешимыми (см. reminderService.js
+               DISMISSIBLE_KINDS). Список пуст → скрыт целиком. -->
+          <div id="reminder-dismissals-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
+
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
@@ -361,6 +371,19 @@ window.Screens.orderEdit = {
             <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
               <input type="checkbox" id="own-purchase-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
               Личный заказ (без плательщика)
+            </label>
+          </div>
+
+          <!-- "Товар выкупил сам клиент" (22.09.2026) — тот же undefined="не
+               трогать" приём, что "Личный заказ" выше, НО другое по смыслу
+               поле: клиент реальный, платит за доставку/комиссию как обычно
+               (комиссия вводится суммой в "Комиссия ₽"). Гасит только
+               напоминание "Курсы и сумма не подтверждены" по этому заказу. -->
+          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" id="client-self-purchased-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+              Товар выкупил сам клиент (мы только доставляем)
+              ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
             </label>
           </div>
 
@@ -783,6 +806,12 @@ window.Screens.orderEdit = {
       const ownPurchaseChecked = document.getElementById('own-purchase-checkbox').checked;
       if (ownPurchaseChecked !== !!(loadedDetails && loadedDetails.isOwnPurchase)) {
         fields.isOwnPurchase = ownPurchaseChecked;
+      }
+
+      // "Товар выкупил сам клиент" (22.09.2026) — тот же undefined="не трогать" приём, что isOwnPurchase выше.
+      const clientSelfPurchasedChecked = document.getElementById('client-self-purchased-checkbox').checked;
+      if (clientSelfPurchasedChecked !== !!(loadedDetails && loadedDetails.clientSelfPurchased)) {
+        fields.clientSelfPurchased = clientSelfPurchasedChecked;
       }
 
       // Волна 3, остаток, п.6 (13.09.2026) — тот же принцип, что isOwnPurchase
@@ -1359,6 +1388,7 @@ window.Screens.orderEdit = {
       setReleaseThumbnail(details.imageUrl);
       purchaseLinkInput.value = details.purchaseLink || '';
       document.getElementById('own-purchase-checkbox').checked = !!details.isOwnPurchase;
+      document.getElementById('client-self-purchased-checkbox').checked = !!details.clientSelfPurchased;
 
       FormHelpers.setDictionaryValue('select[data-dict="statusDelivery"]', details.statusDelivery);
       // §H (12.08.2026) исходно рисовала только снимок с сервера при загрузке,
@@ -1441,6 +1471,42 @@ window.Screens.orderEdit = {
       }
       updateWriteoffBanner();
       statusOrderSelect.addEventListener('change', updateWriteoffBanner);
+
+      // "Пропустить с причиной" (22.09.2026) — best-effort, тот же принцип,
+      // что refreshExistingWriteoffs: сбой чтения не блокирует форму заказа.
+      const dismissalsBanner = document.getElementById('reminder-dismissals-banner');
+      async function refreshReminderDismissals() {
+        dismissalsBanner.classList.add('hidden');
+        dismissalsBanner.innerHTML = '';
+        try {
+          const rows = await callServer('getReminderDismissalsForOrder', currentOrderId);
+          if (rows.length === 0) return;
+          dismissalsBanner.innerHTML = rows.map((r) => `
+            <div class="flex items-start justify-between gap-2">
+              <div class="text-xs text-gray-600 min-w-0">
+                <div class="font-medium text-gray-700">Пропущено: ${DISMISSIBLE_KIND_LABELS[r.kind] || r.kind}</div>
+                <div class="truncate">${r.reason}${r.dismissedBy ? ` — ${r.dismissedBy}` : ''}, ${new Date(r.dismissedAt).toLocaleDateString('ru-RU')}</div>
+              </div>
+              <button type="button" class="undismiss-btn shrink-0 text-xs text-indigo-600 font-medium px-2 py-1 rounded-lg hover:bg-indigo-50" data-kind="${r.kind}">Отменить</button>
+            </div>
+          `).join('');
+          dismissalsBanner.classList.remove('hidden');
+          dismissalsBanner.querySelectorAll('.undismiss-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              btn.disabled = true;
+              try {
+                await callServer('undismissReminderItem', currentOrderId, btn.dataset.kind);
+                showSaveToast(true, 'Пропуск отменён — пункт снова появится в «Напоминаниях», если условие ещё актуально.');
+                await refreshReminderDismissals();
+              } catch (error) {
+                showSaveToast(false, error.message);
+                btn.disabled = false;
+              }
+            });
+          });
+        } catch { /* best-effort, не блокирует форму */ }
+      }
+      refreshReminderDismissals();
 
       FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', details.purchaseChannel);
       FormHelpers.setDictionaryValue('select[data-dict="purchaseAccount"]', details.purchaseAccount);
