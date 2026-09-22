@@ -343,11 +343,16 @@ window.Screens.payments = {
     // Точка входа из другого экрана (напр. кнопка "Записать оплату" на карточке
     // напоминания, admin/screens/reminders.js) — тот же приём, что
     // navigateTo('orders/new', {...}) в wishlist-demand.js.
-    // highlightOrderId (22.09.2026) — reminders.js уже присылал orderId, этот
-    // экран его раньше просто игнорировал (принятый пробел из «Напоминания
-    // 2.0» Р5 — "manager видит все заказы клиента, ищет визуально"). Теперь
-    // после загрузки подсвечивается и скроллится именно та карточка, что
-    // стояла в напоминании — см. scrollToAndHighlightOrder ниже.
+    // highlightOrderId (22.09.2026) — изначально только для deep-link из
+    // reminders.js (раньше orderId просто игнорировался, принятый пробел из
+    // «Напоминания 2.0» Р5 — "manager видит все заказы клиента, ищет
+    // визуально"). Тем же днём расширено на ЛЮБОЕ денежное действие над
+    // конкретным заказом на этом экране (метка/платёж/кредит) — по репорту
+    // VASY: после loadClientData() список перестраивался с нуля, и менеджер
+    // терял место, откуда только что закрывал оплату. Каждый такой
+    // обработчик проставляет сюда orderId ПЕРЕД await loadClientData() —
+    // renderClientView() подхватывает и подсвечивает/скроллит один раз, см.
+    // scrollToAndHighlightOrder ниже.
     let highlightOrderId = params && params.orderId ? params.orderId : null;
     if (params && params.telegramId) {
       const displayName = params.name || params.username || params.telegramId;
@@ -831,7 +836,12 @@ window.Screens.payments = {
       } else if (action === 'cancel-earmark') {
         if (!(await showConfirmModal('Отменить метку? Сумма вернётся в общий пул и будет распределена обычным порядком.', { confirmLabel: 'Отменить метку', danger: true }))) return;
         try {
+          // 22.09.2026 — orderId нужен ДО отмены (после успеха метки в
+          // currentEarmarks уже не будет), чтобы после перезагрузки экран
+          // вернулся именно к этому заказу, см. highlightOrderId ниже.
+          const cancelledEarmark = currentEarmarks.find((m) => m.id === parseInt(btn.dataset.id, 10));
           await callServer('cancelManualAllocation', parseInt(btn.dataset.id, 10), currentClient.telegramId);
+          if (cancelledEarmark) highlightOrderId = cancelledEarmark.orderId;
           await loadClientData();
         } catch (error) {
           showSaveToast(false, 'Не удалось отменить метку: ' + error.message);
@@ -848,6 +858,7 @@ window.Screens.payments = {
             await callServer('editClientPayment', currentClient.telegramId, parseInt(btn.dataset.paymentId, 10), amount);
           } else {
             await callServer('editOrderPayment', btn.dataset.orderId, btn.dataset.paymentId, amount);
+            highlightOrderId = btn.dataset.orderId;
           }
           await loadClientData();
         } catch (error) {
@@ -861,6 +872,7 @@ window.Screens.payments = {
             await callServer('cancelClientPayment', currentClient.telegramId, parseInt(btn.dataset.paymentId, 10));
           } else {
             await callServer('cancelOrderPayment', btn.dataset.orderId, btn.dataset.paymentId);
+            highlightOrderId = btn.dataset.orderId;
           }
           await loadClientData();
         } catch (error) {
@@ -955,6 +967,7 @@ window.Screens.payments = {
       try {
         await callServer('applyCreditToOldModelOrder', currentClient.telegramId, applyCreditContext.orderId, amount, generateRequestId());
         closeApplyCreditModal();
+        highlightOrderId = applyCreditContext.orderId;
         await loadClientData();
       } catch (error) {
         acError.textContent = error.message; // сервер уже формулирует понятный текст, включая "кредит списан, но..." при частичном сбое
@@ -1087,11 +1100,13 @@ window.Screens.payments = {
               const splitAmount = parseFloat(row.querySelector('.split-amount').value);
               if (isNaN(splitAmount) || splitAmount <= 0) continue; // пустая строка — просто пропускаем, деньги остаются в пуле
               await callServer('createManualAllocation', currentClient.telegramId, orderId, stage, splitAmount, rpNote.value.trim(), generateRequestId());
+              highlightOrderId = orderId; // 22.09.2026 — последняя размеченная строка, см. em-save за обоснованием
             }
           }
         } else {
           const orderId = target.slice('order:'.length);
           await callServer('recordOrderPayment', orderId, amount, generateRequestId());
+          highlightOrderId = orderId;
         }
         closeRecordPaymentModal();
         await loadClientData();
@@ -1144,6 +1159,12 @@ window.Screens.payments = {
       try {
         await callServer('createManualAllocation', currentClient.telegramId, earmarkContext.orderId, earmarkContext.stage, amount, emNote.value.trim(), generateRequestId());
         closeEarmarkModal();
+        // 22.09.2026 (репорт VASY после теста «Закрыть» на долге по закрытому
+        // заказу) — без этого loadClientData() перерисовывала список с нуля,
+        // и менеджер терял место, откуда только что закрывал оплату (особенно
+        // заметно в длинном списке заказов). Та же подсветка/скролл, что уже
+        // работает для перехода из "Напоминаний" (highlightOrderId).
+        highlightOrderId = earmarkContext.orderId;
         await loadClientData();
       } catch (error) {
         emError.textContent = 'Не удалось закрепить сумму: ' + error.message;
