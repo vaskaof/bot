@@ -173,8 +173,8 @@ window.WriteoffModal = {
           refundedToClientRub, ourShareRub, resellerTelegramId: resellerTelegramId || undefined,
           resellerShareRub, note: note || undefined, requestId
         });
-        document.getElementById('wo-result').textContent = 'Списание зафиксировано, проводка записана.';
-        document.getElementById('wo-result').classList.remove('hidden');
+        close();
+        showSaveToast(true, 'Списание зафиксировано, проводка записана.');
         if (onRecorded) onRecorded(result);
       } catch (error) {
         showError(error.message);
