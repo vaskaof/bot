@@ -289,7 +289,12 @@ const METHOD_LABELS = {
   submitPaymentClaim: 'Заявить об оплате',
   submitTaskProof: 'Отправить задание на проверку',
   updateWishlistItem: 'Изменить позицию вишлиста',
-  updateWishlistItemStatus: 'Изменить статус позиции вишлиста'
+  updateWishlistItemStatus: 'Изменить статус позиции вишлиста',
+  getHuntState: 'Охота: анонс и праздники',
+  markCelebrationsSeen: 'Охота: праздник показан',
+  markHuntIntroSeen: 'Охота: анонс показан',
+  setWishlistItemGrail: 'Грааль: поставить/снять',
+  getClientCollectionDetail: 'Альбом коллекции'
 };
 
 function methodLabel(method) {

@@ -29,7 +29,13 @@ const MAX_SHARE_ITEMS = 12;
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
   render(root, _context, params) {
+    // Последняя открытая вкладка переживает уход в альбом коллекции и обратно.
+    const TAB_STORAGE_KEY = 'hn_dolls_tab';
     let currentTab = 'wishlist'; // 'wishlist' | 'checklist' | 'collections'
+    try {
+      const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
+      if (!(params && params.photoScanId) && ['wishlist', 'checklist', 'collections'].includes(saved)) currentTab = saved;
+    } catch (_e) { /* sessionStorage недоступен — просто стартуем с Вишлиста */ }
     let selectionMode = false;
     let selectedForShare = new Set();
 
@@ -113,14 +119,14 @@ window.Screens.wishlist = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="tab-switcher" class="flex gap-1.5 mb-3">
-          <button type="button" data-tab="wishlist" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
-            Вишлист <span id="wishlist-count-badge"></span>
+        <div id="tab-switcher" class="grid grid-cols-3 p-1 mb-1 rounded-2xl bg-gray-200/70">
+          <button type="button" data-tab="wishlist" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
+            Вишлист <span id="wishlist-count-badge" class="inline-block font-medium text-gray-400"></span>
           </button>
-          <button type="button" data-tab="checklist" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
-            Чеклист <span id="checklist-count-badge"></span>
+          <button type="button" data-tab="checklist" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
+            Чеклист <span id="checklist-count-badge" class="inline-block font-medium text-gray-400"></span>
           </button>
-          <button type="button" data-tab="collections" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
+          <button type="button" data-tab="collections" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
             Коллекции
           </button>
         </div>
@@ -386,8 +392,10 @@ window.Screens.wishlist = {
 
     let allItems = [];
 
-    loadWishlist();
-    reloadWishlist = loadWishlist;
+    loadWishlist().then(() => {
+      if (!(params && params.photoScanId)) runHuntState();
+    });
+    reloadWishlist = reloadAll;
 
     // --- "Поделиться картинкой" (§5 плана, 21.09.2026) ---
     const shareBarConfirmBtn = document.getElementById('share-bar-confirm-btn');
@@ -503,21 +511,24 @@ window.Screens.wishlist = {
     // --- Переключатель вкладок (тот же паттерн, что admin/screens/home.js) ---
     const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
     tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.dataset.tab === currentTab) return;
-        // "Поделиться" всегда про содержимое ОДНОГО таба (§5.4 плана,
-        // 21.09.2026) — смена таба посреди выбора сбрасывает его, не
-        // переносит отметки на чужой список.
-        if (selectionMode) exitSelectionMode();
-        currentTab = btn.dataset.tab;
-        updateTabStyles();
-        renderHeaderActions();
-      });
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+    function switchTab(tab) {
+      if (tab === currentTab) return;
+      // "Поделиться" всегда про содержимое ОДНОГО таба (§5.4 плана,
+      // 21.09.2026) — смена таба посреди выбора сбрасывает его, не
+      // переносит отметки на чужой список.
+      if (selectionMode) exitSelectionMode();
+      currentTab = tab;
+      Hunt.haptic('selection');
+      try { sessionStorage.setItem(TAB_STORAGE_KEY, tab); } catch (_e) { /* удобство, не критично */ }
+      updateTabStyles();
+      renderHeaderActions();
+    }
     function updateTabStyles() {
       tabButtons.forEach(btn => {
         const active = btn.dataset.tab === currentTab;
-        btn.className = `tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`;
+        btn.className = `tab-btn h-9 rounded-xl text-[13.5px] font-semibold transition-colors ${active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`;
       });
       document.getElementById('wishlist-tab').classList.toggle('hidden', currentTab !== 'wishlist');
       document.getElementById('checklist-tab').classList.toggle('hidden', currentTab !== 'checklist');
@@ -547,39 +558,48 @@ window.Screens.wishlist = {
     }
 
     function buildCollectionCard(c, hasChecklistItems) {
-      const card = document.createElement('div');
-      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+      const done = c.totalCount > 0 && c.ownedCount === c.totalCount;
+      const left = c.totalCount - c.ownedCount;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `block w-full text-left rounded-2xl p-4 mb-3 shadow-sm ${done ? 'border-[1.5px] border-[#E8B130] bg-gradient-to-b from-[#FDF3D7] to-white' : 'bg-white border border-gray-100'}`;
 
       // Мягкая заглушка вместо "0%" (§3.7 плана, п.5) — пока у клиента вообще
       // нет ни одной позиции Чеклиста ни в одной коллекции, демотивирующий
       // ноль на КАЖДОЙ карточке не показывается, вместо него один и тот же
       // нейтральный призыв заполнить Чеклист.
       const showPlaceholder = !hasChecklistItems;
-      const wantHint = c.wantCount > 0 ? `<div class="text-[11px] text-gray-400 mt-1">Ещё ${c.wantCount} в вишлисте на эту коллекцию</div>` : '';
+      const wantHint = !done && c.wantCount > 0 ? `<div class="text-[11px] text-gray-400 mt-1.5">Ещё ${c.wantCount} в вишлисте</div>` : '';
+      const pill = done
+        ? '<span class="text-[11px] font-bold rounded-full px-2 py-0.5 bg-[#E8B130] text-white">Собрана</span>'
+        : (left === 1 && !showPlaceholder ? '<span class="text-[11px] font-bold rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">Осталась 1</span>' : '');
 
       card.innerHTML = `
-        <div class="flex items-start gap-3">
+        <div class="flex items-center gap-3">
           ${c.coverImageUrl ? `<img src="${escapeHtmlClient(c.coverImageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="flex-1 min-w-0">
-            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(c.name)}</div>
+            <div class="font-bold text-gray-900 text-[15px] leading-tight">${escapeHtmlClient(c.name)}</div>
             ${c.description ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(c.description)}</div>` : ''}
           </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 shrink-0"></i>
         </div>
         ${showPlaceholder ? `
           <div class="mt-3 text-[12px] text-indigo-600 bg-indigo-50 rounded-xl p-2.5">Отметьте кукол, которые у вас уже есть, на вкладке «Чеклист» — и здесь появится прогресс.</div>
         ` : `
           <div class="mt-3">
-            <div class="flex items-center justify-between text-[11px] text-gray-400 mb-1">
+            <div class="flex items-center justify-between text-[12px] text-gray-500 mb-1.5">
               <span>${c.ownedCount} из ${c.totalCount}</span>
-              <span>${c.progressPercent}%</span>
+              ${pill}
             </div>
-            <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-              <div class="h-full rounded-full bg-indigo-500" style="width: ${c.progressPercent}%"></div>
-            </div>
+            <div class="hn-bar${done ? ' gold' : ''}"><i style="width: ${c.progressPercent}%"></i></div>
             ${wantHint}
           </div>
         `}
       `;
+      card.addEventListener('click', () => {
+        Hunt.haptic('selection');
+        navigateTo('collection/' + c.id);
+      });
       return card;
     }
     loadCollections();
@@ -595,6 +615,10 @@ window.Screens.wishlist = {
       }
     }
 
+    // Отложенные визуальные отклики после перерисовки (§1.2 плана геймификации).
+    let pendingBump = null; // 'wishlist' | 'checklist' — «подпрыгнуть» счётчику таба
+    let pendingPopId = null; // wishlistId плитки, которая «подпрыгнет» (S1)
+
     function renderList() {
       const wishlistItems = allItems.filter(i => i.status === 'Хочу');
       const checklistItems = allItems.filter(i => i.status === 'Куплено' || i.status === 'Есть');
@@ -605,109 +629,226 @@ window.Screens.wishlist = {
       wishlistEmptyMessage.classList.toggle('hidden', wishlistItems.length > 0);
       checklistEmptyMessage.classList.toggle('hidden', checklistItems.length > 0);
 
-      activeList.innerHTML = '';
-      wishlistItems.forEach(item => activeList.appendChild(buildCard(item)));
+      // Граали — отдельной лентой над сеткой (§1.4 плана), в сетке не дублируются.
+      const grails = wishlistItems.filter(i => i.isGrail);
+      const hunting = wishlistItems.filter(i => !i.isGrail);
+      activeList.innerHTML =
+        (grails.length > 0 ? `<div class="hn-sec gold"><h2><i data-lucide="star"></i>Граали</h2><span>${grails.length} из ${Hunt.MAX_GRAILS}</span></div><div class="hn-strip">${grails.map(tileFor).join('')}</div>` : '') +
+        (hunting.length > 0 ? `<div class="hn-sec"><h2>Охота</h2><span>${hunting.length}</span></div><div class="hn-grid">${hunting.map(tileFor).join('')}</div>` : '');
 
-      checklistList.innerHTML = '';
-      checklistItems.forEach(item => checklistList.appendChild(buildCard(item)));
+      checklistList.innerHTML = checklistItems.length > 0
+        ? `<div class="hn-sec"><h2>Полка</h2><span>${checklistItems.length} ${Hunt.plural(checklistItems.length, 'кукла', 'куклы', 'кукол')}</span></div><div class="hn-grid">${checklistItems.map(tileFor).join('')}</div>`
+        : '';
 
       if (window.lucide) window.lucide.createIcons();
+      Hunt.wireImages(root);
+      if (pendingBump) {
+        const badge = document.getElementById(pendingBump + '-count-badge');
+        if (badge) { badge.classList.remove('hn-bump'); void badge.offsetWidth; badge.classList.add('hn-bump'); }
+        pendingBump = null;
+      }
+      pendingPopId = null;
     }
 
-    function buildCard(item) {
-      const card = document.createElement('div');
-      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex gap-3';
+    function tileFor(item) {
+      const isWant = item.status === 'Хочу';
+      let chip = '';
+      if (isWant && item.isGrail) chip = '<span class="hn-chip gold"><i data-lucide="star"></i></span>';
+      else if (item.isUnknown) chip = '<span class="hn-chip gray">Не в каталоге</span>';
+      const selected = selectionMode && selectedForShare.has(item.wishlistId);
+      return Hunt.tileHtml({
+        state: isWant ? 'want' : 'owned',
+        title: item.productDisplay,
+        imageUrl: item.imageUrl,
+        isGrail: item.isGrail,
+        chip,
+        badge: selected ? '<span class="hn-badge sel"><i data-lucide="check"></i></span>' : '',
+        selected,
+        pop: pendingPopId === item.wishlistId,
+        attrs: `data-wid="${escapeHtmlClient(item.wishlistId)}"`
+      });
+    }
 
-      const isChecklist = item.status === 'Куплено' || item.status === 'Есть';
+    function onTileClick(e) {
+      const tile = e.target.closest('[data-wid]');
+      if (!tile) return;
+      const item = allItems.find(i => i.wishlistId === tile.dataset.wid);
+      if (!item) return;
+      if (selectionMode) {
+        // Режим выбора для "Поделиться" (§5 плана, 21.09.2026) — тап только
+        // отмечает плитку, карточка не открывается.
+        if (selectedForShare.has(item.wishlistId)) {
+          selectedForShare.delete(item.wishlistId);
+        } else {
+          if (selectedForShare.size >= MAX_SHARE_ITEMS) {
+            showSaveToast(false, `Можно выбрать не больше ${MAX_SHARE_ITEMS} позиций за раз`);
+            return;
+          }
+          selectedForShare.add(item.wishlistId);
+        }
+        Hunt.haptic('selection');
+        renderShareBar();
+        renderList();
+        return;
+      }
+      openItemSheet(item);
+    }
+    activeList.addEventListener('click', onTileClick);
+    checklistList.addEventListener('click', onTileClick);
 
-      card.innerHTML = `
-        ${selectionMode ? `<input type="checkbox" class="share-select-check w-5 h-5 mt-1 shrink-0 accent-indigo-600" ${selectedForShare.has(item.wishlistId) ? 'checked' : ''}>` : ''}
-        ${item.imageUrl ? `<img src="${escapeHtmlClient(item.imageUrl)}" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
-        <div class="flex-1 min-w-0">
-          <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(item.productDisplay)}</div>
-          ${item.isUnknown && item.rawTitle && item.rawTitle !== item.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(item.rawTitle)}</div>` : ''}
-          ${item.isUnknown ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Не в каталоге</span>' : ''}
-          ${item.status === 'Куплено' ? '<span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Куплено у нас</span>' : ''}
-          ${item.rawDescription ? `<div class="text-[12px] text-gray-400 mt-1">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
-          ${!item.isUnknown ? '<div class="text-[11px] text-gray-300 mt-1">Данные обновляются по каталогу — редактирование недоступно, только удаление</div>' : ''}
-          <div class="flex flex-wrap gap-3 mt-1">
-            ${item.sourceUrl ? `<a href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener" class="text-[12px] text-indigo-500">Ссылка на товар</a>` : ''}
-          </div>
-          ${selectionMode ? '' : `
-          <div class="flex items-center gap-2 mt-3">
-            <button type="button" class="toggle-status-btn flex-1 py-2 rounded-xl text-xs font-medium ${isChecklist ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">
-              ${isChecklist ? 'Вернуть в «Вишлист»' : 'Отметить купленным'}
-            </button>
-            ${!isChecklist ? '<button type="button" class="mark-owned-btn p-2 text-gray-400 hover:text-indigo-600" title="Уже есть — в Чеклист"><i data-lucide="check-circle-2" class="w-4 h-4"></i></button>' : ''}
-            ${item.isUnknown ? '<button type="button" class="edit-item-btn p-2 text-gray-400 hover:text-indigo-600" title="Редактировать"><i data-lucide="pencil" class="w-4 h-4"></i></button>' : ''}
-            <button type="button" class="delete-item-btn p-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-          </div>`}
-        </div>
+    function reloadAll() {
+      loadWishlist();
+      loadCollections();
+    }
+
+    // Нижний лист позиции (§1.5 плана): на плитке кнопок нет, все действия здесь.
+    function openItemSheet(item) {
+      Hunt.haptic('selection');
+      const isWant = item.status === 'Хочу';
+      const tags = [
+        item.isGrail ? '<span class="hn-tag gold"><i data-lucide="star"></i>Грааль</span>' : '',
+        item.status === 'Куплено' ? '<span class="hn-tag win">Куплено у нас</span>' : '',
+        item.isUnknown ? '<span class="hn-tag amber">Не в каталоге</span>' : ''
+      ].join('');
+      const meta = [];
+      if (isWant && item.huntDays !== null && item.huntDays !== undefined) {
+        meta.push(`<div><i data-lucide="hourglass"></i>В охоте ${item.huntDays === 0 ? 'с сегодня' : Hunt.days(item.huntDays) + ' · с ' + escapeHtmlClient(item.createdAtDisplay)}</div>`);
+      }
+      if (!isWant && item.huntDays) meta.push(`<div><i data-lucide="flag"></i>Охота длилась ${Hunt.days(item.huntDays)}</div>`);
+      if (!item.imageUrl) meta.push(`<div><i data-lucide="image-off"></i>${item.isUnknown ? 'Фото появится, когда кукла попадёт в каталог' : 'Фото появится, как только его добавят в каталог'}</div>`);
+
+      const actions = isWant ? `
+        <button type="button" class="hn-btn primary" data-act="own"><i data-lucide="check"></i>У меня!</button>
+        <button type="button" class="hn-btn soft" data-act="grail">${item.isGrail ? '<i data-lucide="star-off"></i>Убрать из Граалей' : '<i data-lucide="star"></i>Сделать Граалем'}</button>
+        <div data-slot="err"></div>
+        ${item.isUnknown ? '<button type="button" class="hn-btn plain" data-act="edit"><i data-lucide="pencil"></i>Редактировать</button>' : ''}
+        <div data-slot="del"><button type="button" class="hn-btn danger" data-act="del">Удалить из вишлиста</button></div>
+      ` : `
+        <button type="button" class="hn-btn soft" data-act="back"><i data-lucide="undo-2"></i>Вернуть в вишлист</button>
+        <div data-slot="err"></div>
+        <div data-slot="del"><button type="button" class="hn-btn danger" data-act="del">Удалить</button></div>
       `;
 
-      // Режим выбора для "Поделиться" (§5 плана, 21.09.2026) — карточка
-      // показывает ТОЛЬКО чекбокс, без обычных действий (статус/удаление
-      // и т.п.), чтобы не путать намерение клика во время выбора позиций.
-      if (selectionMode) {
-        card.querySelector('.share-select-check').addEventListener('change', (ev) => {
-          if (ev.target.checked) {
-            if (selectedForShare.size >= MAX_SHARE_ITEMS) {
-              ev.target.checked = false;
-              showSaveToast(false, `Можно выбрать не больше ${MAX_SHARE_ITEMS} позиций за раз`);
-              return;
-            }
-            selectedForShare.add(item.wishlistId);
-          } else {
-            selectedForShare.delete(item.wishlistId);
+      const html = `
+        <div class="hn-sh-top">
+          <div class="hn-tile ${isWant ? 'want' : 'owned'}${item.isGrail ? ' grail' : ''}" style="width:112px;flex:none"><div class="hn-ph">${Hunt.imgHtml(item.imageUrl, item.productDisplay)}</div></div>
+          <div class="min-w-0">
+            <div class="hn-sh-name">${escapeHtmlClient(item.productDisplay)}</div>
+            ${item.isUnknown && item.rawTitle && item.rawTitle !== item.productDisplay ? `<div class="hn-sh-sub">${escapeHtmlClient(item.rawTitle)}</div>` : ''}
+            ${tags ? `<div class="hn-tags">${tags}</div>` : ''}
+          </div>
+        </div>
+        ${meta.length ? `<div class="hn-meta">${meta.join('')}</div>` : ''}
+        ${item.rawDescription ? `<div class="hn-desc">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
+        ${item.sourceUrl ? `<div class="mt-2"><a class="hn-link" href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener">Ссылка на товар</a></div>` : ''}
+        <div class="hn-acts">${actions}</div>
+      `;
+
+      Hunt.sheet(html, (sheetEl) => {
+        const errSlot = sheetEl.querySelector('[data-slot="err"]');
+        const showErr = (message) => { errSlot.innerHTML = `<div class="hn-err">${escapeHtmlClient(message)}</div>`; };
+        const on = (act, fn) => {
+          const btn = sheetEl.querySelector(`[data-act="${act}"]`);
+          if (btn) btn.addEventListener('click', () => fn(btn));
+        };
+
+        on('own', async (btn) => {
+          btn.disabled = true;
+          const tile = Array.from(activeList.querySelectorAll('[data-wid]')).find(el => el.dataset.wid === item.wishlistId);
+          const tilePhoto = tile ? tile.querySelector('.hn-ph') : null;
+          Hunt.closeSheet();
+          const outcome = await Hunt.acquire(item.wishlistId);
+          if (outcome === 'failed') return;
+          if (outcome === 'celebrated') {
+            await Hunt.fly(tilePhoto, document.querySelector('.tab-btn[data-tab="checklist"]'));
+            pendingBump = 'checklist';
+          } else if (outcome === 'plain') {
+            showSaveToast(true, 'Кукла на полке');
+            pendingBump = 'checklist';
           }
-          renderShareBar();
+          reloadAll();
         });
-        return card;
-      }
 
-      card.querySelector('.toggle-status-btn').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        btn.disabled = true;
-        try {
-          const newStatus = isChecklist ? 'Хочу' : 'Куплено';
-          await callServer('updateWishlistItemStatus', item.wishlistId, newStatus);
-          loadWishlist();
-        } catch (error) {
-          btn.disabled = false;
-          showSaveToast(false, `Не удалось изменить статус: ${error.message}`);
-        }
-      });
-
-      const markOwnedBtn = card.querySelector('.mark-owned-btn');
-      if (markOwnedBtn) {
-        markOwnedBtn.addEventListener('click', async () => {
-          markOwnedBtn.disabled = true;
+        on('grail', async (btn) => {
+          btn.disabled = true;
           try {
-            // Переключает уже существующую запись на месте (VASY, 20.09.2026:
-            // "переносить в коллекцию") — НЕ создаёт вторую позицию.
-            await callServer('updateWishlistItemStatus', item.wishlistId, 'Есть');
+            await callServer('setWishlistItemGrail', item.wishlistId, !item.isGrail);
+            Hunt.closeSheet();
+            Hunt.haptic(item.isGrail ? 'selection' : 'light');
+            if (!item.isGrail) pendingPopId = item.wishlistId;
+            showSaveToast(true, item.isGrail ? 'Метка Грааля снята' : `${item.productDisplay} — теперь Грааль`);
             loadWishlist();
           } catch (error) {
-            markOwnedBtn.disabled = false;
-            showSaveToast(false, `Не удалось отметить: ${error.message}`);
+            btn.disabled = false;
+            showErr(error.message);
           }
         });
-      }
 
-      card.querySelector('.delete-item-btn').addEventListener('click', async () => {
-        if (!(await showConfirmModal('Удалить позицию?', { confirmLabel: 'Удалить', danger: true }))) return;
-        try {
-          await callServer('deleteWishlistItem', item.wishlistId);
-          loadWishlist();
-        } catch (error) {
-          showSaveToast(false, `Не удалось удалить: ${error.message}`);
-        }
+        on('edit', () => {
+          Hunt.closeSheet();
+          openModalForEdit(item);
+        });
+
+        on('back', async (btn) => {
+          btn.disabled = true;
+          try {
+            await callServer('updateWishlistItemStatus', item.wishlistId, 'Хочу');
+            Hunt.closeSheet();
+            pendingBump = 'wishlist';
+            showSaveToast(true, 'Кукла снова в вишлисте');
+            reloadAll();
+          } catch (error) {
+            btn.disabled = false;
+            showErr(`Не удалось изменить статус: ${error.message}`);
+          }
+        });
+
+        on('del', () => {
+          const slot = sheetEl.querySelector('[data-slot="del"]');
+          slot.innerHTML = '<div class="hn-confirm"><button type="button" class="hn-btn soft" data-del="no">Отмена</button><button type="button" class="hn-btn red" data-del="yes">Удалить</button></div>';
+          slot.querySelector('[data-del="no"]').addEventListener('click', () => Hunt.closeSheet());
+          const yes = slot.querySelector('[data-del="yes"]');
+          yes.addEventListener('click', async () => {
+            yes.disabled = true;
+            try {
+              await callServer('deleteWishlistItem', item.wishlistId);
+              Hunt.closeSheet();
+              showSaveToast(true, 'Удалено');
+              reloadAll();
+            } catch (error) {
+              yes.disabled = false;
+              showErr(`Не удалось удалить: ${error.message}`);
+            }
+          });
+        });
       });
+    }
 
-      const editBtn = card.querySelector('.edit-item-btn');
-      if (editBtn) editBtn.addEventListener('click', () => openModalForEdit(item));
-
-      return card;
+    // Праздники и анонс при открытии экрана (§2.3/§2.3а плана геймификации).
+    // Best-effort: сбой не мешает работе со списком. Не больше одного окна за
+    // заход — анонс важнее, отложенные праздники подождут следующего открытия.
+    async function runHuntState() {
+      let state;
+      try {
+        state = await callServer('getHuntState');
+      } catch (_error) {
+        return;
+      }
+      const shelfEmpty = !allItems.some(i => i.status === 'Куплено' || i.status === 'Есть');
+      if (!state.introSeen) {
+        const res = await Hunt.intro({ shelfEmpty });
+        if (res === 'start' && shelfEmpty) {
+          switchTab('checklist');
+          openAddMethodModal({ addToChecklist: true });
+        }
+        return;
+      }
+      const list = state.celebrations || [];
+      if (list.length === 0) return;
+      Hunt.markSeen(list.map(c => c.wishlistId));
+      if (list.length === 1) await Hunt.celebrate(list[0]);
+      else await Hunt.summary(list);
+      switchTab('checklist');
     }
 
     const addMethodModal = document.getElementById('add-method-modal');

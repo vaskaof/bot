@@ -51,6 +51,13 @@ function matchRoute(hash) {
     return { screen: 'wishlist', navKey: 'wishlist', params: { photoScanId: decodeURIComponent(photoScanMatch[1]) } };
   }
 
+  // Альбом коллекции (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.3) — часть
+  // «Мои куклы», поэтому подсвечен тот же пункт нижней навигации.
+  const collectionMatch = clean.match(/^collection\/(\d+)$/);
+  if (collectionMatch) {
+    return { screen: 'collectionAlbum', navKey: 'wishlist', params: { collectionId: Number(collectionMatch[1]) } };
+  }
+
   // Политика конфиденциальности (17.08.2026) — не пункт нижней навигации,
   // доступ по ссылке (из «Профиль» и из /start бота), тот же паттерн, что
   // order-details выше.
