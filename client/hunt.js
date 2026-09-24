@@ -36,7 +36,7 @@
   .hn-tile.missing .hn-ph img{filter:grayscale(1);opacity:.35}
   .hn-tile.missing .hn-nm{color:#9ca3af;font-weight:500}
   .hn-tile.selected .hn-ph{outline:3px solid #4f46e5;outline-offset:2px}
-  .hn-nm{font-size:12px;font-weight:600;color:#111827;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
+  .hn-nm{font-size:12px;font-weight:600;color:#111827;margin-top:6px;padding:0 2px;line-height:1.3;height:2.6em;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow-wrap:anywhere}
   .hn-chip{position:absolute;top:6px;left:6px;font-size:10px;font-weight:700;border-radius:999px;padding:3px 7px;line-height:1.1;display:flex;align-items:center;gap:3px}
   .hn-chip.gold{background:#E8B130;color:#fff;padding:4px}
   .hn-chip.gold svg{fill:#fff;color:#fff;width:11px;height:11px}
@@ -208,10 +208,11 @@
     for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) % 360;
     return h;
   }
-  function silhouette(name) {
-    const key = String(name || '');
-    if (silhouetteCache.has(key)) return silhouetteCache.get(key);
-    const h = hashHue(key);
+  // Хэш и рисунок ЗЕРКАЛИТ сервер: server/assets/silhouettes/h-<оттенок>.jpg
+  // отрисованы из silhouetteSvg() этого файла (server/tools/generate-
+  // silhouettes.js), а wishlistShareService.hashHue — копия hashHue ниже
+  // (сверяется тестом). Меняете рисунок/хэш — перегенерируйте картинки.
+  function silhouetteSvg(h) {
     const style = ['long', 'bob', 'pig', 'bun', 'long', 'bob'][h % 6];
     const hair = `hsl(${h} 38% 58%)`, body = `hsl(${h} 34% 64%)`, face = `hsl(${h} 45% 82%)`;
     const back = {
@@ -222,7 +223,12 @@
     }[style];
     const star = (x, y, r, o) => `<path d="M${x} ${y - r} L${x + r * .28} ${y - r * .28} L${x + r} ${y} L${x + r * .28} ${y + r * .28} L${x} ${y + r} L${x - r * .28} ${y + r * .28} L${x - r} ${y} L${x - r * .28} ${y - r * .28} Z" fill="#fff" opacity="${o}"/>`;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h} 70% 93%)"/><stop offset="1" stop-color="hsl(${(h + 30) % 360} 62% 84%)"/></linearGradient><radialGradient id="f" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><rect width="100" height="100" fill="url(#g)"/>${back}<path d="M18 100 C20 83 35 77 50 77 C65 77 80 83 82 100 Z" fill="${body}"/><rect x="44" y="62" width="12" height="17" rx="4" fill="${face}"/><ellipse cx="50" cy="47" rx="21" ry="23" fill="${face}"/><ellipse cx="50" cy="47" rx="21" ry="23" fill="url(#f)"/><path d="M28 46 C27 22 73 20 72 44 C66 34 56 30 48 33 C40 36 33 41 28 46 Z" fill="${hair}"/>${star(80, 18, 6, .9)}${star(88, 31, 3.2, .75)}${star(17, 80, 3.6, .6)}</svg>`;
-    const uri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    return svg;
+  }
+  function silhouette(name) {
+    const key = String(name || '');
+    if (silhouetteCache.has(key)) return silhouetteCache.get(key);
+    const uri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(silhouetteSvg(hashHue(key)));
     silhouetteCache.set(key, uri);
     return uri;
   }
@@ -439,7 +445,7 @@
     if (btn) btn.disabled = true;
     try {
       await callServer('shareWishlistCollage', wishlistIds);
-      showSaveToast(true, 'Картинка отправлена вам в чат с ботом');
+      showSaveToast(true, 'Картинка придёт вам в чат с ботом через несколько секунд');
     } catch (error) {
       showSaveToast(false, error.message);
     } finally {
@@ -509,7 +515,7 @@
     const slides = [
       {
         h: 'Открыт сезон охоты!',
-        p: 'Каждая кукла из вашего вишлиста — это охота. Когда она будет добыта, мы это отпразднуем.',
+        p: 'Каждая кукла из вишлиста — ваша цель. Мы поможем её найти, а когда она окажется у вас — отпразднуем.',
         ill: `<div class="row">${mini('Руби')}${mini('Клео', 'hero', '<span class="hn-badge win" style="opacity:0"><i data-lucide="check"></i></span>')}${mini('Спектра')}</div>`
       },
       {
@@ -558,6 +564,8 @@
   window.Hunt = {
     haptic,
     silhouette,
+    silhouetteSvg,
+    hashHue,
     imgHtml,
     wireImages,
     tileHtml,

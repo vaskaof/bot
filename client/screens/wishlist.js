@@ -24,7 +24,7 @@
 // проверяемое чисто клиентски перед отправкой, дублирование числа дешевле
 // лишнего запроса; сервер всё равно перепроверяет сам, это не единственная
 // линия защиты).
-const MAX_SHARE_ITEMS = 12;
+const MAX_SHARE_ITEMS = 420; // 42 куклы на картинку × 10 картинок альбомом (геймификация §10.4, 24.09.2026)
 
 window.Screens = window.Screens || {};
 window.Screens.wishlist = {
@@ -64,12 +64,37 @@ window.Screens.wishlist = {
       document.getElementById('share-bar-confirm-btn').disabled = count === 0;
     }
 
+    /** Куклы текущего таба (Вишлист — «Хочу», Чеклист — полка) — для «Выбрать всё». */
+    function currentTabItems() {
+      return currentTab === 'checklist'
+        ? allItems.filter(i => i.status === 'Куплено' || i.status === 'Есть')
+        : allItems.filter(i => i.status === 'Хочу');
+    }
+
     function renderHeaderActions() {
       if (selectionMode) {
+        const tabItems = currentTabItems();
+        const allSelected = tabItems.length > 0 && tabItems.every(i => selectedForShare.has(i.wishlistId));
         document.getElementById('header-actions').innerHTML = `
+          <button id="share-select-all-btn" class="px-3 py-1.5 rounded-full text-sm font-medium text-indigo-600 hover:bg-white/50 transition-colors">${allSelected ? 'Снять всё' : 'Выбрать всё'}</button>
           <button id="share-cancel-btn" class="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:bg-white/50 transition-colors">Отмена</button>
         `;
         document.getElementById('share-cancel-btn').addEventListener('click', exitSelectionMode);
+        // «Поделиться всей полкой/вишлистом» (§10.4 плана) — больше 42 кукол
+        // сервер сам разобьёт на несколько картинок одним альбомом.
+        document.getElementById('share-select-all-btn').addEventListener('click', () => {
+          if (allSelected) {
+            selectedForShare = new Set();
+          } else {
+            const ids = tabItems.map(i => i.wishlistId).slice(0, MAX_SHARE_ITEMS);
+            selectedForShare = new Set(ids);
+            if (tabItems.length > MAX_SHARE_ITEMS) showSaveToast(false, `Выбраны первые ${MAX_SHARE_ITEMS} — больше за раз нельзя`);
+          }
+          Hunt.haptic('selection');
+          renderHeaderActions();
+          renderShareBar();
+          renderList();
+        });
         return;
       }
 
@@ -404,7 +429,7 @@ window.Screens.wishlist = {
       shareBarConfirmBtn.disabled = true;
       try {
         await callServer('shareWishlistCollage', Array.from(selectedForShare));
-        showSaveToast(true, 'Отправлено в чат с ботом — перешлите сообщение, кому захотите');
+        showSaveToast(true, 'Картинка придёт в чат с ботом через несколько секунд — перешлите её, кому захотите');
         exitSelectionMode();
       } catch (error) {
         showSaveToast(false, error.message);
@@ -687,6 +712,7 @@ window.Screens.wishlist = {
           selectedForShare.add(item.wishlistId);
         }
         Hunt.haptic('selection');
+        renderHeaderActions();
         renderShareBar();
         renderList();
         return;
