@@ -97,6 +97,11 @@ window.SkuModal = {
                 <ul id="sku-series-dropdown" class="dropdown-menu custom-scrollbar"></ul>
               </div>
             </div>
+            <!-- Ветка справочника линеек (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1). Скрыто, пока справочник не загрузился. -->
+            <div id="sku-line-field" class="hidden">
+              <label class="text-xs font-medium text-gray-500">Линейка</label>
+              <select id="sku-line-select" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
+            </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылки</label>
               <div id="sku-links-list" class="space-y-1.5 mt-1"></div>
@@ -169,6 +174,19 @@ window.SkuModal = {
     // wishlistIds (массив) не смешиваются в одном вызове — если передан
     // массив, используется он, singular-путь Фазы 4 не трогаем.
     async function handleSaved(result, action, context) {
+      // Ветка справочника — отдельной узкой записью после сохранения самой
+      // позиции (любой путь: create/update/merge), только если её поменяли.
+      if (action !== 'delete' && result && result.value) {
+        const lineSelect = document.getElementById('sku-line-select');
+        const chosen = lineSelect && linesLoaded ? lineSelect.value : skuLineInitial;
+        if (chosen !== skuLineInitial) {
+          try {
+            await callServer('setCatalogSkuLine', result.value, chosen ? Number(chosen) : null);
+          } catch (error) {
+            showSaveToast(false, `Позиция сохранена, но линейка — нет: ${error.message}`);
+          }
+        }
+      }
       if (context && action !== 'delete') {
         const idsToLink = Array.isArray(context.wishlistIds) ? context.wishlistIds
           : (context.wishlistId ? [context.wishlistId] : []);
@@ -181,6 +199,23 @@ window.SkuModal = {
         }
       }
       onSaved(result, action, context);
+    }
+
+    // Справочник линеек — один раз при монтировании; до применения миграции
+    // или при сбое поле просто не показывается.
+    let linesLoaded = false;
+    let skuLineInitial = '';
+    let orderedLines = [];
+    callServer('getCatalogLinesTree').then((tree) => {
+      orderedLines = LinesUtil.ordered(tree.lines);
+      linesLoaded = orderedLines.length > 0;
+      if (linesLoaded) document.getElementById('sku-line-field').classList.remove('hidden');
+    }).catch(() => { /* справочник недоступен — поле скрыто */ });
+
+    function setLineSelect(lineId) {
+      skuLineInitial = lineId ? String(lineId) : '';
+      if (!linesLoaded) return;
+      document.getElementById('sku-line-select').innerHTML = LinesUtil.optionsHtml(orderedLines, lineId || null, '— не выбрана —');
     }
 
     function closeSkuModal() {
@@ -631,6 +666,7 @@ window.SkuModal = {
           document.getElementById('sku-character-input').value = '';
           renderCharacterChips();
           document.getElementById('sku-series-input').value = details.series;
+          setLineSelect(details.lineId);
           document.getElementById('sku-image-input').value = details.imageUrl || '';
           document.getElementById('sku-description-input').value = details.description || '';
           updateImagePreview();
@@ -650,6 +686,7 @@ window.SkuModal = {
           .forEach(id => { document.getElementById(id).value = ''; });
         characterChips = [];
         renderCharacterChips();
+        setLineSelect(null);
 
         // Prefill (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
         // форма заказа передаёт сюда то, что менеджер уже напечатал в поле

@@ -33,7 +33,7 @@ window.Screens.catalog = {
              остаются только 2 самые частые кнопки (Обновить/Добавить), четыре
              реже используемых инструмента переехали в свой ряд icon+подпись
              внутри тела экрана. -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-5 gap-1">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-6 gap-1">
           <button type="button" id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="copy-check" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Дубли</span>
@@ -54,6 +54,11 @@ window.Screens.catalog = {
           <button type="button" id="collections-nav-btn" title="Коллекции" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="layers" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Коллекции</span>
+          </button>
+          <!-- «Линейки» — справочник веток (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1, 24.09.2026) -->
+          <button type="button" id="lines-nav-btn" title="Линейки" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="git-branch" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Линейки</span>
           </button>
         </div>
 
@@ -219,6 +224,7 @@ window.Screens.catalog = {
     // после root.innerHTML, а не сразу за header-actions, как раньше.
     document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
     document.getElementById('collections-nav-btn').addEventListener('click', () => navigateTo('catalog/collections'));
+    document.getElementById('lines-nav-btn').addEventListener('click', () => navigateTo('catalog/lines'));
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
     // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).

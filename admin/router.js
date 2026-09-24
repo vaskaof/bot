@@ -70,6 +70,8 @@ const ROUTES = [
   // — тот же паттерн, что 'wishlist-demand': не в нижней навигации, вход
   // иконкой с catalog.js.
   { path: 'catalog/collections', screen: 'catalogCollections', navKey: null, showNav: false },
+  // Справочник линеек (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1, 24.09.2026).
+  { path: 'catalog/lines', screen: 'catalogLines', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
