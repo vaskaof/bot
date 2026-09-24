@@ -72,6 +72,8 @@ const ROUTES = [
   { path: 'catalog/collections', screen: 'catalogCollections', navKey: null, showNav: false },
   // Справочник линеек (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1, 24.09.2026).
   { path: 'catalog/lines', screen: 'catalogLines', navKey: null, showNav: false },
+  // «Проверка каталога» по справочнику кукол (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.10, 24.09.2026).
+  { path: 'catalog/check', screen: 'catalogCheck', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';

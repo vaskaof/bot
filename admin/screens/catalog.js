@@ -33,7 +33,9 @@ window.Screens.catalog = {
              остаются только 2 самые частые кнопки (Обновить/Добавить), четыре
              реже используемых инструмента переехали в свой ряд icon+подпись
              внутри тела экрана. -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-6 gap-1">
+        <!-- 24.09.2026: седьмая иконка «Проверка» — сетка 4×2 вместо 6 в ряд
+             (7 подписей в один ряд на узком экране не читаются). -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
           <button type="button" id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="copy-check" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Дубли</span>
@@ -59,6 +61,12 @@ window.Screens.catalog = {
           <button type="button" id="lines-nav-btn" title="Линейки" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="git-branch" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Линейки</span>
+          </button>
+          <!-- «Проверка каталога» — автоаудит по справочнику кукол (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.10) -->
+          <button type="button" id="catalog-check-nav-btn" title="Проверка каталога по справочнику" class="relative flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+            <i data-lucide="scan-search" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium leading-none">Проверка</span>
+            <span id="catalog-check-badge" class="hidden absolute top-0 right-1/2 translate-x-4 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center"></span>
           </button>
         </div>
 
@@ -89,17 +97,7 @@ window.Screens.catalog = {
         </div>
       </div>
 
-      <div id="merge-compare-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
-          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Слияние позиций</h2>
-            <button id="merge-compare-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
-              <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-          </div>
-          <div id="merge-compare-body" class="p-4"></div>
-        </div>
-      </div>
+      ${MergeCompare.html()}
 
       <div id="short-name-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
@@ -225,6 +223,14 @@ window.Screens.catalog = {
     document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
     document.getElementById('collections-nav-btn').addEventListener('click', () => navigateTo('catalog/collections'));
     document.getElementById('lines-nav-btn').addEventListener('click', () => navigateTo('catalog/lines'));
+    document.getElementById('catalog-check-nav-btn').addEventListener('click', () => navigateTo('catalog/check'));
+    // Счётчик строк, ждущих решения человека, — в фоне, экран от него не зависит.
+    callServer('getCatalogCheckCount').then((count) => {
+      const badge = document.getElementById('catalog-check-badge');
+      if (!badge || !count) return;
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.classList.remove('hidden');
+    }).catch(() => {});
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
     // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).
@@ -241,107 +247,10 @@ window.Screens.catalog = {
     // промежуточной формы редактирования.
     const duplicatesModal = document.getElementById('duplicates-modal');
     const duplicatesBody = document.getElementById('duplicates-body');
-    const mergeCompareModal = document.getElementById('merge-compare-modal');
-    const mergeCompareBody = document.getElementById('merge-compare-body');
-
-    function closeMergeCompareModal() {
-      mergeCompareModal.classList.add('hidden');
-      mergeCompareModal.classList.remove('flex');
-    }
-    document.getElementById('merge-compare-close').addEventListener('click', closeMergeCompareModal);
-
-    function buildMergeCandidateHtml(details, links) {
-      const tags = [details.brand, details.character, details.series].filter(t => t !== '');
-      return `
-        <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 min-w-0">
-          ${details.imageUrl ? `<img src="${escapeHtmlClient(details.imageUrl)}" alt="" class="w-16 h-16 rounded-lg object-cover bg-gray-100" onerror="this.style.display='none'">` : ''}
-          <div class="font-semibold text-gray-900 text-sm break-words">${escapeHtmlClient(details.shortName || details.original)}</div>
-          <div class="text-[11px] text-gray-400 break-words">${escapeHtmlClient(details.original)}</div>
-          ${tags.length > 0 ? `<div class="flex flex-wrap gap-1">${tags.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
-          ${details.description ? `<div class="text-[11px] text-gray-500">${escapeHtmlClient(details.description)}</div>` : ''}
-          ${links.length > 0
-            ? `<div class="space-y-0.5">${links.map(l => `<a href="${escapeHtmlClient(l.url)}" target="_blank" rel="noopener" class="block text-[11px] text-indigo-500 truncate">${escapeHtmlClient(l.url)}</a>`).join('')}</div>`
-            : '<div class="text-[11px] text-gray-300">Ссылок нет</div>'}
-        </div>
-      `;
-    }
-
-    // ИСПРАВЛЕНО 16.08.2026 (UX-аудит, Шаг 5): ни одна из двух кнопок этого
-    // диалога не блокировалась на время запроса — двойной тап (тот же класс
-    // риска, что уже 4+ раза находили в разных углах этого проекта) мог
-    // вызвать performMerge дважды подряд для одной и той же пары позиций,
-    // причём именно эта функция ЯВНО удаляет одну из двух записей каталога
-    // на сервере (см. подсказку выше кнопок) — самый чувствительный из всех
-    // найденных при аудите write-путей без disable-guard.
-    async function performMerge(targetDetails, sourceDetails, mergeChoice) {
-      const errorEl = document.getElementById('merge-compare-error');
-      errorEl.classList.add('hidden');
-      const targetBtn = document.getElementById('merge-keep-target-btn');
-      const sourceBtn = document.getElementById('merge-keep-source-btn');
-      if (targetBtn.disabled || sourceBtn.disabled) return; // уже в процессе — второй клик игнорируем
-      targetBtn.disabled = true;
-      sourceBtn.disabled = true;
-      const skuData = {
-        original: targetDetails.original,
-        shortName: sourceDetails.shortName,
-        brand: sourceDetails.brand,
-        character: sourceDetails.character,
-        series: sourceDetails.series,
-        imageUrl: sourceDetails.imageUrl,
-        description: sourceDetails.description
-      };
-      try {
-        await callServer('updateSku', sourceDetails.original, skuData, mergeChoice);
-        closeMergeCompareModal();
-        showSaveToast(true, 'Позиции объединены');
-        loadCatalog();
-      } catch (error) {
-        errorEl.textContent = error.message;
-        errorEl.classList.remove('hidden');
-        targetBtn.disabled = false;
-        sourceBtn.disabled = false;
-      }
-    }
-
-    function renderMergeCompare(targetDetails, sourceDetails, targetLinks, sourceLinks) {
-      mergeCompareBody.innerHTML = `
-        <p class="text-xs text-gray-500 mb-3">Выберите, какую позицию оставить — вторая будет удалена, её заказы переключатся на выбранную.</p>
-        <div class="grid grid-cols-2 gap-3 mb-3">
-          ${buildMergeCandidateHtml(targetDetails, targetLinks)}
-          ${buildMergeCandidateHtml(sourceDetails, sourceLinks)}
-        </div>
-        <div id="merge-compare-error" class="text-xs text-red-500 hidden mb-2"></div>
-        <div class="grid grid-cols-2 gap-2">
-          <button type="button" id="merge-keep-target-btn" class="py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium hover:border-indigo-400">
-            Оставить: ${escapeHtmlClient(targetDetails.shortName || targetDetails.original)}
-          </button>
-          <button type="button" id="merge-keep-source-btn" class="py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium hover:border-indigo-400">
-            Оставить: ${escapeHtmlClient(sourceDetails.shortName || sourceDetails.original)}
-          </button>
-        </div>
-      `;
-      document.getElementById('merge-keep-target-btn').addEventListener('click', () => performMerge(targetDetails, sourceDetails, 'keepExisting'));
-      document.getElementById('merge-keep-source-btn').addEventListener('click', () => performMerge(targetDetails, sourceDetails, 'keepNew'));
-      if (window.lucide) window.lucide.createIcons();
-    }
-
-    async function openMergeCompare(targetOriginal, sourceOriginal) {
-      mergeCompareBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка данных...</div>';
-      mergeCompareModal.classList.remove('hidden');
-      mergeCompareModal.classList.add('flex');
-
-      try {
-        const [targetDetails, sourceDetails, targetLinks, sourceLinks] = await Promise.all([
-          callServer('getSkuDetails', targetOriginal),
-          callServer('getSkuDetails', sourceOriginal),
-          callServer('getCatalogLinksForSku', targetOriginal),
-          callServer('getCatalogLinksForSku', sourceOriginal)
-        ]);
-        renderMergeCompare(targetDetails, sourceDetails, targetLinks, sourceLinks);
-      } catch (error) {
-        mergeCompareBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
-      }
-    }
+    // Окно «Слияние позиций» вынесено в общий _merge-compare.js (24.09.2026) —
+    // им же объединяются «Возможные дубли» на экране «Проверка каталога».
+    const mergeCompare = MergeCompare.init({ onMerged: () => loadCatalog() });
+    const openMergeCompare = (targetOriginal, sourceOriginal) => mergeCompare.open(targetOriginal, sourceOriginal);
 
     function closeDuplicatesModal() {
       duplicatesModal.classList.add('hidden');
