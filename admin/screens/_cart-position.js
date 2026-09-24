@@ -686,11 +686,19 @@ window.CartPosition = {
       item.purchaseLinkResolveBtn.disabled = true;
       try {
         const result = await callServer('resolveOrderProductLink', url);
-        if (result.status === 'matched') {
-          item.productSearchEl.value = result.sku.value || result.sku.label || '';
-          item.productOriginal = result.sku.value || '';
-          showSaveToast(true, 'Ссылка распознана — товар найден в каталоге.');
-        } else if (result.status === 'unmatched') {
+        // Уровни А/Б/В (§11.12 IMPLEMENTATION-PLAN-GAMIFICATION.md) — общий
+        // разбор в LinkMatch. ИСПРАВЛЕНО 24.09.2026: раньше здесь читались
+        // result.sku.value/label, а сервер отдаёт original/shortName — поле
+        // товара оставалось пустым при тосте «товар найден в каталоге».
+        const choice = await LinkMatch.resolve(result);
+        if (choice && choice.kind === 'sku') {
+          item.productSearchEl.value = choice.sku.original;
+          item.productOriginal = choice.sku.original;
+          ctx.updateSummaryDisplay();
+          showSaveToast(true, choice.via === 'model_code'
+            ? `По коду модели в ссылке — «${choice.sku.shortName || choice.sku.original}» из каталога.`
+            : 'Ссылка распознана — товар найден в каталоге.');
+        } else if (choice && choice.kind === 'new') {
           const skuModal = SkuModal.init({
             onSaved: (skuResult, action) => {
               if (action === 'create') {
@@ -700,19 +708,9 @@ window.CartPosition = {
               }
             }
           });
-          // suggestedTags — та же параллель с "+Новая позиция каталога", что
-          // уже была у "Найти" на лоте (_cart-lot.js, 15.09.2026), доведена
-          // 19.09.2026 и до обычной позиции корзины — SkuModal сама тихо
-          // игнорирует отсутствие (не-eBay ссылка без текстового фолбэка и т.п.).
-          const suggestedTags = result.resolved && result.resolved.suggestedTags;
-          skuModal.open('create', null, {
-            original: (result.resolved && result.resolved.title) || '',
-            description: result.resolved && result.resolved.description,
-            imageUrl: result.resolved && result.resolved.imageUrl,
-            brand: suggestedTags && suggestedTags.brand,
-            character: suggestedTags && suggestedTags.character,
-            series: suggestedTags && suggestedTags.series
-          });
+          // Ссылка — в форму новой позиции: видна в «Ссылках» и участвует в
+          // проверке на дубль (одинаковый код модели — Ж2).
+          skuModal.open('create', null, choice.prefill, { pendingLink: url, pendingLinkSource: 'Заказ' });
         }
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);

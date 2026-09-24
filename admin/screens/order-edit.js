@@ -1045,33 +1045,18 @@ window.Screens.orderEdit = {
       purchaseLinkResolveBtn.disabled = true;
       try {
         const result = await callServer('resolveOrderProductLink', url);
-        if (result.status === 'matched') {
-          const sku = result.sku;
+        purchaseLinkHint.classList.add('hidden');
+        // Уровни А/Б/В (§11.12 IMPLEMENTATION-PLAN-GAMIFICATION.md) — общий
+        // разбор в LinkMatch (тот же, что в «Корзине»).
+        const choice = await LinkMatch.resolve(result);
+        if (choice && choice.kind === 'sku') {
+          const sku = choice.sku;
           releaseSearch.value = sku.original;
           shortNameInput.value = sku.shortName || sku.original;
           selectedReleaseId = sku.original;
           setReleaseThumbnail(sku.imageUrl);
-          purchaseLinkHint.classList.add('hidden');
-        } else {
-          const resolved = result.resolved;
-          purchaseLinkHint.classList.add('hidden');
-          // suggestedTags — та же параллель с "+Новая позиция каталога", что
-          // уже была у "Найти" на лоте (_cart-lot.js, 15.09.2026), доведена
-          // 19.09.2026 и до этого экрана — SkuModal сама тихо игнорирует
-          // отсутствие (не-eBay ссылка без текстового фолбэка и т.п.).
-          const suggestedTags = resolved.suggestedTags;
-          skuModal.open(
-            'create', null,
-            {
-              original: resolved.title,
-              description: resolved.description,
-              imageUrl: resolved.imageUrl,
-              brand: suggestedTags && suggestedTags.brand,
-              character: suggestedTags && suggestedTags.character,
-              series: suggestedTags && suggestedTags.series
-            },
-            { pendingLink: url }
-          );
+        } else if (choice && choice.kind === 'new') {
+          skuModal.open('create', null, choice.prefill, { pendingLink: url });
         }
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);

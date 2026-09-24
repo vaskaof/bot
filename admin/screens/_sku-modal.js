@@ -127,6 +127,7 @@ window.SkuModal = {
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
                 placeholder="Необязательно"></textarea>
             </div>
+            <div id="sku-existing-note" class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 hidden"></div>
             <div id="sku-error-text" class="text-xs text-red-500 hidden"></div>
             <div id="sku-merge-conflict" class="hidden"></div>
           </div>
@@ -162,6 +163,24 @@ window.SkuModal = {
     let skuModalMode = 'create';
     let skuModalOldOriginal = null;
     let skuModalContext = null;
+    // Код модели из справочника кукол (§11.12, уровень В: форма заполнена
+    // моделью) — уходит в createSku для запрета второй позиции той же куклы (Ж2).
+    let prefillModelCode = '';
+
+    function showExistingNote(existing, isExact) {
+      const note = document.getElementById('sku-existing-note');
+      if (!existing || existing.length === 0) { note.classList.add('hidden'); return; }
+      const names = existing.map(e => `«${escapeHtmlClient(e.shortName || e.original)}»`).join(', ');
+      note.innerHTML = isExact
+        ? `Эта кукла уже есть в каталоге: ${names}. Новую позицию для неё заводить не нужно.`
+        : `Похоже, эта кукла уже есть в каталоге: ${names}. Проверьте перед сохранением.`;
+      note.classList.remove('hidden');
+    }
+
+    // «Персонаж» из справочника — несколько через запятую (набор) → отдельные чипы.
+    function addCharacterChips(value) {
+      String(value || '').split(',').forEach(name => addCharacterChip(name));
+    }
 
     // Обёртка над onSaved (Фаза 4 интеграции Вишлист/Каталог/Заказы, 04.08.2026) —
     // если модалка была открыта из "Спрос клиентов" (context.wishlistId), после
@@ -542,7 +561,7 @@ window.SkuModal = {
       if (suggestedTags) {
         const brandInput = document.getElementById('sku-brand-input');
         if (brandInput.value.trim() === '' && suggestedTags.brand) brandInput.value = suggestedTags.brand;
-        if (characterChips.length === 0 && suggestedTags.character) addCharacterChip(suggestedTags.character);
+        if (characterChips.length === 0 && suggestedTags.character) addCharacterChips(suggestedTags.character);
         const seriesInput = document.getElementById('sku-series-input');
         if (seriesInput.value.trim() === '' && suggestedTags.series) seriesInput.value = suggestedTags.series;
       }
@@ -625,7 +644,13 @@ window.SkuModal = {
           || document.getElementById('sku-description-input').value.trim() === ''
           || document.getElementById('sku-original-input').value.trim() === '') {
           callServer('resolveProductLinkForAdmin', url)
-            .then(result => applyResolvedFields(result.imageUrl, result.description, result.suggestedTags, result.title))
+            .then(result => {
+              applyResolvedFields(result.imageUrl, result.description, result.suggestedTags, result.title);
+              // §11.12: кукла по ссылке уже в каталоге — сказать сразу; модель
+              // только в справочнике — её код для проверки на дубль (Ж2).
+              showExistingNote(result.existing, result.existingIsExact);
+              if (!prefillModelCode && result.reference && result.reference.modelCode) prefillModelCode = result.reference.modelCode;
+            })
             .catch(() => {
               // Распознавание — удобство, не критичная функциональность; тихо не показываем при сбое.
             });
@@ -637,6 +662,8 @@ window.SkuModal = {
       skuModalMode = mode;
       skuModalOldOriginal = original || null;
       skuModalContext = context || null;
+      prefillModelCode = (mode === 'create' && prefill && prefill.modelCode) ? prefill.modelCode : '';
+      document.getElementById('sku-existing-note').classList.add('hidden');
 
       document.getElementById('sku-error-text').classList.add('hidden');
       document.getElementById('sku-merge-conflict').classList.add('hidden');
@@ -704,7 +731,7 @@ window.SkuModal = {
           // applyResolvedFields, которая защищается от гонки с уже
           // открытой формой) — прямое присвоение, без доп. проверки.
           if (prefill.brand) document.getElementById('sku-brand-input').value = prefill.brand;
-          if (prefill.character) addCharacterChip(prefill.character);
+          if (prefill.character) addCharacterChips(prefill.character);
           if (prefill.series) document.getElementById('sku-series-input').value = prefill.series;
         }
 
@@ -890,7 +917,8 @@ window.SkuModal = {
         // всегда пуст (там ссылки уходят сразу через addCatalogLink по клику).
         link: pendingLinks.length > 0 ? pendingLinks[0].url : '',
         imageUrl: document.getElementById('sku-image-input').value.trim(),
-        description: document.getElementById('sku-description-input').value.trim()
+        description: document.getElementById('sku-description-input').value.trim(),
+        modelCode: skuModalMode === 'create' ? prefillModelCode : ''
       };
 
       try {

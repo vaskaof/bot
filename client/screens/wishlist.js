@@ -1430,10 +1430,34 @@ window.Screens.wishlist = {
 
       const isFlagged = Boolean(scanRowMisrecognized[idx]);
 
+      // Варианты по справочнику кукол (§11.12 IMPLEMENTATION-PLAN-
+      // GAMIFICATION.md, Ж4): сначала «есть у нас», ниже — модели справочника,
+      // которых в каталоге нет (выбор подставляет точное название). Только
+      // предложения — выбирает клиент.
+      const catalogAlternatives = [pos.catalogMatch, ...(pos.catalogOptions || [])]
+        .filter(o => o && (!matched || o.skuOriginal !== matched.skuOriginal));
+      const referenceAlternatives = pos.referenceOptions || [];
+      const alternativesHtml = (catalogAlternatives.length > 0 || referenceAlternatives.length > 0) ? `
+        <div class="mt-1.5 space-y-1">
+          ${catalogAlternatives.length > 0 ? `<div class="text-[10px] text-gray-400">${matched ? 'Или другая из каталога:' : 'Может быть, из каталога:'}</div>` : ''}
+          ${catalogAlternatives.map((o, j) => `
+            <button type="button" class="photo-scan-opt-cat w-full flex items-center gap-2 p-1 rounded-lg border border-indigo-100 text-left" data-j="${j}">
+              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-cover shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+              <span class="text-xs text-indigo-900 truncate">${escapeHtmlClient(o.shortName)}${o.year ? ` · ${o.year}` : ''}</span>
+            </button>`).join('')}
+          ${referenceAlternatives.length > 0 ? '<div class="text-[10px] text-gray-400">Из справочника кукол:</div>' : ''}
+          ${referenceAlternatives.map((o, j) => `
+            <button type="button" class="photo-scan-opt-ref w-full flex items-center gap-2 p-1 rounded-lg border border-gray-200 text-left" data-j="${j}">
+              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-cover shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+              <span class="text-xs text-gray-700 truncate">${escapeHtmlClient(o.label)}</span>
+            </button>`).join('')}
+        </div>` : '';
+
       row.innerHTML = `
         <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" ${alreadyInChecklist ? '' : 'checked'}>
         <div class="flex-1 min-w-0">
           ${nameFieldHtml}
+          ${alternativesHtml}
           <div class="flex items-center gap-2 mt-1">
             <label class="text-[11px] text-gray-400">Кол-во</label>
             <input type="number" min="1" max="20" class="photo-scan-qty w-14 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" data-idx="${idx}" value="${pos.quantity}">
@@ -1447,6 +1471,24 @@ window.Screens.wishlist = {
       `;
       row.classList.toggle('border-red-200', isFlagged);
       row.classList.toggle('bg-red-50/30', isFlagged);
+
+      row.querySelectorAll('.photo-scan-opt-cat').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const o = catalogAlternatives[Number(btn.dataset.j)];
+          scanRowSku[idx] = o.skuOriginal;
+          renderScanRowBody(row, idx, pos, o);
+          if (window.lucide) window.lucide.createIcons();
+        });
+      });
+      row.querySelectorAll('.photo-scan-opt-ref').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const o = referenceAlternatives[Number(btn.dataset.j)];
+          scanRowSku[idx] = '';
+          pos.name = o.label.slice(0, 150);
+          renderScanRowBody(row, idx, pos, null);
+          if (window.lucide) window.lucide.createIcons();
+        });
+      });
 
       const rejectBtn = row.querySelector('.photo-scan-reject-match');
       if (rejectBtn) {

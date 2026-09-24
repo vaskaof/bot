@@ -244,6 +244,7 @@ const METHOD_LABELS = {
   replacePayoutShares: 'Заменить доли выплат',
   resolveOrderProductLink: 'Распознать ссылку товара для заказа',
   resolveProductLinkForAdmin: 'Распознать ссылку товара (админ)',
+  getReferenceModelPrefill: 'Новая позиция из справочника кукол',
   restoreOrder: 'Восстановить заказ',
   revokeClientPayoutRole: 'Снять роль выплаты клиента',
   revokeTaskReward: 'Отозвать награду за задание',

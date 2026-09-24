@@ -268,24 +268,30 @@ window.CartLot = {
       renderPhotoStrip(lotPurchaseLinkPhotosEl, []);
       try {
         const result = await callServer('resolveOrderProductLink', url);
-        if (result.status === 'matched') {
-          renderPhotoStrip(lotPurchaseLinkPhotosEl, result.sku.imageUrl ? [result.sku.imageUrl] : []);
+        const resolvedImageUrls = (result.resolved && (result.resolved.imageUrls && result.resolved.imageUrls.length > 0
+          ? result.resolved.imageUrls
+          : (result.resolved.imageUrl ? [result.resolved.imageUrl] : []))) || [];
+        renderPhotoStrip(lotPurchaseLinkPhotosEl, result.status === 'matched'
+          ? (result.sku.imageUrl ? [result.sku.imageUrl] : [])
+          : resolvedImageUrls);
+        // Уровни А/Б/В (§11.12 IMPLEMENTATION-PLAN-GAMIFICATION.md) — общий
+        // разбор в LinkMatch. ИСПРАВЛЕНО 24.09.2026: раньше читались
+        // result.sku.value/label (сервер отдаёт original/shortName) — строка
+        // лота оставалась пустой при тосте «товар подставлен».
+        const choice = await LinkMatch.resolve(result);
+        if (choice && choice.kind === 'sku') {
           const emptyRow = lotRows.find((r) => !(r.productOriginal || r.productSearchEl.value.trim()));
-          const skuLabel = result.sku.value || result.sku.label || '';
+          const skuLabel = choice.sku.shortName || choice.sku.original;
           if (emptyRow) {
-            emptyRow.productSearchEl.value = skuLabel;
-            emptyRow.productOriginal = result.sku.value || '';
+            emptyRow.productSearchEl.value = choice.sku.original;
+            emptyRow.productOriginal = choice.sku.original;
             const rowIndex = lotRows.indexOf(emptyRow) + 1;
             ctx.updateSummaryDisplay(); // §5 D1 — товар в строке сводки свёрнутой карточки
             showSaveToast(true, `Ссылка распознана — товар «${skuLabel}» подставлен в позицию ${rowIndex} лота.`);
           } else {
             showSaveToast(true, `Ссылка распознана — товар в каталоге: «${skuLabel}». Все строки лота уже с товаром — выберите его в нужной строке вручную.`);
           }
-        } else if (result.status === 'unmatched') {
-          const resolvedImageUrls = (result.resolved && (result.resolved.imageUrls && result.resolved.imageUrls.length > 0
-            ? result.resolved.imageUrls
-            : (result.resolved.imageUrl ? [result.resolved.imageUrl] : []))) || [];
-          renderPhotoStrip(lotPurchaseLinkPhotosEl, resolvedImageUrls);
+        } else if (choice && choice.kind === 'new') {
           const skuModal = SkuModal.init({
             onSaved: (skuResult, action) => {
               if (action === 'create') {
@@ -293,20 +299,9 @@ window.CartLot = {
               }
             }
           });
-          // suggestedTags — РАСШИРЕНО 15.09.2026 (Этап 1 плана "Лоты/ИИ"):
-          // Бренд/Персонаж/Серия, предложенные по eBay-характеристикам
-          // продавца (см. catalogService.suggestTagsFromAspects) —
-          // undefined для не-eBay ссылок/обычного скрейпа, SkuModal сама
-          // тихо игнорирует отсутствие.
-          const suggestedTags = result.resolved && result.resolved.suggestedTags;
-          skuModal.open('create', null, {
-            original: (result.resolved && result.resolved.title) || '',
-            description: result.resolved && result.resolved.description,
-            imageUrl: result.resolved && result.resolved.imageUrl,
-            brand: suggestedTags && suggestedTags.brand,
-            character: suggestedTags && suggestedTags.character,
-            series: suggestedTags && suggestedTags.series
-          });
+          // Ссылка на лот — не ссылка на одну куклу: в «Ссылки» новой позиции
+          // не кладётся (как и раньше), prefill — из справочника или страницы.
+          skuModal.open('create', null, choice.prefill);
         }
       } catch (error) {
         showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
