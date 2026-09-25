@@ -209,6 +209,7 @@ window.Screens.catalogLines = {
               ${sub ? `<div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(sub)}</div>` : ''}
             </button>
             ${line.referenceStatus === 'verified' ? '<span class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">сверено</span>' : ''}
+            ${line.alsoSkus ? `<span class="shrink-0 text-[10px] text-indigo-500 tabular-nums" title="Ещё позиции, отмеченные «Также в ветке»">+${line.alsoSkus}</span>` : ''}
             <span class="shrink-0 w-8 text-right text-xs text-gray-500 tabular-nums">${line.totalSkus}</span>
           </div>`;
       }).join('');
@@ -244,7 +245,7 @@ window.Screens.catalogLines = {
           <i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span>
         </button>`;
       openModal(line.path, `
-        <div class="text-xs text-gray-500 -mt-1">${KIND_LABELS[line.kind] || ''} · ${line.totalSkus} поз. каталога${line.aliases.length ? ` · серии: ${escapeHtmlClient(line.aliases.join(', '))}` : ''}</div>
+        <div class="text-xs text-gray-500 -mt-1">${KIND_LABELS[line.kind] || ''} · ${line.totalSkus} поз. каталога${line.alsoSkus ? ` · ещё ${line.alsoSkus} «также в ветке»` : ''}${line.aliases.length ? ` · серии: ${escapeHtmlClient(line.aliases.join(', '))}` : ''}</div>
         <div class="space-y-0.5">
           ${actionBtn('edit', 'pencil', 'Изменить')}
           ${actionBtn('add', 'plus', 'Добавить подветку')}

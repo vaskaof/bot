@@ -133,6 +133,7 @@ const METHOD_LABELS = {
   getCatalogSeriesMapping: 'Разметка серий',
   assignCatalogSeriesToLine: 'Разметить серию в ветку',
   setCatalogSkuLine: 'Линейка позиции каталога',
+  setCatalogSkuExtraLines: '«Также в ветке» позиции каталога',
   listCatalogCharacters: 'Словарь персонажей',
   createCatalogCharacter: 'Добавить персонажа',
   updateCatalogCharacter: 'Изменить персонажа',

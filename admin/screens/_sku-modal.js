@@ -102,6 +102,12 @@ window.SkuModal = {
               <label class="text-xs font-medium text-gray-500">Линейка</label>
               <select id="sku-line-select" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
             </div>
+            <!-- «Также в ветке» (§11.12): Skullector поверх основной серии. Только у сохранённой позиции. -->
+            <div id="sku-extra-lines-field" class="hidden">
+              <label class="text-xs font-medium text-gray-500">Также в ветке</label>
+              <div id="sku-extra-lines-chips" class="flex flex-wrap gap-1 mt-1"></div>
+              <select id="sku-extra-lines-add" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
+            </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Ссылки</label>
               <div id="sku-links-list" class="space-y-1.5 mt-1"></div>
@@ -206,6 +212,13 @@ window.SkuModal = {
           }
         }
       }
+      if (action !== 'delete' && result && result.value && extraLinesEnabled && JSON.stringify(extraLines) !== extraLinesInitial) {
+        try {
+          await callServer('setCatalogSkuExtraLines', result.value, extraLines);
+        } catch (error) {
+          showSaveToast(false, `Позиция сохранена, но «Также в ветке» — нет: ${error.message}`);
+        }
+      }
       if (context && action !== 'delete') {
         const idsToLink = Array.isArray(context.wishlistIds) ? context.wishlistIds
           : (context.wishlistId ? [context.wishlistId] : []);
@@ -235,6 +248,41 @@ window.SkuModal = {
       skuLineInitial = lineId ? String(lineId) : '';
       if (!linesLoaded) return;
       document.getElementById('sku-line-select').innerHTML = LinesUtil.optionsHtml(orderedLines, lineId || null, '— не выбрана —');
+    }
+
+    // «Также в ветке» — список id; включено только в редактировании позиции,
+    // если сервер вернул поле (миграция 1790900000000 применена).
+    let extraLines = [];
+    let extraLinesInitial = '[]';
+    let extraLinesEnabled = false;
+
+    function renderExtraLines() {
+      const chips = document.getElementById('sku-extra-lines-chips');
+      chips.innerHTML = extraLines.map(id => {
+        const line = orderedLines.find(l => l.id === id);
+        return `<span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">${escapeHtmlClient(line ? line.path : String(id))}<button type="button" class="sku-extra-remove text-indigo-400" data-id="${id}" title="Убрать">×</button></span>`;
+      }).join('') || '<span class="text-xs text-gray-400">нет</span>';
+      chips.querySelectorAll('.sku-extra-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          extraLines = extraLines.filter(id => id !== Number(btn.dataset.id));
+          renderExtraLines();
+        });
+      });
+      document.getElementById('sku-extra-lines-add').innerHTML = LinesUtil.optionsHtml(orderedLines, null, '+ добавить ветку');
+    }
+
+    document.getElementById('sku-extra-lines-add').addEventListener('change', (e) => {
+      const id = Number(e.target.value);
+      if (id && !extraLines.includes(id)) extraLines.push(id);
+      renderExtraLines();
+    });
+
+    function setExtraLines(ids) {
+      extraLinesEnabled = linesLoaded && Array.isArray(ids);
+      extraLines = Array.isArray(ids) ? ids.slice() : [];
+      extraLinesInitial = JSON.stringify(extraLines);
+      document.getElementById('sku-extra-lines-field').classList.toggle('hidden', !extraLinesEnabled);
+      if (extraLinesEnabled) renderExtraLines();
     }
 
     function closeSkuModal() {
@@ -694,6 +742,7 @@ window.SkuModal = {
           renderCharacterChips();
           document.getElementById('sku-series-input').value = details.series;
           setLineSelect(details.lineId);
+          setExtraLines(details.extraLineIds);
           document.getElementById('sku-image-input').value = details.imageUrl || '';
           document.getElementById('sku-description-input').value = details.description || '';
           updateImagePreview();
@@ -714,6 +763,7 @@ window.SkuModal = {
         characterChips = [];
         renderCharacterChips();
         setLineSelect(null);
+        setExtraLines(null);
 
         // Prefill (Фаза 3 интеграции Вишлист/Каталог/Заказы, 03.08.2026) —
         // форма заказа передаёт сюда то, что менеджер уже напечатал в поле
