@@ -229,7 +229,7 @@ window.Screens.orders = {
 
       card.innerHTML = `
         <div class="flex items-start gap-3">
-          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover object-top shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
