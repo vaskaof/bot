@@ -26,6 +26,9 @@ window.Screens.wishlistDemand = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        <!-- «Уже заказано — связать?» (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.5): у клиента есть
+             позиция вишлиста под его заказ в пути, а связи нет — клиент не видит охоту. -->
+        <div id="link-suggest"></div>
         <div class="text-[11px] text-gray-400 px-1 mb-2">По каталогу</div>
         <div id="demand-list"></div>
         <div id="demand-empty" class="hidden text-center text-sm text-gray-400 py-6">Активных желаний пока нет.</div>
@@ -378,14 +381,72 @@ window.Screens.wishlistDemand = {
       });
     });
 
+    // wishlistId → orderId живого заказа (метка «Заказано», §3.5 плана геймификации).
+    let orderedByWishlistId = {};
+
+    function orderedChipHtml(orderId) {
+      return `<button type="button" class="ordered-chip shrink-0 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-medium" data-order-id="${escapeHtmlClient(orderId)}">Заказано · ${escapeHtmlClient(orderId)}</button>`;
+    }
+    function wireOrderedChips(el) {
+      el.querySelectorAll('.ordered-chip').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
+        });
+      });
+    }
+
+    const linkSuggestBox = document.getElementById('link-suggest');
+    async function loadLinkSuggestions() {
+      let list = [];
+      try { list = await callServer('getOrderLinkSuggestions'); } catch (_e) { list = []; }
+      linkSuggestBox.innerHTML = '';
+      if (list.length === 0) return;
+      const box = document.createElement('div');
+      box.className = 'mb-5';
+      box.innerHTML = `<div class="text-[11px] text-gray-400 px-1 mb-2">Уже заказано — связать с вишлистом? · ${list.length}</div>`;
+      list.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl shadow-sm border border-emerald-100 p-3 mb-2 flex items-center gap-3';
+        card.innerHTML = `
+          ${s.imageUrl ? `<img src="${escapeHtmlClient(s.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1 text-[12px] text-gray-500">
+            <div class="text-[13px] font-medium text-gray-800 truncate">${escapeHtmlClient(s.clientDisplay)}</div>
+            <div class="truncate">Заказ <a href="#" class="ls-order text-indigo-600">${escapeHtmlClient(s.orderId)}</a> · ${escapeHtmlClient(s.orderProduct)}</div>
+            <div class="truncate">В вишлисте: «${escapeHtmlClient(s.wishlistName)}»${s.by === 'model' ? ' (по модели)' : ''}</div>
+          </div>
+          <button type="button" class="ls-link shrink-0 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Связать</button>`;
+        card.querySelector('.ls-order').addEventListener('click', (e) => {
+          e.preventDefault();
+          navigateTo(`orders/${encodeURIComponent(s.orderId)}/edit`);
+        });
+        card.querySelector('.ls-link').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            await callServer('setOrderWishlistLink', s.orderId, s.wishlistId);
+            showSaveToast(true, 'Связано — клиент увидит путь охоты');
+            load();
+          } catch (error) {
+            btn.disabled = false;
+            showSaveToast(false, error.message);
+          }
+        });
+        box.appendChild(card);
+      });
+      linkSuggestBox.appendChild(box);
+    }
+
     async function load() {
       demandList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       unknownList.innerHTML = '';
+      loadLinkSuggestions();
       try {
         const [result, queue] = await Promise.all([
           callServer('getWishlistDemand'),
           callServer('getWishlistMatchQueue').catch(() => null)
         ]);
+        orderedByWishlistId = result.ordered || {};
         render(result, queue);
       } catch (error) {
         demandList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -480,7 +541,7 @@ window.Screens.wishlistDemand = {
             <div class="text-[12px] text-gray-500">
               <div class="flex items-center justify-between gap-2">
                 <span class="truncate">${escapeHtmlClient(u.clientDisplay)} · ${escapeHtmlClient(u.createdAtDisplay)}${u.status !== 'Хочу' ? ' · ' + escapeHtmlClient(u.status) : ''}</span>
-                ${u.status === 'Хочу' ? `<button type="button" class="q-order shrink-0 text-indigo-600 text-[11px] font-medium" data-idx="${i}">Заказ</button>` : ''}
+                ${u.status === 'Хочу' ? (orderedByWishlistId[u.wishlistId] ? orderedChipHtml(orderedByWishlistId[u.wishlistId]) : `<button type="button" class="q-order shrink-0 text-indigo-600 text-[11px] font-medium" data-idx="${i}">Заказ</button>`) : ''}
               </div>
               ${u.sourceUrl ? `<a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener" class="block text-indigo-500 truncate">${escapeHtmlClient(u.sourceUrl)}</a>` : ''}
               ${u.rejected.length ? `<div class="text-amber-700">Предлагали: ${escapeHtmlClient(u.rejected.join('; '))}</div>` : ''}
@@ -518,6 +579,7 @@ window.Screens.wishlistDemand = {
         });
       });
 
+      wireOrderedChips(card);
       card.querySelectorAll('.q-order').forEach(btn => {
         btn.addEventListener('click', () => {
           const u = g.items[Number(btn.dataset.idx)];
@@ -610,6 +672,7 @@ window.Screens.wishlistDemand = {
               <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(d.productDisplay)}</div>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Хотят: ${d.activeCount}</span>
+                ${d.orderedCount > 0 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Заказано: ${d.orderedCount}</span>` : ''}
                 ${d.purchasedCount > 0 ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">Куплено: ${d.purchasedCount}</span>` : ''}
                 <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 chevron-icon"></i>
               </div>
@@ -623,9 +686,9 @@ window.Screens.wishlistDemand = {
           ${d.clients.map((c, idx) => `
             <div class="flex items-center justify-between gap-2">
               <span class="text-[12px] text-gray-500">${escapeHtmlClient(c.display)}</span>
-              <button type="button" class="order-from-demand-btn shrink-0 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 text-[11px] font-medium" data-idx="${idx}">
+              ${c.orderedOrderId ? orderedChipHtml(c.orderedOrderId) : `<button type="button" class="order-from-demand-btn shrink-0 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 text-[11px] font-medium" data-idx="${idx}">
                 Оформить заказ
-              </button>
+              </button>`}
             </div>
           `).join('')}
         </div>
@@ -641,6 +704,7 @@ window.Screens.wishlistDemand = {
       // Фаза 5 интеграции Вишлист/Каталог/Заказы (04.08.2026) — "Оформить
       // заказ" у каждого клиента отдельно (клиенты теперь структурированные
       // объекты, не строки, см. getWishlistDemand).
+      wireOrderedChips(card);
       card.querySelectorAll('.order-from-demand-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -669,6 +733,7 @@ window.Screens.wishlistDemand = {
             ${u.rawDescription ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(u.rawDescription)}</div>` : ''}
             ${u.sourceUrl ? `<div class="text-[12px] text-indigo-500 mt-0.5 truncate"><a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener">${escapeHtmlClient(u.sourceUrl)}</a></div>` : ''}
             <div class="text-[12px] text-gray-500 mt-1">${escapeHtmlClient(u.clientDisplay || 'Клиент не указан')} · ${escapeHtmlClient(u.createdAtDisplay)}</div>
+            ${u.orderedOrderId ? `<div class="mt-1">${orderedChipHtml(u.orderedOrderId)}</div>` : ''}
           </div>
         </div>
         <div class="flex gap-2 mt-2">
@@ -681,6 +746,7 @@ window.Screens.wishlistDemand = {
         </div>
       `;
 
+      wireOrderedChips(row);
       row.querySelector('.add-to-catalog-btn').addEventListener('click', () => {
         skuModal.open('create', null,
           { original: u.rawTitle, description: u.rawDescription, imageUrl: u.rawImageUrl },

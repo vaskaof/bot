@@ -194,6 +194,9 @@
   .hn-step.cur b{box-shadow:0 0 0 4px #E0E7FF}
   .hn-path-now{margin-top:10px;font-size:13px;color:#374151;display:flex;align-items:center;justify-content:space-between;gap:8px}
   .hn-path-now a{color:#4f46e5;font-weight:600;white-space:nowrap}
+  .hn-path-track{margin-top:6px;font-size:12.5px;color:#6b7280;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .hn-path-track b{color:#111827;font-weight:600;user-select:all;word-break:break-all}
+  .hn-path-track button{color:#4f46e5;font-weight:600;font-size:12px;padding:2px 6px;border-radius:6px;background:#eef2ff}
 
   @media (prefers-reduced-motion: reduce){
     .hn-cel *,.hn-sheet,.hn-cel,.hn-scrim,.hn-pop .hn-ph,.hn-bump,.hn-ill *,.hn-land .hn-ph img{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -534,6 +537,7 @@
       <h3>${esc(caption)}</h3>
       <div class="hn-steps">${steps}</div>
       <div class="hn-path-now"><span>${now}</span><a href="#/order-details/${encodeURIComponent(hunt.orderId)}" data-act="order">Заказ →</a></div>
+      ${hunt.trackNumber && hunt.stage !== 'arrived' ? `<div class="hn-path-track">Трек: <b>${esc(hunt.trackNumber)}</b> <button type="button" data-act="copy-track" data-track="${esc(hunt.trackNumber)}">Скопировать</button></div>` : ''}
     </div>`;
   }
 
@@ -553,8 +557,9 @@
     });
     haptic('success');
     const first = arrivals[0];
+    // Дни охоты (§3.5, г) — сервер отдаёт их только для настоящей охоты от недели.
     const text = arrivals.length === 1
-      ? `${first.name} теперь на полке`
+      ? `${first.name} теперь на полке${first.huntDays ? ` — охота заняла ${days(first.huntDays)}` : ''}`
       : `На полку: ${arrivals.length} ${plural(arrivals.length, 'кукла', 'куклы', 'кукол')}`;
     showSaveToast(true, text);
   }

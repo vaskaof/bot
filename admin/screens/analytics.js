@@ -93,6 +93,7 @@ const METHOD_LABELS = {
   checkClientWishlistMatch: 'Проверить совпадение с вишлистом клиента',
   findClientWishlistMatch: 'Найти позицию вишлиста клиента для заказа',
   setOrderWishlistLink: 'Связать заказ с вишлистом',
+  getOrderLinkSuggestions: 'Спрос: подсказки «уже заказано — связать»',
   createCart: 'Создать корзину',
   createCollective: 'Создать коллективку',
   createLot: 'Создать лот',
@@ -328,6 +329,8 @@ const METHOD_LABELS = {
   getHuntState: 'Охота: анонс и праздники',
   markCelebrationsSeen: 'Охота: праздник показан',
   markArrivedSeen: 'Охота: «на полку» показано',
+  getTransitOffers: 'Охота: «Ваши заказы в пути»',
+  answerTransitOffers: 'Охота: отметить заказы в пути',
   markHuntIntroSeen: 'Охота: анонс показан',
   setWishlistItemGrail: 'Грааль: поставить/снять',
   getClientCollectionDetail: 'Альбом коллекции'

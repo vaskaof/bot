@@ -164,6 +164,14 @@ window.Screens.wishlist = {
         <div id="match-banner" class="hidden"></div>
 
         <div id="wishlist-tab">
+          <!-- «Ваши заказы в пути» (§3.5 плана геймификации) — пока есть заказы,
+               которые клиент ещё не отметил «это мне» / «не мне». -->
+          <div id="transit-banner" class="hidden mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-3">
+            <span class="shrink-0 w-9 h-9 rounded-full bg-white text-indigo-600 flex items-center justify-center"><i data-lucide="truck" class="w-4 h-4"></i></span>
+            <div class="flex-1 min-w-0 text-sm text-indigo-900">Ваши заказы в пути: <span id="transit-banner-count">0</span>. Какие из них — для вашей коллекции?</div>
+            <button type="button" id="transit-banner-view-btn" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium">Отметить</button>
+            <button type="button" id="transit-banner-dismiss-btn" class="shrink-0 p-1 text-indigo-300 hover:text-indigo-600" title="Не сейчас"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
           <div id="active-list"></div>
           <div id="wishlist-empty-message" class="hidden">
             ${buildEmptyState('heart', 'Список желаний пуст.', { label: 'Добавить куклу', btnId: 'empty-add-item-btn' })}
@@ -279,6 +287,28 @@ window.Screens.wishlist = {
       </div>
 
       <!-- Автоимпорт-предложение из заказов (§3.7 плана, 20.09.2026). -->
+      <div id="transit-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Ваши заказы в пути</h2>
+            <button id="transit-modal-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 pt-3 text-xs text-gray-400 shrink-0">Отмеченные появятся в «Моих куклах» — будете видеть, где каждая кукла. Заказы без галочки — не для себя, их больше не предложим.
+            <button type="button" id="transit-toggle-all" class="block mt-1.5 text-indigo-600 font-medium">Отметить все</button>
+          </div>
+          <div id="transit-list" class="px-4 pb-2 overflow-y-auto custom-scrollbar flex-1 space-y-1.5"></div>
+          <div id="transit-error" class="px-4 pb-2 text-xs text-red-500 hidden"></div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <button id="transit-confirm-btn"
+              class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+              Готово
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div id="import-suggest-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
@@ -542,6 +572,127 @@ window.Screens.wishlist = {
       }
     });
 
+    // --- «Ваши заказы в пути» (§3.5 плана геймификации) ---
+    // Клиент сам отмечает свои заказы «на полку»: отмеченные получают позицию
+    // и «Путь охоты», неотмеченные — «не мне», больше не предлагаются.
+    // Best-effort, как автоимпорт выше.
+    let transitOffers = [];
+    let transitChecked = new Set();
+
+    async function loadTransitOffers() {
+      try {
+        transitOffers = await callServer('getTransitOffers');
+      } catch (_error) {
+        transitOffers = [];
+      }
+      renderTransitBanner();
+    }
+    loadTransitOffers();
+
+    const transitBanner = document.getElementById('transit-banner');
+    function renderTransitBanner() {
+      const show = transitOffers.length > 0;
+      transitBanner.classList.toggle('hidden', !show);
+      if (show) document.getElementById('transit-banner-count').textContent = transitOffers.length;
+    }
+    document.getElementById('transit-banner-dismiss-btn').addEventListener('click', () => {
+      transitBanner.classList.add('hidden');
+    });
+
+    const transitModal = document.getElementById('transit-modal');
+    const transitList = document.getElementById('transit-list');
+    const transitConfirmBtn = document.getElementById('transit-confirm-btn');
+    const transitError = document.getElementById('transit-error');
+
+    const transitToggleAll = document.getElementById('transit-toggle-all');
+    function renderTransitConfirm() {
+      const n = transitChecked.size;
+      transitToggleAll.textContent = n === transitOffers.length ? 'Снять все' : 'Отметить все';
+      transitConfirmBtn.textContent = n === 0
+        ? 'Ни один не для меня'
+        : `В «Мои куклы»: ${n} ${Hunt.plural(n, 'заказ', 'заказа', 'заказов')}`;
+    }
+
+    function renderTransitList() {
+      transitList.innerHTML = '';
+      transitOffers.forEach((o) => {
+        const row = document.createElement('label');
+        row.className = 'flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100 cursor-pointer';
+        const sub = o.wishlistName
+          ? `Свяжем с «${escapeHtmlClient(o.wishlistName)}» из вишлиста`
+          : escapeHtmlClient(o.stepLabel || '');
+        row.innerHTML = `
+          <input type="checkbox" class="transit-check" ${transitChecked.has(o.orderId) ? 'checked' : ''}>
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-10 h-10 rounded-lg object-contain shrink-0 bg-white border border-gray-100" onerror="this.style.display='none'">` : '<span class="w-10 h-10 rounded-lg shrink-0 bg-gray-100"></span>'}
+          <span class="flex-1 min-w-0">
+            <span class="block text-sm text-gray-800 truncate">${escapeHtmlClient(o.productDisplay)}</span>
+            <span class="block text-[11px] text-gray-400 truncate">${sub}</span>
+          </span>
+        `;
+        row.querySelector('.transit-check').addEventListener('change', (ev) => {
+          if (ev.target.checked) transitChecked.add(o.orderId);
+          else transitChecked.delete(o.orderId);
+          Hunt.haptic('selection');
+          renderTransitConfirm();
+        });
+        transitList.appendChild(row);
+      });
+    }
+
+    // Больше TRANSIT_PRECHECK_MAX заказов — скорее всего перекупщик: ничего не
+    // отмечено заранее, иначе одно нажатие завалило бы полку сотней чужих кукол.
+    const TRANSIT_PRECHECK_MAX = 10;
+
+    function openTransitModal() {
+      // Немного заказов — всё отмечено, клиент снимает не для себя (как автоимпорт выше).
+      transitChecked = transitOffers.length <= TRANSIT_PRECHECK_MAX
+        ? new Set(transitOffers.map((o) => o.orderId))
+        : new Set();
+      transitError.classList.add('hidden');
+      transitConfirmBtn.disabled = false;
+      renderTransitList();
+      renderTransitConfirm();
+      transitModal.classList.remove('hidden');
+      transitModal.classList.add('flex');
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function closeTransitModal() {
+      transitModal.classList.add('hidden');
+      transitModal.classList.remove('flex');
+    }
+    document.getElementById('transit-banner-view-btn').addEventListener('click', openTransitModal);
+    document.getElementById('transit-modal-close').addEventListener('click', closeTransitModal);
+    transitToggleAll.addEventListener('click', () => {
+      transitChecked = transitChecked.size === transitOffers.length ? new Set() : new Set(transitOffers.map((o) => o.orderId));
+      renderTransitList();
+      renderTransitConfirm();
+    });
+
+    transitConfirmBtn.addEventListener('click', async () => {
+      transitError.classList.add('hidden');
+      transitConfirmBtn.disabled = true;
+      const accept = transitOffers.filter((o) => transitChecked.has(o.orderId)).map((o) => o.orderId);
+      const dismiss = transitOffers.filter((o) => !transitChecked.has(o.orderId)).map((o) => o.orderId);
+      try {
+        const result = await callServer('answerTransitOffers', accept, dismiss);
+        closeTransitModal();
+        transitOffers = [];
+        renderTransitBanner();
+        const n = result.added + result.linked;
+        // Сводка S1 (§1.2): оцифровка уже заказанного — не «Добыто!».
+        if (n > 0) {
+          Hunt.haptic('light');
+          showSaveToast(true, `В «Моих куклах»: ${n} ${Hunt.plural(n, 'кукла', 'куклы', 'кукол')} в пути`);
+        }
+        if (result.failed > 0) showSaveToast(false, `Не удалось отметить: ${result.failed} — попробуйте позже`);
+        loadWishlist();
+      } catch (error) {
+        transitError.textContent = error.message;
+        transitError.classList.remove('hidden');
+        transitConfirmBtn.disabled = false;
+      }
+    });
+
     // --- Переключатель вкладок (тот же паттерн, что admin/screens/home.js) ---
     const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
     tabButtons.forEach(btn => {
@@ -799,6 +950,17 @@ window.Screens.wishlist = {
         wireMatchBlock(sheetEl.querySelector('.hn-match'), item, () => { Hunt.closeSheet(); loadWishlist(); });
         const orderLink = sheetEl.querySelector('[data-act="order"]');
         if (orderLink) orderLink.addEventListener('click', () => Hunt.closeSheet(true));
+        // Трек-номер куклы в пути (§3.5) — копируется в одно касание.
+        const copyTrack = sheetEl.querySelector('[data-act="copy-track"]');
+        if (copyTrack) copyTrack.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(copyTrack.dataset.track);
+            Hunt.haptic('selection');
+            copyTrack.textContent = 'Скопировано';
+          } catch (_e) {
+            showSaveToast(false, 'Не удалось скопировать — выделите трек вручную');
+          }
+        });
         const errSlot = sheetEl.querySelector('[data-slot="err"]');
         const showErr = (message) => { errSlot.innerHTML = `<div class="hn-err">${escapeHtmlClient(message)}</div>`; };
         const on = (act, fn) => {
