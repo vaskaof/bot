@@ -268,6 +268,7 @@ window.CartPosition = {
         <input type="checkbox" class="notify-client-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить клиента
       </label>
+      <div class="wishlist-link-slot"></div>
 
       <div class="single-client-fields pt-2 border-t border-gray-100">
         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Прогноз расходов (можно поправить)</div>
@@ -317,7 +318,6 @@ window.CartPosition = {
       purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
       noteInputEl: rowEl.querySelector('.note-input'),
       notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox'),
-      wishlistId: '',
       weightSumEl: rowEl.querySelector('.weight-sum-input'),
       taxiKzEl: rowEl.querySelector('.taxi-kz-input'),
       sdekEl: rowEl.querySelector('.sdek-input'),
@@ -417,6 +417,7 @@ window.CartPosition = {
           <div><label class="text-[10px] text-gray-500">Уже оплачено</label><input type="number" class="mr-already-paid-input w-full bg-gray-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
         </div>
         <div class="mr-total-display text-[10px] text-gray-500 text-right mt-1">Итого: 0.00 ₽</div>
+        <div class="mr-wishlist-link-slot"></div>
       `;
       multiplyRowsListEl.appendChild(rEl);
       if (window.lucide) window.lucide.createIcons();
@@ -438,6 +439,9 @@ window.CartPosition = {
         // ниже читают эти же поля через лёгкую обёртку.
         isOwnPurchase: false, onSale: false
       };
+      // «Связать с вишлистом клиента» (§3.0 плана геймификации) — у каждой
+      // строки свой клиент, товар общий.
+      row.wishlistLink = WishlistLink.attach(rEl.querySelector('.mr-wishlist-link-slot'), { compact: true });
 
       function refreshRow() {
         row.amountSymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
@@ -646,6 +650,22 @@ window.CartPosition = {
       }
       item.summaryTextEl.textContent = parts.join(' · ');
     };
+
+    // «Связать с вишлистом клиента» (IMPLEMENTATION-PLAN-GAMIFICATION.md
+    // §3.0, B2) — cart-new.js's updateSummaryDisplay зовёт это на любой
+    // правке; галочка ходит на сервер, только когда сменились клиент/товар.
+    // «Спрос» передаёт готовую позицию — item.wishlistLink.preset (cart-new.js).
+    item.wishlistLink = WishlistLink.attach(rowEl.querySelector('.wishlist-link-slot'));
+    item.refreshWishlistLinks = debounce(() => {
+      const product = item.productOriginal || item.productSearchEl.value;
+      item.wishlistLink.el.parentElement.classList.toggle('hidden', item.isMultiplied);
+      if (item.isMultiplied) {
+        item.multiplyRows.forEach((r) => r.wishlistLink.refresh((r.isOwnPurchase || r.onSale || r.manualClientData) ? '' : r.telegramId, product));
+        return;
+      }
+      const noClient = item.ownPurchaseCheckboxEl.checked || item.onSale || item.manualClientData;
+      item.wishlistLink.refresh(noClient ? '' : item.telegramId, product);
+    }, 400);
 
     if (prefillClient) {
       item.telegramId = prefillClient.telegramId || '';
@@ -1158,7 +1178,7 @@ window.CartPosition = {
             // Комиссионный гейт не подключён к строкам (см. validateCommissionGate
             // выше) — причины занижения здесь в принципе не бывает.
             commissionLowReason: '',
-            wishlistId: '',
+            wishlistId: (r.isOwnPurchase || r.onSale || r.manualClientData) ? '' : r.wishlistLink.value(),
             // Прогноз расходов — не запрашивается на уровне строки (та же
             // причина, что была у старого order-new.js: своя сумма на
             // строку, единого прогноза нет) — пусто, сервер эти поля
@@ -1223,7 +1243,7 @@ window.CartPosition = {
         remark: item.noteInputEl.value,
         notifyClient: item.notifyClientCheckboxEl.checked,
         commissionLowReason: item.commissionGate.getReason(),
-        wishlistId: item.wishlistId || '',
+        wishlistId: (item.ownPurchaseCheckboxEl.checked || item.onSale || item.manualClientData) ? '' : item.wishlistLink.value(),
         weightSum: item.weightSumEl.value,
         taxiKzSum: item.taxiKzEl.value,
         sdekSum: item.sdekEl.value,

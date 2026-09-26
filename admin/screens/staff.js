@@ -266,7 +266,7 @@ window.Screens.staff = {
       currency: 'Валюта', amount: 'Количество к валюте',
       taxiKzSum: 'Такси КЗ', sdekSum: 'Стоимость СДЭК', taxiRfSum: 'Такси РФ',
       taxiRfSendSum: 'Такси (отправка)', shippingRfSum: 'Отправка', taxiRfReceiveSum: 'Такси (получение)',
-      clientType: 'Тип клиента', managerId: 'Менеджер',
+      clientType: 'Тип клиента', managerId: 'Менеджер', wishlistId: 'Связь с вишлистом',
       original: 'Название (Выпуск)', shortName: 'Короткое название', brand: 'Бренд', character: 'Персонаж', series: 'Серия',
       merge: 'Слияние',
       payment_recorded: 'Платёж записан', credit_released: 'Кредит освобождён', credit_refunded: 'Кредит списан'

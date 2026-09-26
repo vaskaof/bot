@@ -83,7 +83,7 @@ window.Screens.orderEdit = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
-        <div id="wishlist-match-banner" class="hidden mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm"></div>
+        <div id="wishlist-link-box"></div>
         <div id="payment-summary-card" class="hidden mb-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div class="grid grid-cols-3 gap-3 text-center">
             <div>
@@ -1621,22 +1621,47 @@ window.Screens.orderEdit = {
           }
         } catch (e) { }
 
-        // Баннер "есть в вишлисте" (Фаза 5, 04.08.2026) — оба поля уже
-        // известны сразу после загрузки заказа, повторной проверки при
-        // ручных правках формы (в отличие от order-new.js) не требуется.
-        if (selectedReleaseId) {
-          try {
-            const wishlistMatch = await callServer('checkClientWishlistMatch', details.client.telegramId, selectedReleaseId);
-            if (wishlistMatch) {
-              const wishlistBanner = document.getElementById('wishlist-match-banner');
-              wishlistBanner.textContent = 'У этого клиента эта позиция есть в вишлисте.';
-              wishlistBanner.classList.remove('hidden');
-            }
-          } catch (e) { }
-        }
+        // «Связать с вишлистом клиента» (IMPLEMENTATION-PLAN-GAMIFICATION.md
+        // §3.0, B4 — вместо разового скрипта и прежнего баннера «есть в
+        // вишлисте»). Галочка пишет связь сразу (setOrderWishlistLink), не
+        // через «Сохранить»: у заказа без связи она показана СНЯТОЙ.
+        wireWishlistLink(details);
       }
 
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    async function wireWishlistLink(details) {
+      const box = document.getElementById('wishlist-link-box');
+      if (!box || !currentOrderId) return;
+      box.innerHTML = '';
+      const telegramId = details.client.telegramId;
+      const link = WishlistLink.attach(box, { orderId: currentOrderId, defaultChecked: false });
+      link.el.classList.add('bg-white', 'rounded-2xl', 'px-4', 'py-3', 'mb-3', 'shadow-sm', 'border', 'border-gray-100', 'text-sm');
+      if (details.wishlistId) {
+        let name = '';
+        try {
+          const match = await callServer('findClientWishlistMatch', telegramId, selectedReleaseId || '', currentOrderId);
+          if (match && match.wishlistId === details.wishlistId) name = match.name;
+        } catch (_e) { /* название — только подпись */ }
+        link.setLinked({ wishlistId: details.wishlistId, telegramId, name });
+      } else {
+        await link.refresh(telegramId, selectedReleaseId || '');
+      }
+      let busy = false;
+      link.onChange(async (checked) => {
+        if (busy) { link.setChecked(!checked); return; }
+        busy = true;
+        try {
+          await callServer('setOrderWishlistLink', currentOrderId, checked ? link.shownId() : '');
+          showSaveToast(true, checked ? 'Заказ связан с вишлистом клиента.' : 'Связь с вишлистом снята.');
+        } catch (error) {
+          link.setChecked(!checked);
+          showSaveToast(false, error.message);
+        } finally {
+          busy = false;
+        }
+      });
     }
 
     // Та же защита от повторного клика, что и в order-new.js (13.08.2026,

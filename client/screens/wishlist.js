@@ -36,6 +36,8 @@ window.Screens.wishlist = {
       const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
       if (!(params && params.photoScanId) && ['wishlist', 'checklist', 'collections'].includes(saved)) currentTab = saved;
     } catch (_e) { /* sessionStorage недоступен — просто стартуем с Вишлиста */ }
+    // Кнопка «Моя полка» под «выкуплено» из вишлиста (§3.3 плана геймификации).
+    if (params && params.tab === 'checklist') currentTab = 'checklist';
     let selectionMode = false;
     let selectedForShare = new Set();
 
@@ -686,18 +688,27 @@ window.Screens.wishlist = {
 
     function tileFor(item) {
       const isWant = item.status === 'Хочу';
+      // «Путь охоты» (§3.2): на Витрине — чип этапа заказа (один чип на
+      // плитку, приоритет §1.3: Грааль > этап охоты > «Не в каталоге»); на
+      // Полке кукла, которая ещё едет, — полупрозрачная с грузовиком.
+      const transit = Hunt.inTransit(item.hunt);
       let chip = '';
       if (needsAnswer(item)) chip = '<span class="hn-chip ask">?</span>';
       else if (isWant && item.isGrail) chip = '<span class="hn-chip gold"><i data-lucide="star"></i></span>';
+      else if (isWant && transit) chip = Hunt.huntChip(item.hunt);
       else if (item.isUnknown && !item.isReference) chip = '<span class="hn-chip gray">Не в каталоге</span>';
       const selected = selectionMode && selectedForShare.has(item.wishlistId);
+      let badge = '';
+      if (selected) badge = '<span class="hn-badge sel"><i data-lucide="check"></i></span>';
+      else if (!isWant && transit) badge = '<span class="hn-badge truck"><i data-lucide="truck"></i></span>';
       return Hunt.tileHtml({
         state: isWant ? 'want' : 'owned',
+        extraClass: !isWant && transit ? 'transit' : '',
         title: item.productDisplay,
         imageUrl: item.imageUrl,
         isGrail: item.isGrail,
         chip,
-        badge: selected ? '<span class="hn-badge sel"><i data-lucide="check"></i></span>' : '',
+        badge,
         selected,
         pop: pendingPopId === item.wishlistId,
         attrs: `data-wid="${escapeHtmlClient(item.wishlistId)}"`
@@ -777,6 +788,7 @@ window.Screens.wishlist = {
           </div>
         </div>
         ${matchBlockHtml(item)}
+        ${Hunt.huntPathHtml(item.hunt)}
         ${meta.length ? `<div class="hn-meta">${meta.join('')}</div>` : ''}
         ${item.rawDescription ? `<div class="hn-desc">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
         ${item.sourceUrl ? `<div class="mt-2"><a class="hn-link" href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener">Ссылка на товар</a></div>` : ''}
@@ -785,6 +797,8 @@ window.Screens.wishlist = {
 
       Hunt.sheet(html, (sheetEl) => {
         wireMatchBlock(sheetEl.querySelector('.hn-match'), item, () => { Hunt.closeSheet(); loadWishlist(); });
+        const orderLink = sheetEl.querySelector('[data-act="order"]');
+        if (orderLink) orderLink.addEventListener('click', () => Hunt.closeSheet(true));
         const errSlot = sheetEl.querySelector('[data-slot="err"]');
         const showErr = (message) => { errSlot.innerHTML = `<div class="hn-err">${escapeHtmlClient(message)}</div>`; };
         const on = (act, fn) => {
@@ -1002,7 +1016,15 @@ window.Screens.wishlist = {
         return;
       }
       const list = state.celebrations || [];
-      if (list.length === 0) return;
+      if (list.length === 0) {
+        // «На полку» (S1+, §3.2) — только если в этот заход не было «Добыто!»:
+        // два праздника подряд не бывает (§1.2), тост придёт в следующий раз.
+        const arrivals = state.arrivals || [];
+        if (arrivals.length === 0) return;
+        switchTab('checklist');
+        Hunt.arrive(arrivals, (id) => Array.from(checklistList.querySelectorAll('[data-wid]')).find(el => el.dataset.wid === id) || null);
+        return;
+      }
       Hunt.markSeen(list.map(c => c.wishlistId));
       if (list.length === 1) await Hunt.celebrate(list[0]);
       else await Hunt.summary(list);

@@ -1210,6 +1210,10 @@ window.Screens.cartNew = {
     // recomputeTotals, так и изнутри recomputeSiteTotalReconciliation после
     // применения долей — там нельзя звать recomputeTotals (см. guard выше).
     function updateSummaryDisplay() {
+      // «Связать с вишлистом клиента» (§3.0 плана геймификации) — любая правка
+      // клиента/товара проходит через эту функцию; сама проверка — с debounce
+      // и только при смене клиента/товара (WishlistLink.refresh).
+      items.forEach((it) => { if (it.refreshWishlistLinks) it.refreshWishlistLinks(); });
       // A3: "Итого корзины"/"Средняя комиссия" считаются от РЕКОНСИЛИРОВАННОЙ
       // базы (если реконсиляция активна) — раньше показывали СЫРУЮ сумму,
       // которая расходилась с реально сохраняемыми суммами (репорт VASY
@@ -1688,7 +1692,9 @@ window.Screens.cartNew = {
         item.productSearchEl.value = params.productOriginal;
         item.productOriginal = params.productOriginal;
       }
-      if (params.wishlistId) item.wishlistId = params.wishlistId;
+      // «Спрос» → позиция вишлиста уже известна: галочка «Связать с вишлистом
+      // клиента» сразу включена (§3.0 плана геймификации).
+      if (params.wishlistId) item.wishlistLink.preset({ wishlistId: params.wishlistId, telegramId: params.telegramId, name: params.productDisplay || '' });
     } else {
       CartPosition.create(cartItemCtx); // одна позиция сразу — заказ по умолчанию не тяжелее сегодняшнего (§4 плана)
     }

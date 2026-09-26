@@ -175,8 +175,28 @@
   .hn-batch-item{padding-bottom:12px;border-bottom:1px solid #eef0f4;margin-bottom:12px}
   .hn-batch-item:last-child{border-bottom:0;margin-bottom:0}
 
+  /* «Путь охоты» (§3.2 плана, Волна 2): этап заказа на плитке и в листе. */
+  .hn-chip.hunt{background:rgba(255,255,255,.94);color:#4f46e5;gap:2px;padding:4px 6px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .hn-chip.hunt i{width:6px;height:6px;border-radius:999px;background:#e5e7eb;display:block}
+  .hn-chip.hunt i.on{background:#4f46e5}
+  .hn-tile.transit .hn-ph img{opacity:.6}
+  .hn-badge.truck{background:#fff;color:#4f46e5}
+  .hn-land .hn-ph img{animation:hn-land 1.1s ease-out both}
+  @keyframes hn-land{from{opacity:.6;transform:scale(.94)}60%{transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+  .hn-path{margin-top:14px;border-radius:16px;background:#F5F6FB;padding:12px}
+  .hn-path h3{margin:0 0 10px;font-size:13px;font-weight:700;color:#111827}
+  .hn-steps{display:flex;align-items:flex-start}
+  .hn-step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;font-size:10.5px;color:#9ca3af;text-align:center;line-height:1.2}
+  .hn-step b{width:12px;height:12px;border-radius:999px;background:#e5e7eb;display:block;margin-bottom:5px;position:relative;z-index:1}
+  .hn-step+.hn-step::before{content:"";position:absolute;top:5px;right:50%;width:100%;height:2px;background:#e5e7eb}
+  .hn-step.on{color:#4338ca;font-weight:600}
+  .hn-step.on b,.hn-step.on::before{background:#4f46e5}
+  .hn-step.cur b{box-shadow:0 0 0 4px #E0E7FF}
+  .hn-path-now{margin-top:10px;font-size:13px;color:#374151;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .hn-path-now a{color:#4f46e5;font-weight:600;white-space:nowrap}
+
   @media (prefers-reduced-motion: reduce){
-    .hn-cel *,.hn-sheet,.hn-cel,.hn-scrim,.hn-pop .hn-ph,.hn-bump,.hn-ill *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+    .hn-cel *,.hn-sheet,.hn-cel,.hn-scrim,.hn-pop .hn-ph,.hn-bump,.hn-ill *,.hn-land .hn-ph img{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   }`;
 
   function injectStyles() {
@@ -281,6 +301,7 @@
     const cls = ['hn-tile', opts.state];
     if (opts.isGrail && opts.state !== 'missing') cls.push('grail');
     if (opts.selected) cls.push('selected');
+    if (opts.extraClass) cls.push(opts.extraClass);
     if (opts.pop) cls.push('hn-pop');
     return `<button type="button" class="${cls.join(' ')}" ${opts.attrs || ''}>
       <div class="hn-ph">${imgHtml(opts.imageUrl, opts.title)}${opts.chip || ''}${opts.badge || ''}</div>
@@ -480,6 +501,64 @@
     callServer('markCelebrationsSeen', ids).catch(() => { /* покажем ещё раз — не страшно */ });
   }
 
+  // --- «Путь охоты» (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.2, Волна 2) ---
+  // Этапы сервера: wanted → ordered → secured → shipping → arrived (huntPath.js).
+  const HUNT_STEPS = ['Хочу', 'Заказана', 'Выкуплена', 'Едет', 'Получена'];
+  const HUNT_CAPTIONS = {
+    ordered: 'Заказана · ищем и выкупаем',
+    secured: 'Выкуплена · скоро отправят',
+    shipping: 'Выкуплена · едет к вам',
+    arrived: 'Получена'
+  };
+
+  /** Кукла ещё едет: этап заказа до «Получена». */
+  function inTransit(hunt) {
+    return Boolean(hunt && hunt.stage !== 'arrived');
+  }
+
+  /** Чип этапа на плитке Витрины: точки пройденных этапов (из 4 после «Хочу»). */
+  function huntChip(hunt) {
+    if (!inTransit(hunt)) return '';
+    const dots = [1, 2, 3, 4].map((i) => `<i class="${i <= hunt.stageIndex ? 'on' : ''}"></i>`).join('');
+    return `<span class="hn-chip hunt" title="${esc(HUNT_CAPTIONS[hunt.stage] || '')}">${dots}</span>`;
+  }
+
+  /** Степпер для нижнего листа + подпись и ссылка на заказ. */
+  function huntPathHtml(hunt) {
+    if (!hunt) return '';
+    const steps = HUNT_STEPS.map((label, i) =>
+      `<div class="hn-step${i <= hunt.stageIndex ? ' on' : ''}${i === hunt.stageIndex ? ' cur' : ''}"><b></b>${esc(label)}</div>`).join('');
+    const caption = HUNT_CAPTIONS[hunt.stage] || '';
+    const now = hunt.stage !== 'arrived' && hunt.stepLabel ? `Сейчас: ${esc(hunt.stepLabel)}` : esc(caption);
+    return `<div class="hn-path">
+      <h3>${esc(caption)}</h3>
+      <div class="hn-steps">${steps}</div>
+      <div class="hn-path-now"><span>${now}</span><a href="#/order-details/${encodeURIComponent(hunt.orderId)}" data-act="order">Заказ →</a></div>
+    </div>`;
+  }
+
+  /**
+   * «На полку» (S1+, §1.2): плитки полученных кукол «приземляются» —
+   * из полупрозрачных становятся полноцветными, вибрация успеха и ОДИН тост
+   * (несколько кукол разом — одним сообщением, два праздника подряд не бывает).
+   * @param {Array<{wishlistId, name}>} arrivals
+   * @param {(id:string) => Element|null} tileFor плитка на Полке
+   */
+  function arrive(arrivals, tileFor) {
+    if (!arrivals || arrivals.length === 0) return;
+    callServer('markArrivedSeen', arrivals.map((a) => a.wishlistId)).catch(() => { /* покажем ещё раз — не страшно */ });
+    arrivals.forEach((a) => {
+      const tile = tileFor(a.wishlistId);
+      if (tile) tile.classList.add('hn-land');
+    });
+    haptic('success');
+    const first = arrivals[0];
+    const text = arrivals.length === 1
+      ? `${first.name} теперь на полке`
+      : `На полку: ${arrivals.length} ${plural(arrivals.length, 'кукла', 'куклы', 'кукол')}`;
+    showSaveToast(true, text);
+  }
+
   /** Полёт миниатюры от плитки к табу «Чеклист» (§2.3 плана). */
   function fly(fromEl, toEl) {
     return new Promise((resolve) => {
@@ -597,6 +676,10 @@
     celebrate,
     summary,
     markSeen,
+    inTransit,
+    huntChip,
+    huntPathHtml,
+    arrive,
     fly,
     acquire,
     intro,

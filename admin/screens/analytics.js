@@ -91,6 +91,8 @@ const METHOD_LABELS = {
   cancelManualAllocation: 'Отменить ручное распределение',
   cancelOrderPayment: 'Отменить оплату заказа',
   checkClientWishlistMatch: 'Проверить совпадение с вишлистом клиента',
+  findClientWishlistMatch: 'Найти позицию вишлиста клиента для заказа',
+  setOrderWishlistLink: 'Связать заказ с вишлистом',
   createCart: 'Создать корзину',
   createCollective: 'Создать коллективку',
   createLot: 'Создать лот',
@@ -325,6 +327,7 @@ const METHOD_LABELS = {
   updateWishlistItemStatus: 'Изменить статус позиции вишлиста',
   getHuntState: 'Охота: анонс и праздники',
   markCelebrationsSeen: 'Охота: праздник показан',
+  markArrivedSeen: 'Охота: «на полку» показано',
   markHuntIntroSeen: 'Охота: анонс показан',
   setWishlistItemGrail: 'Грааль: поставить/снять',
   getClientCollectionDetail: 'Альбом коллекции'

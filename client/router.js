@@ -51,6 +51,12 @@ function matchRoute(hash) {
     return { screen: 'wishlist', navKey: 'wishlist', params: { photoScanId: decodeURIComponent(photoScanMatch[1]) } };
   }
 
+  // «Моя полка» — кнопка под уведомлением «кукла из вишлиста выкуплена»
+  // (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.3): «Мои куклы» сразу на табе Полки.
+  if (clean === 'wishlist/shelf') {
+    return { screen: 'wishlist', navKey: 'wishlist', params: { tab: 'checklist' } };
+  }
+
   // Альбом коллекции (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.3) — часть
   // «Мои куклы», поэтому подсвечен тот же пункт нижней навигации.
   const collectionMatch = clean.match(/^collection\/(\d+)$/);

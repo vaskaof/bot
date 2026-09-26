@@ -757,6 +757,7 @@ window.CartLot = {
           <input type="checkbox" class="notify-client-checkbox w-3.5 h-3.5 accent-indigo-600 cursor-pointer">
           Уведомить клиента
         </label>
+        <div class="wishlist-link-slot"></div>
       `;
       positionsList.appendChild(rowEl);
       if (window.lucide) window.lucide.createIcons();
@@ -800,6 +801,8 @@ window.CartLot = {
       // внутренний флаг, что на отдельной позиции корзины (_cart-position.js),
       // не чекбокс, единственный путь — `ClientRequiredModal`.
       row.onSale = false;
+      // «Связать с вишлистом клиента» (§3.0 плана геймификации, B2).
+      row.wishlistLink = WishlistLink.attach(rowEl.querySelector('.wishlist-link-slot'), { compact: true });
       lotRows.push(row);
 
       // "Личный заказ" — та же логика, что на отдельной позиции (§2.1).
@@ -869,6 +872,7 @@ window.CartLot = {
           row.productSearchEl.value = r.value;
           row.productOriginal = r.value;
           row.productDropdownEl.classList.remove('active');
+          ctx.updateSummaryDisplay(); // «Связать с вишлистом клиента» — товар выбран
         });
         row.productDropdownEl.appendChild(Object.assign(document.createElement('li'), {
           className: 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center',
@@ -881,6 +885,7 @@ window.CartLot = {
                 row.productSearchEl.value = result.value;
                 row.productOriginal = result.value;
                 showSaveToast(true, `Позиция «${result.label || result.value}» создана и добавлена в каталог`);
+                ctx.updateSummaryDisplay();
               }
             }
           });
@@ -888,7 +893,7 @@ window.CartLot = {
         });
       }, 300);
       row.productSearchEl.addEventListener('input', handleProductSearch);
-      row.productSearchEl.addEventListener('input', () => { row.productOriginal = row.productSearchEl.value; });
+      row.productSearchEl.addEventListener('input', () => { row.productOriginal = row.productSearchEl.value; ctx.updateSummaryDisplay(); });
       row.productSearchEl.addEventListener('focus', () => { if (row.productSearchEl.value.trim().length >= 2) row.productDropdownEl.classList.add('active'); });
 
       // Тянуть можно только за сам бегунок, не за любую точку трека —
@@ -1080,6 +1085,13 @@ window.CartLot = {
       // «Личный заказ» исключён из гейта на КАЖДОЙ позиции лота — то же
       // обоснование, что у отдельной позиции (item.validateCommissionGate).
       validateCommissionGates: () => lotRows.every((r) => r.ownPurchaseCheckboxEl.checked || r.onSale || r.commissionGate.validate()),
+      // «Связать с вишлистом клиента» (§3.0 плана геймификации) — зовёт
+      // cart-new.js's updateSummaryDisplay на любой правке; галочка сама не
+      // ходит на сервер, пока клиент и товар не поменялись.
+      refreshWishlistLinks: debounce(() => lotRows.forEach((r) => r.wishlistLink.refresh(
+        (r.ownPurchaseCheckboxEl.checked || r.onSale) ? '' : r.telegramId,
+        r.productOriginal || r.productSearchEl.value
+      )), 400),
       getPayload: () => ({
         // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) лота целиком —
         // ТОЛЬКО если на экране заполнено «Итог с сайта выкупа», см.
@@ -1130,6 +1142,7 @@ window.CartLot = {
           remark: r.noteInputEl.value,
           notifyClient: r.notifyClientCheckboxEl.checked,
           commissionLowReason: r.commissionGate.getReason(),
+          wishlistId: (r.ownPurchaseCheckboxEl.checked || r.onSale) ? '' : r.wishlistLink.value(),
           requestId: generateRequestId()
         }))
       })
