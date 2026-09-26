@@ -72,6 +72,14 @@ window.Screens.profile = {
           <div id="sovy-help-slot" class="mt-2"></div>
         </div>
 
+        <div id="achievements-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold text-gray-900">🏅 Достижения</div>
+            <span id="achievements-count" class="text-xs text-gray-400"></span>
+          </div>
+          <div id="achievements-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-2"></div>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-1">🎁 Пригласите друга</div>
           <div id="referral-text" class="text-[12px] text-gray-500 mb-2">Загрузка...</div>
@@ -168,7 +176,36 @@ window.Screens.profile = {
     loadAll();
 
     async function loadAll() {
-      await Promise.all([loadCreditBalance(), loadPoolLeftover(), loadReferralInfo(), loadNotificationSettings()]);
+      await Promise.all([loadCreditBalance(), loadPoolLeftover(), loadReferralInfo(), loadNotificationSettings(), loadAchievements()]);
+    }
+
+    // Достижения «Мои куклы» (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.1/§4.3):
+    // открытые — цветные с датой, закрытые — серые с условием, без процентов.
+    // Золото — только Грааль и коллекция (§1.3). Сбой — карточка скрыта.
+    async function loadAchievements() {
+      const card = document.getElementById('achievements-card');
+      let data;
+      try {
+        data = await callServer('getMyAchievements');
+      } catch (_error) {
+        card.classList.add('hidden');
+        return;
+      }
+      document.getElementById('achievements-count').textContent = `${data.unlockedCount} из ${data.total}`;
+      document.getElementById('achievements-grid').innerHTML = data.items.map((a) => {
+        const date = a.unlockedAt ? new Date(a.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
+        const tone = !a.unlocked
+          ? 'bg-gray-50 border-gray-100 text-gray-300'
+          : (a.gold ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600');
+        return `<div class="relative rounded-xl border ${tone} p-2 flex flex-col items-center text-center gap-1" data-achievement="${escapeHtmlClient(a.code)}">
+          ${a.isNew ? '<span class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-pink-500 text-white text-[9px] font-semibold">Новое</span>' : ''}
+          <i data-lucide="${a.unlocked ? escapeHtmlClient(a.icon) : 'lock'}" class="w-6 h-6"></i>
+          <div class="text-[11px] font-semibold leading-tight ${a.unlocked ? 'text-gray-800' : 'text-gray-400'}">${escapeHtmlClient(a.title)}</div>
+          <div class="text-[10px] leading-tight ${a.unlocked ? 'text-gray-400' : 'text-gray-400'}">${a.unlocked ? escapeHtmlClient(date) : escapeHtmlClient(a.hint)}</div>
+        </div>`;
+      }).join('');
+      card.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
     }
 
     // Карточка балансов — ВСЕГДА видна, включая нулевые значения (VASY,

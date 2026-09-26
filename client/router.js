@@ -57,6 +57,12 @@ function matchRoute(hash) {
     return { screen: 'wishlist', navKey: 'wishlist', params: { tab: 'checklist' } };
   }
 
+  // Приглашение «отметьте заказы в „Моих куклах“» (§4.3 плана геймификации) —
+  // из «Заказов» и из сообщения менеджера: сразу окно «Ваши заказы в пути».
+  if (clean === 'wishlist/transit') {
+    return { screen: 'wishlist', navKey: 'wishlist', params: { openTransit: true } };
+  }
+
   // Альбом коллекции (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.3) — часть
   // «Мои куклы», поэтому подсвечен тот же пункт нижней навигации.
   const collectionMatch = clean.match(/^collection\/(\d+)$/);

@@ -456,8 +456,11 @@ window.Screens.wishlist = {
 
     let allItems = [];
 
-    loadWishlist().then(() => {
-      if (!(params && params.photoScanId)) runHuntState();
+    // Окно «Ваши заказы в пути» по приглашению (params.openTransit) ждёт
+    // анонса/праздников — два окна разом не показываем.
+    const huntStateDone = loadWishlist().then(() => {
+      if (!(params && params.photoScanId)) return runHuntState();
+      return null;
     });
     reloadWishlist = reloadAll;
 
@@ -587,7 +590,11 @@ window.Screens.wishlist = {
       }
       renderTransitBanner();
     }
-    loadTransitOffers();
+    loadTransitOffers().then(async () => {
+      if (!(params && params.openTransit) || transitOffers.length === 0) return;
+      await huntStateDone.catch(() => {});
+      openTransitModal();
+    });
 
     const transitBanner = document.getElementById('transit-banner');
     function renderTransitBanner() {
@@ -1168,10 +1175,13 @@ window.Screens.wishlist = {
       } catch (_error) {
         return;
       }
+      // Достижения (§4.1): внизу праздника, если он есть; иначе — тост. В заход
+      // с анонсом или «на полку» — не показываем (придут в следующий раз).
+      const achievements = state.achievements || [];
       const shelfEmpty = !allItems.some(i => i.status === 'Куплено' || i.status === 'Есть');
       if (!state.introSeen) {
         const res = await Hunt.intro({ shelfEmpty });
-        if (res === 'start' && shelfEmpty) {
+        if (res === 'start' && shelfEmpty && !(params && params.openTransit)) {
           switchTab('checklist');
           openAddMethodModal({ addToChecklist: true });
         }
@@ -1182,14 +1192,15 @@ window.Screens.wishlist = {
         // «На полку» (S1+, §3.2) — только если в этот заход не было «Добыто!»:
         // два праздника подряд не бывает (§1.2), тост придёт в следующий раз.
         const arrivals = state.arrivals || [];
-        if (arrivals.length === 0) return;
+        if (arrivals.length === 0) { Hunt.announceAchievements(achievements); return; }
         switchTab('checklist');
         Hunt.arrive(arrivals, (id) => Array.from(checklistList.querySelectorAll('[data-wid]')).find(el => el.dataset.wid === id) || null);
         return;
       }
       Hunt.markSeen(list.map(c => c.wishlistId));
-      if (list.length === 1) await Hunt.celebrate(list[0]);
-      else await Hunt.summary(list);
+      Hunt.markAchievementsSeen(achievements);
+      if (list.length === 1) await Hunt.celebrate(list[0], { achievements });
+      else await Hunt.summary(list, achievements);
       switchTab('checklist');
     }
 

@@ -80,6 +80,11 @@ window.Screens.clients = {
           </div>
           <div id="mine-only-badge" class="hidden text-[11px] text-gray-400 mb-2">Показаны только ваши клиенты</div>
           <div id="top5-block" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3"></div>
+          <details id="hunt-invite-block" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
+            <summary class="text-sm font-semibold text-gray-900 cursor-pointer">🧸 Пригласить в «Мои куклы» <span id="hunt-invite-count" class="text-xs font-normal text-gray-400"></span></summary>
+            <div class="text-[11px] text-gray-400 mt-1 mb-2">У этих клиентов есть заказы в пути, которые они могут отметить «для своей коллекции». Бот пришлёт им сообщение с кнопкой — повторно не чаще раза в неделю. Посредников здесь нет.</div>
+            <div id="hunt-invite-list"></div>
+          </details>
           <div id="clients-count" class="text-[11px] text-gray-400 mb-2"></div>
           <div id="clients-list"></div>
         </div>
@@ -243,6 +248,50 @@ window.Screens.clients = {
     function money(n) {
       return (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
+
+    // «Пригласить в „Мои куклы“» (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.3,
+    // VASY «поддерживаю» 27.09.2026): клиенты с заказами в пути, которые можно
+    // отметить «на полку». Необязательный блок — сбой его просто прячет.
+    const huntInviteBlock = document.getElementById('hunt-invite-block');
+    async function loadHuntInvites() {
+      let items;
+      try {
+        items = await callServer('getHuntInviteCandidates');
+      } catch (_error) {
+        huntInviteBlock.classList.add('hidden');
+        return;
+      }
+      if (items.length === 0) { huntInviteBlock.classList.add('hidden'); return; }
+      const notOpened = items.filter((c) => !c.opened).length;
+      document.getElementById('hunt-invite-count').textContent = `· ${items.length}${notOpened ? `, не открывали — ${notOpened}` : ''}`;
+      const list = document.getElementById('hunt-invite-list');
+      list.innerHTML = items.map((c) => {
+        const invited = c.invitedAt ? `приглашён ${new Date(c.invitedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}` : '';
+        const state = [c.opened ? 'открывал «Мои куклы»' : 'не открывал «Мои куклы»', invited].filter(Boolean).join(' · ');
+        return `<div class="flex items-center justify-between gap-2 py-2 border-t border-gray-50">
+          <div class="min-w-0">
+            <div class="text-sm text-gray-800 truncate">${escapeHtmlClient(c.display)}</div>
+            <div class="text-[11px] text-gray-400">В пути: ${c.transitCount} · ${escapeHtmlClient(state)}</div>
+          </div>
+          <button type="button" data-hunt-invite="${escapeHtmlClient(c.telegramId)}" ${c.canInvite ? '' : 'disabled'}
+            class="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium ${c.canInvite ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}">${c.canInvite ? 'Пригласить' : 'Отправлено'}</button>
+        </div>`;
+      }).join('');
+      huntInviteBlock.classList.remove('hidden');
+    }
+    document.getElementById('hunt-invite-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-hunt-invite]');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      try {
+        await callServer('sendHuntInvite', btn.dataset.huntInvite);
+        showSaveToast(true, 'Приглашение отправлено (ночью — придёт утром)');
+        loadHuntInvites();
+      } catch (error) {
+        showSaveToast(false, error.message);
+        btn.disabled = false;
+      }
+    });
 
     function renderList(items) {
       if (items.length === 0) {
@@ -735,5 +784,6 @@ window.Screens.clients = {
     }
 
     loadList();
+    loadHuntInvites();
   }
 };

@@ -22,6 +22,13 @@ window.Screens.orders = {
 
         <div id="priority-rollup-card" class="hidden bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3"></div>
 
+        <div id="transit-invite" class="hidden mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-3">
+          <span class="text-xl shrink-0">🧸</span>
+          <div class="flex-1 min-w-0 text-sm text-indigo-900"><span id="transit-invite-text"></span></div>
+          <button type="button" id="transit-invite-btn" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium">Отметить</button>
+          <button type="button" id="transit-invite-close" class="shrink-0 p-1 text-indigo-300 hover:text-indigo-600" title="Не сейчас"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-2 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="orders-search" autocomplete="off"
@@ -92,6 +99,35 @@ window.Screens.orders = {
     // заказа) — отдельный, не блокирующий запрос: список заказов должен
     // открыться нормально, даже если этот запрос упадёт.
     callServer('getMyPaymentsRollup').then(renderPriorityRollup).catch(() => {});
+
+    // Приглашение в «Мои куклы» (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.3,
+    // VASY 27.09.2026: «сделай в заказы») — клиенты «Мои куклы» почти не
+    // открывают, а блок «Ваши заказы в пути» живёт только там. Посредникам
+    // сервер отдаёт 0. «Не сейчас» — скрыть на неделю (удобство, не данные).
+    const TRANSIT_INVITE_HIDE_KEY = 'hn_transit_invite_hidden_until';
+    const TRANSIT_INVITE_HIDE_MS = 7 * 24 * 60 * 60 * 1000;
+    async function loadTransitInvite() {
+      try {
+        if (Number(localStorage.getItem(TRANSIT_INVITE_HIDE_KEY) || 0) > Date.now()) return;
+      } catch (_e) { /* localStorage недоступен — просто показываем */ }
+      let count = 0;
+      try {
+        count = (await callServer('getTransitOfferCount')).count || 0;
+      } catch (_error) {
+        return;
+      }
+      if (count === 0) return;
+      const word = count % 10 === 1 && count % 100 !== 11 ? 'заказ' : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'заказа' : 'заказов');
+      document.getElementById('transit-invite-text').textContent =
+        `${count} ${word} в пути можно отметить в «Моих куклах» — будем следить за каждой куклой, а приедет — встанет на вашу полку.`;
+      document.getElementById('transit-invite').classList.remove('hidden');
+    }
+    document.getElementById('transit-invite-btn').addEventListener('click', () => navigateTo('wishlist/transit'));
+    document.getElementById('transit-invite-close').addEventListener('click', () => {
+      document.getElementById('transit-invite').classList.add('hidden');
+      try { localStorage.setItem(TRANSIT_INVITE_HIDE_KEY, String(Date.now() + TRANSIT_INVITE_HIDE_MS)); } catch (_e) { /* не критично */ }
+    });
+    loadTransitInvite();
 
     function renderPriorityRollup(rollup) {
       const card = document.getElementById('priority-rollup-card');

@@ -121,6 +121,8 @@
   .hn-thumbs .hn-ph{width:76px;border-radius:16px}
   .hn-slist{text-align:left;margin-top:14px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#4b5563}
   .hn-slist b{color:#111827}
+  .hn-ach{margin-top:12px;font-size:13px;color:#4338ca;display:flex;flex-direction:column;gap:2px;align-items:center}
+  .hn-ach.gold{color:#8A5A00}
   .hn-conf{position:fixed;inset:0;width:100%;height:100%;z-index:90;pointer-events:none}
   .hn-ghost{position:fixed;z-index:85;border-radius:16px;overflow:hidden;pointer-events:none}
   .hn-ghost img{width:100%;height:100%;object-fit:contain;background:#fff}
@@ -453,7 +455,7 @@
       ? '<button type="button" class="hn-btn gold" data-hn-act="share"><i data-lucide="send"></i>Поделиться</button><button type="button" class="hn-btn plain" data-hn-act="shelf">На полку</button>'
       : '<button type="button" class="hn-btn primary" data-hn-act="shelf">На полку</button><button type="button" class="hn-btn plain" data-hn-act="share">Поделиться</button>';
     const undo = opts && opts.allowUndo ? '<button type="button" class="hn-undo" data-hn-act="undo">Отменить</button>' : '';
-    const inner = `<div class="hn-eyebrow">${eyebrow}</div><div class="hn-cph">${imgHtml(c.imageUrl, c.title)}</div><div class="hn-cname">${esc(c.title)}</div><div class="hn-csub">${sub}</div>${extra}${collHtml}<div class="hn-cacts">${actions}</div>${undo}`;
+    const inner = `<div class="hn-eyebrow">${eyebrow}</div><div class="hn-cph">${imgHtml(c.imageUrl, c.title)}</div><div class="hn-cname">${esc(c.title)}</div><div class="hn-csub">${sub}</div>${extra}${collHtml}${achievementsHtml(opts && opts.achievements)}<div class="hn-cacts">${actions}</div>${undo}`;
     return showCard({
       gold,
       inner,
@@ -473,7 +475,7 @@
   }
 
   /** Сводка, когда праздников несколько — одна карточка вместо очереди (§1.2 плана). */
-  function summary(list) {
+  function summary(list, achievements) {
     const gold = list.some((c) => c.isGrail || (c.collections || []).some((k) => k.completed));
     const viaUs = list.every((c) => c.viaUs);
     const shown = list.slice(0, 3);
@@ -484,15 +486,48 @@
     const completedNames = [];
     list.forEach((c) => (c.collections || []).forEach((k) => { if (k.completed && !completedNames.includes(k.name)) completedNames.push(k.name); }));
     const completedHtml = completedNames.map((n) => `<div style="color:#8A5A00;font-weight:700">Коллекция «${esc(n)}» собрана!</div>`).join('');
-    const inner = `<div class="hn-eyebrow">${viaUs ? 'Пока вас не было' : 'Новые куклы'}</div><div class="hn-cname" style="margin-top:8px">+${list.length} ${plural(list.length, 'кукла', 'куклы', 'кукол')} на полке</div><div class="hn-thumbs">${thumbs}</div><div class="hn-slist">${lines}${completedHtml}</div><div class="hn-cacts"><button type="button" class="hn-btn primary" data-hn-act="shelf">Посмотреть полку</button></div>`;
+    const inner = `<div class="hn-eyebrow">${viaUs ? 'Пока вас не было' : 'Новые куклы'}</div><div class="hn-cname" style="margin-top:8px">+${list.length} ${plural(list.length, 'кукла', 'куклы', 'кукол')} на полке</div><div class="hn-thumbs">${thumbs}</div><div class="hn-slist">${lines}${completedHtml}</div>${achievementsHtml(achievements)}<div class="hn-cacts"><button type="button" class="hn-btn primary" data-hn-act="shelf">Посмотреть полку</button></div>`;
     return showCard({ gold, inner, autoClose: false });
+  }
+
+  // --- Достижения (§4.1/§4.3 плана): строка внизу праздника, без праздника — тост S1 ---
+  /** Строка «Новое достижение: …» внизу карточки праздника (не отдельный праздник, §1.2). */
+  function achievementsHtml(list) {
+    if (!list || list.length === 0) return '';
+    const gold = list.some((a) => a.gold);
+    return `<div class="hn-ach${gold ? ' gold' : ''}">${list.map((a) => `<div>🏅 Новое достижение: <b>${esc(a.title)}</b></div>`).join('')}</div>`;
+  }
+
+  function markAchievementsSeen(list) {
+    if (!list || list.length === 0) return;
+    callServer('markAchievementsSeen', list.map((a) => a.code)).catch(() => { /* покажем ещё раз — не страшно */ });
+  }
+
+  /** Текст тоста S1 для достижений; '' — показывать нечего. */
+  function achievementsToastText(list) {
+    if (!list || list.length === 0) return '';
+    return list.length === 1
+      ? `🏅 Новое достижение: ${list[0].title}`
+      : `🏅 Новые достижения: ${list.map((a) => a.title).join(', ')}`;
+  }
+
+  /** Тост S1 «Новое достижение» + отметка «показано». */
+  function announceAchievements(list) {
+    const text = achievementsToastText(list);
+    if (!text) return;
+    haptic('light');
+    showSaveToast(true, text);
+    markAchievementsSeen(list);
   }
 
   async function share(wishlistIds, btn) {
     if (btn) btn.disabled = true;
     try {
-      await callServer('shareWishlistCollage', wishlistIds);
-      showSaveToast(true, 'Картинка придёт вам в чат с ботом через несколько секунд');
+      const result = await callServer('shareWishlistCollage', wishlistIds);
+      const achievements = (result && result.achievements) || [];
+      const achText = achievementsToastText(achievements);
+      showSaveToast(true, 'Картинка придёт вам в чат с ботом через несколько секунд' + (achText ? ` · ${achText}` : ''));
+      markAchievementsSeen(achievements);
     } catch (error) {
       showSaveToast(false, error.message);
     } finally {
@@ -602,9 +637,14 @@
       showSaveToast(false, `Не удалось отметить: ${error.message}`);
       return 'failed';
     }
-    if (!result || !result.celebration) return 'plain';
+    const achievements = (result && result.achievements) || [];
+    if (!result || !result.celebration) {
+      announceAchievements(achievements);
+      return 'plain';
+    }
     markSeen([wishlistId]);
-    const outcome = await celebrate(result.celebration, { allowUndo: true });
+    markAchievementsSeen(achievements);
+    const outcome = await celebrate(result.celebration, { allowUndo: true, achievements });
     if (outcome !== 'undo') return 'celebrated';
     try {
       await callServer('updateWishlistItemStatus', wishlistId, 'Хочу');
@@ -689,6 +729,8 @@
     acquire,
     intro,
     share,
+    announceAchievements,
+    markAchievementsSeen,
     plural,
     days,
     MAX_GRAILS: 5
