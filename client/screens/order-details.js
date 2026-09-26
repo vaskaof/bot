@@ -45,7 +45,7 @@ window.Screens.orderDetails = {
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-start gap-3">
-            <img id="d-product-image" src="" alt="" class="hidden w-14 h-14 rounded-xl object-cover object-top shrink-0 bg-gray-100">
+            <img id="d-product-image" src="" alt="" class="hidden w-14 h-14 rounded-xl object-contain shrink-0 bg-gray-100">
             <div class="min-w-0 flex-1">
               <div id="d-product" class="font-semibold text-gray-900 text-lg"></div>
               <div id="d-product-original" class="text-[12px] text-gray-400 mt-0.5"></div>

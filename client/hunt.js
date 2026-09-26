@@ -26,7 +26,7 @@
   .hn-sec.gold h2 svg{color:#E8B130;fill:#E8B130;width:13px;height:13px}
   .hn-tile{display:block;text-align:left;min-width:0;width:100%;background:none;border:0;padding:0}
   .hn-ph{position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;background:#fff;transition:transform .12s}
-  .hn-ph img{width:100%;height:100%;display:block;object-fit:cover;object-position:50% 0}
+  .hn-ph img{width:100%;height:100%;display:block;object-fit:contain;background:#fff}
   .hn-tile:active .hn-ph{transform:scale(.97)}
   .hn-tile.want .hn-ph::after{content:"";position:absolute;inset:0;border-radius:16px;border:1.5px dashed #bfc4dc;pointer-events:none}
   .hn-tile.owned .hn-ph{box-shadow:0 1px 3px rgba(17,24,39,.10)}
@@ -100,7 +100,7 @@
   .hn-cel.show .hn-cph{animation:hn-popin .6s cubic-bezier(.2,.9,.3,1.2) .08s forwards}
   .hn-card.s3 .hn-cph{box-shadow:0 0 0 4px #E8B130,0 14px 34px -10px rgba(232,177,48,.6)}
   @keyframes hn-popin{to{transform:none;opacity:1}}
-  .hn-cph img{width:100%;height:100%;object-fit:cover;object-position:50% 0;display:block}
+  .hn-cph img{width:100%;height:100%;object-fit:contain;background:#fff;display:block}
   .hn-cname{font-size:19px;font-weight:800;margin-top:16px;color:#111827}
   .hn-csub{font-size:13.5px;color:#4b5563;margin-top:4px}
   .hn-coll{text-align:left;background:#f3f4f9;border-radius:16px;padding:12px;margin-top:16px}
@@ -123,7 +123,7 @@
   .hn-slist b{color:#111827}
   .hn-conf{position:fixed;inset:0;width:100%;height:100%;z-index:90;pointer-events:none}
   .hn-ghost{position:fixed;z-index:85;border-radius:16px;overflow:hidden;pointer-events:none}
-  .hn-ghost img{width:100%;height:100%;object-fit:cover;object-position:50% 0}
+  .hn-ghost img{width:100%;height:100%;object-fit:contain;background:#fff}
 
   .hn-segs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:18px}
   .hn-segs i{height:3px;border-radius:9px;background:#e5e7ef}
@@ -159,7 +159,7 @@
   .hn-mcard{display:flex;gap:10px;align-items:center;background:#fff;border-radius:12px;padding:8px}
   .hn-mcard+.hn-mcard{margin-top:8px}
   .hn-mph{width:60px;height:60px;border-radius:10px;overflow:hidden;flex:none;background:#f3f4f6}
-  .hn-mph img{width:100%;height:100%;object-fit:cover;object-position:50% 0;display:block}
+  .hn-mph img{width:100%;height:100%;object-fit:contain;background:#fff;display:block}
   .hn-mtx{flex:1;min-width:0}
   .hn-mname{font-size:14px;font-weight:700;color:#111827;line-height:1.25}
   .hn-msub{font-size:12px;color:#6b7280;margin-top:2px}

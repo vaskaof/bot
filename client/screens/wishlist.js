@@ -60,7 +60,9 @@ window.Screens.wishlist = {
       if (!selectionMode) { bar.classList.add('hidden'); return; }
       bar.classList.remove('hidden');
       const count = selectedForShare.size;
-      document.getElementById('share-bar-count').textContent = count > 0 ? `Поделиться (${count})` : 'Поделиться';
+      // Каким разделом делимся — то же название стоит в шапке картинки (VASY 26.09.2026).
+      const what = currentTab === 'checklist' ? 'коллекцией' : 'вишлистом';
+      document.getElementById('share-bar-count').textContent = count > 0 ? `Поделиться ${what} (${count})` : `Поделиться ${what}`;
       document.getElementById('share-bar-confirm-btn').disabled = count === 0;
     }
 
@@ -342,7 +344,7 @@ window.Screens.wishlist = {
                    расширение 19.09.2026) — тот же принцип, что у фото-скана:
                    только явное предложение, ничего не выбирается само. -->
               <div id="manual-catalog-match" class="hidden mt-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center gap-2">
-                <img id="manual-catalog-match-image" src="" alt="" class="w-9 h-9 rounded-lg object-cover object-top shrink-0 bg-white hidden">
+                <img id="manual-catalog-match-image" src="" alt="" class="w-9 h-9 rounded-lg object-contain shrink-0 bg-white hidden">
                 <div class="flex-1 min-w-0">
                   <div class="text-[11px] text-indigo-700">Похоже, уже есть в каталоге:</div>
                   <div id="manual-catalog-match-name" class="text-sm font-medium text-indigo-900 truncate"></div>
@@ -488,7 +490,7 @@ window.Screens.wishlist = {
         row.className = 'flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100 cursor-pointer';
         row.innerHTML = `
           <input type="checkbox" class="import-suggest-check" ${importSuggestSelected.has(key) ? 'checked' : ''}>
-          ${p.imageUrl ? `<img src="${escapeHtmlClient(p.imageUrl)}" alt="" class="w-9 h-9 rounded-lg object-cover object-top shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          ${p.imageUrl ? `<img src="${escapeHtmlClient(p.imageUrl)}" alt="" class="w-9 h-9 rounded-lg object-contain shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <span class="text-sm text-gray-800 flex-1 min-w-0 truncate">${escapeHtmlClient(p.productDisplay)}</span>
         `;
         row.querySelector('.import-suggest-check').addEventListener('change', (ev) => {
@@ -607,7 +609,7 @@ window.Screens.wishlist = {
 
       card.innerHTML = `
         <div class="flex items-center gap-3">
-          ${c.coverImageUrl ? `<img src="${escapeHtmlClient(c.coverImageUrl)}" alt="" class="w-12 h-12 rounded-xl object-cover object-top shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          ${c.coverImageUrl ? `<img src="${escapeHtmlClient(c.coverImageUrl)}" alt="" class="w-12 h-12 rounded-xl object-contain shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="flex-1 min-w-0">
             <div class="font-bold text-gray-900 text-[15px] leading-tight">${escapeHtmlClient(c.name)}</div>
             ${c.description ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(c.description)}</div>` : ''}
@@ -1408,7 +1410,7 @@ window.Screens.wishlist = {
         found = { catalog: (await callServer('searchSkuForClient', query)), reference: [] };
       }
       if (itemSearch.value.trim() !== query) return;
-      const thumb = (url, name) => `<span class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gray-100 block">${Hunt.imgHtml(url, name).replace('<img ', '<img class="w-full h-full object-cover object-top" ')}</span>`;
+      const thumb = (url, name) => `<span class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gray-100 block">${Hunt.imgHtml(url, name).replace('<img ', '<img class="w-full h-full object-contain" ')}</span>`;
       itemSearchDropdown.innerHTML = '';
       if (found.catalog.length === 0 && found.reference.length === 0) {
         itemSearchDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
@@ -1584,7 +1586,7 @@ window.Screens.wishlist = {
       const nameFieldHtml = matched
         ? `
           <div class="flex items-center gap-2 p-1.5 rounded-lg bg-indigo-50 border border-indigo-100">
-            ${matched.imageUrl ? `<img src="${escapeHtmlClient(matched.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover object-top shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+            ${matched.imageUrl ? `<img src="${escapeHtmlClient(matched.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-contain shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
             <div class="flex-1 min-w-0">
               <div class="text-[10px] text-indigo-500 font-medium">Похоже на позицию каталога</div>
               <div class="text-sm font-medium text-indigo-900 truncate">${escapeHtmlClient(matched.shortName)}</div>
@@ -1610,13 +1612,13 @@ window.Screens.wishlist = {
           ${catalogAlternatives.length > 0 ? `<div class="text-[10px] text-gray-400">${matched ? 'Или другая из каталога:' : 'Может быть, из каталога:'}</div>` : ''}
           ${catalogAlternatives.map((o, j) => `
             <button type="button" class="photo-scan-opt-cat w-full flex items-center gap-2 p-1 rounded-lg border border-indigo-100 text-left" data-j="${j}">
-              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-cover object-top shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-contain shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
               <span class="text-xs text-indigo-900 truncate">${escapeHtmlClient(o.shortName)}${o.year ? ` · ${o.year}` : ''}</span>
             </button>`).join('')}
           ${referenceAlternatives.length > 0 ? '<div class="text-[10px] text-gray-400">Из справочника кукол:</div>' : ''}
           ${referenceAlternatives.map((o, j) => `
             <button type="button" class="photo-scan-opt-ref w-full flex items-center gap-2 p-1 rounded-lg border border-gray-200 text-left" data-j="${j}">
-              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-cover object-top shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-7 h-7 rounded object-contain shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
               <span class="text-xs text-gray-700 truncate">${escapeHtmlClient(o.label)}</span>
             </button>`).join('')}
         </div>` : '';
