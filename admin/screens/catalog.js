@@ -48,9 +48,10 @@ window.Screens.catalog = {
             <i data-lucide="tags" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Теги ИИ</span>
           </button>
-          <button type="button" id="wishlist-demand-btn" title="Спрос клиентов" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="wishlist-demand-btn" title="Спрос клиентов" class="relative flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="heart" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Спрос</span>
+            <span id="wishlist-queue-badge" class="hidden absolute top-0 right-1/2 translate-x-4 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center"></span>
           </button>
           <!-- «Коллекции» (§4 IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md, 20.09.2026) -->
           <button type="button" id="collections-nav-btn" title="Коллекции" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
@@ -212,6 +213,13 @@ window.Screens.catalog = {
     // Счётчик строк, ждущих решения человека, — в фоне, экран от него не зависит.
     callServer('getCatalogCheckCount').then((count) => {
       const badge = document.getElementById('catalog-check-badge');
+      if (!badge || !count) return;
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.classList.remove('hidden');
+    }).catch(() => {});
+    // «Недобавленные из вишлиста» (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1 А5) — ждут решения.
+    callServer('getWishlistMatchQueueCount').then((count) => {
+      const badge = document.getElementById('wishlist-queue-badge');
       if (!badge || !count) return;
       badge.textContent = count > 99 ? '99+' : String(count);
       badge.classList.remove('hidden');

@@ -30,7 +30,10 @@ window.Screens.wishlistDemand = {
         <div id="demand-list"></div>
         <div id="demand-empty" class="hidden text-center text-sm text-gray-400 py-6">Активных желаний пока нет.</div>
 
-        <div class="text-[11px] text-gray-400 px-1 mb-2 mt-6">Не найдено в каталоге</div>
+        <!-- Очередь «Недобавленные из вишлиста» (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1, Р2/А5)
+             вместо «Не найдено в каталоге»: позиции, которые не определились по каталогу и не
+             подтверждены клиентом, одинаковые у разных клиентов — одной группой. -->
+        <div class="text-[11px] text-gray-400 px-1 mb-2 mt-6">Недобавленные из вишлиста</div>
         <div id="unknown-list"></div>
         <div id="unknown-empty" class="hidden text-center text-sm text-gray-400 py-6">Таких позиций нет.</div>
       </main>
@@ -379,14 +382,17 @@ window.Screens.wishlistDemand = {
       demandList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       unknownList.innerHTML = '';
       try {
-        const result = await callServer('getWishlistDemand');
-        render(result);
+        const [result, queue] = await Promise.all([
+          callServer('getWishlistDemand'),
+          callServer('getWishlistMatchQueue').catch(() => null)
+        ]);
+        render(result, queue);
       } catch (error) {
         demandList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
     }
 
-    function render(result) {
+    function render(result, queue) {
       demandList.innerHTML = '';
       if (result.demand.length === 0) {
         demandEmpty.classList.remove('hidden');
@@ -396,7 +402,9 @@ window.Screens.wishlistDemand = {
       }
 
       unknownList.innerHTML = '';
-      if (result.unknown.length === 0) {
+      if (queue) {
+        renderQueue(queue);
+      } else if (result.unknown.length === 0) {
         unknownEmpty.classList.remove('hidden');
       } else {
         unknownEmpty.classList.add('hidden');
@@ -406,6 +414,188 @@ window.Screens.wishlistDemand = {
       }
 
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    // --- Очередь «Недобавленные из вишлиста» (§11.16.1 А5) ---
+    const QUEUE_SECTIONS = {
+      rejected: { title: 'Клиент ответил «Нет»', open: true },
+      offer: { title: 'Несколько вариантов — выберите', open: true },
+      unknown: { title: 'Не узнали', open: true },
+      waiting: { title: 'Ждут ответа клиента', open: false },
+      confirmed: { title: 'Подтверждены клиентом, в каталоге нет', open: false }
+    };
+
+    function renderQueue(queue) {
+      if (queue.groups.length === 0) { unknownEmpty.classList.remove('hidden'); return; }
+      unknownEmpty.classList.add('hidden');
+      for (const [section, meta] of Object.entries(QUEUE_SECTIONS)) {
+        const groups = queue.groups.filter(g => g.section === section);
+        if (groups.length === 0) continue;
+        const box = document.createElement('details');
+        box.className = 'mb-3';
+        if (meta.open) box.open = true;
+        box.innerHTML = `<summary class="cursor-pointer text-[12px] font-semibold text-gray-600 px-1 mb-2">${escapeHtmlClient(meta.title)} · ${groups.length}</summary>`;
+        groups.forEach(g => box.appendChild(buildQueueGroup(g)));
+        unknownList.appendChild(box);
+      }
+    }
+
+    function optionRowHtml(o, idx) {
+      const sub = [o.kind === 'sku' ? 'в каталоге' : o.series, o.year, o.modelCode].filter(Boolean).join(' · ');
+      return `
+        <div class="flex items-center gap-2 p-2 rounded-xl border ${o.kind === 'sku' ? 'border-indigo-100 bg-indigo-50/40' : 'border-gray-200'}">
+          ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-10 h-10 rounded-lg object-cover shrink-0 bg-white" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="text-[13px] font-medium text-gray-800 truncate">${escapeHtmlClient(o.name)}</div>
+            ${sub ? `<div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(sub)}</div>` : ''}
+          </div>
+          <button type="button" class="q-opt-yes shrink-0 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-medium" data-idx="${idx}">Это она</button>
+        </div>`;
+    }
+
+    function buildQueueGroup(g) {
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+      const ids = g.items.map(i => i.wishlistId);
+      const first = g.items[0];
+      const image = (g.model && g.model.imageUrl) || (g.options[0] && g.options[0].imageUrl) || first.rawImageUrl || '';
+      const sub = g.model ? [g.model.series, g.model.year, g.model.modelCode].filter(Boolean).join(' · ') : '';
+      const refOption = g.options.find(o => o.kind === 'ref');
+      const modelKey = g.model ? g.model.modelKey : (g.options.length === 1 && refOption ? refOption.modelKey : '');
+
+      card.innerHTML = `
+        <div class="flex items-start gap-3">
+          ${image ? `<img src="${escapeHtmlClient(image)}" alt="" class="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-medium text-gray-800 text-[14px]">${escapeHtmlClient(g.title)}</div>
+              <span class="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">${g.items.length > 1 ? 'Хотят: ' + g.items.length : '1 клиент'}</span>
+            </div>
+            ${sub ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(sub)}</div>` : ''}
+            ${g.rawTitle && g.rawTitle !== g.title ? `<div class="text-[12px] text-gray-400 mt-0.5">«${escapeHtmlClient(g.rawTitle)}»</div>` : ''}
+          </div>
+        </div>
+        <div class="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          ${g.items.map((u, i) => `
+            <div class="text-[12px] text-gray-500">
+              <div class="flex items-center justify-between gap-2">
+                <span class="truncate">${escapeHtmlClient(u.clientDisplay)} · ${escapeHtmlClient(u.createdAtDisplay)}${u.status !== 'Хочу' ? ' · ' + escapeHtmlClient(u.status) : ''}</span>
+                ${u.status === 'Хочу' ? `<button type="button" class="q-order shrink-0 text-indigo-600 text-[11px] font-medium" data-idx="${i}">Заказ</button>` : ''}
+              </div>
+              ${u.sourceUrl ? `<a href="${escapeHtmlClient(u.sourceUrl)}" target="_blank" rel="noopener" class="block text-indigo-500 truncate">${escapeHtmlClient(u.sourceUrl)}</a>` : ''}
+              ${u.rejected.length ? `<div class="text-amber-700">Предлагали: ${escapeHtmlClient(u.rejected.join('; '))}</div>` : ''}
+              ${u.clientHint ? `<div class="text-emerald-700">Клиент: «${escapeHtmlClient(u.clientHint)}»</div>` : ''}
+            </div>`).join('')}
+        </div>
+        ${g.options.length ? `<div class="mt-2 space-y-1.5">${g.options.map(optionRowHtml).join('')}</div>` : ''}
+        <div class="q-panel hidden mt-2"></div>
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <button type="button" class="q-find py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">Это она… (найти)</button>
+          <button type="button" class="q-add py-2 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-medium">Внести в каталог</button>
+          <button type="button" class="q-rename py-2 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium">Только переименовать</button>
+          <button type="button" class="q-skip py-2 rounded-lg border border-gray-200 text-gray-500 text-xs font-medium">Пропустить</button>
+        </div>
+      `;
+
+      const panel = card.querySelector('.q-panel');
+      const resolve = async (action, payload, btn) => {
+        if (btn) btn.disabled = true;
+        try {
+          await callServer('resolveWishlistQueueGroup', ids, action, payload || {});
+          showSaveToast(true, action === 'skip' ? 'Убрано из очереди' : action === 'rename' ? 'Название сохранено' : `Привязано: ${ids.length}`);
+          load();
+        } catch (error) {
+          if (btn) btn.disabled = false;
+          showSaveToast(false, error.message);
+        }
+      };
+
+      card.querySelectorAll('.q-opt-yes').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const o = g.options[Number(btn.dataset.idx)];
+          if (o.kind === 'sku') resolve('link', { skuOriginal: o.original }, btn);
+          else resolve('model', { modelKey: o.modelKey }, btn);
+        });
+      });
+
+      card.querySelectorAll('.q-order').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const u = g.items[Number(btn.dataset.idx)];
+          navigateTo('carts/new', { telegramId: u.telegramId, username: u.username, name: u.clientName, productOriginal: u.rawTitle, wishlistId: u.wishlistId });
+        });
+      });
+
+      card.querySelector('.q-skip').addEventListener('click', (e) => resolve('skip', {}, e.currentTarget));
+
+      card.querySelector('.q-rename').addEventListener('click', () => {
+        panel.classList.remove('hidden');
+        panel.innerHTML = `
+          <div class="flex gap-2">
+            <input type="text" maxlength="150" class="q-name flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Название для клиента" value="${escapeHtmlClient(g.title)}">
+            <button type="button" class="q-name-save shrink-0 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-medium">Сохранить</button>
+          </div>`;
+        panel.querySelector('.q-name-save').addEventListener('click', (e) => resolve('rename', { name: panel.querySelector('.q-name').value.trim() }, e.currentTarget));
+      });
+
+      card.querySelector('.q-find').addEventListener('click', () => {
+        panel.classList.remove('hidden');
+        panel.innerHTML = `
+          <input type="text" class="q-search w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Каталог или справочник кукол..." value="${escapeHtmlClient(g.rawTitle || '')}">
+          <div class="q-results mt-2 space-y-1.5"></div>`;
+        const input = panel.querySelector('.q-search');
+        const results = panel.querySelector('.q-results');
+        const run = debounce(async () => {
+          const q = input.value.trim();
+          if (q.length < 2) { results.innerHTML = ''; return; }
+          let found;
+          try { found = await callServer('searchWishlistCandidatesAdmin', q); } catch (error) { results.innerHTML = `<div class="text-xs text-red-500">${escapeHtmlClient(error.message)}</div>`; return; }
+          if (input.value.trim() !== q) return;
+          const opts = [
+            ...found.catalog.map(c => ({ kind: 'sku', original: c.value, name: c.label, imageUrl: c.imageUrl })),
+            ...found.reference.map(r => ({ kind: 'ref', modelKey: r.key, name: r.name, imageUrl: r.imageUrl, series: r.series, year: r.year, modelCode: r.modelCode }))
+          ];
+          results.innerHTML = opts.length ? opts.map(optionRowHtml).join('') : '<div class="text-xs text-gray-400">Ничего не найдено</div>';
+          results.querySelectorAll('.q-opt-yes').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const o = opts[Number(btn.dataset.idx)];
+              if (o.kind === 'sku') resolve('link', { skuOriginal: o.original }, btn);
+              else resolve('model', { modelKey: o.modelKey }, btn);
+            });
+          });
+        }, 300);
+        input.addEventListener('input', run);
+        run();
+        input.focus();
+      });
+
+      card.querySelector('.q-add').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        let prefill = { original: g.rawTitle || g.title, description: first.rawDescription, imageUrl: first.rawImageUrl };
+        if (modelKey) {
+          btn.disabled = true;
+          try {
+            const { model, suggestedTags } = await callServer('getReferenceModelPrefill', modelKey);
+            prefill = {
+              original: model.title || g.rawTitle || g.title,
+              description: first.rawDescription,
+              imageUrl: model.imageUrl || first.rawImageUrl,
+              brand: suggestedTags.brand,
+              character: suggestedTags.character,
+              series: suggestedTags.series,
+              modelCode: model.modelCode || ''
+            };
+          } catch (error) {
+            showSaveToast(false, error.message);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+        // После сохранения SKU-модалка привяжет все позиции группы (context.wishlistIds),
+        // а сервер — и остальные позиции с той же моделью справочника (А5).
+        skuModal.open('create', null, prefill, { wishlistIds: ids, pendingLink: first.sourceUrl, pendingLinkSource: 'Вишлист' });
+      });
+
+      return card;
     }
 
     function buildDemandCard(d) {

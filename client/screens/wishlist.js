@@ -156,6 +156,9 @@ window.Screens.wishlist = {
           </button>
         </div>
 
+        <!-- «Мы узнали N ваших кукол» (§11.16.1, «сверху» п.2) -->
+        <div id="match-banner" class="hidden"></div>
+
         <div id="wishlist-tab">
           <div id="active-list"></div>
           <div id="wishlist-empty-message" class="hidden">
@@ -406,6 +409,8 @@ window.Screens.wishlist = {
     `;
 
     let selectedSkuValue = null;
+    // Модель справочника, выбранная в поиске по названию (§11.16.1 «сверху» п.4).
+    let selectedReferenceKey = null;
     let editingWishlistId = null;
     let addingToChecklist = false;
     let reloadWishlist = null;
@@ -558,6 +563,7 @@ window.Screens.wishlist = {
       document.getElementById('wishlist-tab').classList.toggle('hidden', currentTab !== 'wishlist');
       document.getElementById('checklist-tab').classList.toggle('hidden', currentTab !== 'checklist');
       document.getElementById('collections-tab').classList.toggle('hidden', currentTab !== 'collections');
+      renderMatchBanner();
     }
     updateTabStyles();
 
@@ -665,6 +671,7 @@ window.Screens.wishlist = {
         ? `<div class="hn-sec"><h2>Полка</h2><span>${checklistItems.length} ${Hunt.plural(checklistItems.length, 'кукла', 'куклы', 'кукол')}</span></div><div class="hn-grid">${checklistItems.map(tileFor).join('')}</div>`
         : '';
 
+      renderMatchBanner();
       if (window.lucide) window.lucide.createIcons();
       Hunt.wireImages(root);
       if (pendingBump) {
@@ -678,8 +685,9 @@ window.Screens.wishlist = {
     function tileFor(item) {
       const isWant = item.status === 'Хочу';
       let chip = '';
-      if (isWant && item.isGrail) chip = '<span class="hn-chip gold"><i data-lucide="star"></i></span>';
-      else if (item.isUnknown) chip = '<span class="hn-chip gray">Не в каталоге</span>';
+      if (needsAnswer(item)) chip = '<span class="hn-chip ask">?</span>';
+      else if (isWant && item.isGrail) chip = '<span class="hn-chip gold"><i data-lucide="star"></i></span>';
+      else if (item.isUnknown && !item.isReference) chip = '<span class="hn-chip gray">Не в каталоге</span>';
       const selected = selectionMode && selectedForShare.has(item.wishlistId);
       return Hunt.tileHtml({
         state: isWant ? 'want' : 'owned',
@@ -734,13 +742,15 @@ window.Screens.wishlist = {
       const tags = [
         item.isGrail ? '<span class="hn-tag gold"><i data-lucide="star"></i>Грааль</span>' : '',
         item.status === 'Куплено' ? '<span class="hn-tag win">Куплено у нас</span>' : '',
-        item.isUnknown ? '<span class="hn-tag amber">Не в каталоге</span>' : ''
+        item.isUnknown && !item.isReference ? '<span class="hn-tag amber">Не в каталоге</span>' : '',
+        item.isReference ? '<span class="hn-tag amber">Из справочника</span>' : ''
       ].join('');
       const meta = [];
       if (isWant && item.huntDays !== null && item.huntDays !== undefined) {
         meta.push(`<div><i data-lucide="hourglass"></i>В охоте ${item.huntDays === 0 ? 'с сегодня' : Hunt.days(item.huntDays) + ' · с ' + escapeHtmlClient(item.createdAtDisplay)}</div>`);
       }
       if (!isWant && item.huntDays) meta.push(`<div><i data-lucide="flag"></i>Охота длилась ${Hunt.days(item.huntDays)}</div>`);
+      if (item.seriesPath) meta.push(`<div><i data-lucide="git-branch"></i>${escapeHtmlClient(item.seriesPath)}</div>`);
       if (!item.imageUrl) meta.push(`<div><i data-lucide="image-off"></i>${item.isUnknown ? 'Фото появится, когда кукла попадёт в каталог' : 'Фото появится, как только его добавят в каталог'}</div>`);
 
       const actions = isWant ? `
@@ -764,6 +774,7 @@ window.Screens.wishlist = {
             ${tags ? `<div class="hn-tags">${tags}</div>` : ''}
           </div>
         </div>
+        ${matchBlockHtml(item)}
         ${meta.length ? `<div class="hn-meta">${meta.join('')}</div>` : ''}
         ${item.rawDescription ? `<div class="hn-desc">${escapeHtmlClient(item.rawDescription)}</div>` : ''}
         ${item.sourceUrl ? `<div class="mt-2"><a class="hn-link" href="${escapeHtmlClient(item.sourceUrl)}" target="_blank" rel="noopener">Ссылка на товар</a></div>` : ''}
@@ -771,6 +782,7 @@ window.Screens.wishlist = {
       `;
 
       Hunt.sheet(html, (sheetEl) => {
+        wireMatchBlock(sheetEl.querySelector('.hn-match'), item, () => { Hunt.closeSheet(); loadWishlist(); });
         const errSlot = sheetEl.querySelector('[data-slot="err"]');
         const showErr = (message) => { errSlot.innerHTML = `<div class="hn-err">${escapeHtmlClient(message)}</div>`; };
         const on = (act, fn) => {
@@ -848,6 +860,124 @@ window.Screens.wishlist = {
           });
         });
       });
+    }
+
+    // --- «Да, это она» (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1, А2/А3/А4 +
+    // «сверху» 1–3): система узнала позицию по каталогу или справочнику кукол —
+    // клиент подтверждает или отвечает «Нет, другая» (с подсказкой «а какая?»).
+    function needsAnswer(item) {
+      const m = item.match;
+      return Boolean(m && ((m.state === 'pending' && m.applied) || (m.state === 'offer' && m.options.length > 0)));
+    }
+
+    function matchCardHtml(o, yesKey) {
+      const sub = [o.series, o.year, o.modelCode].filter(Boolean).join(' · ');
+      const warn = o.withOthers && o.withOthers.length > 0 ? `В наборе с ${o.withOthers.join(', ')}` : '';
+      return `
+        <div class="hn-mcard">
+          <div class="hn-mph">${Hunt.imgHtml(o.imageUrl, o.name)}</div>
+          <div class="hn-mtx">
+            <div class="hn-mname">${escapeHtmlClient(o.name)}</div>
+            ${sub ? `<div class="hn-msub">${escapeHtmlClient(sub)}</div>` : ''}
+            ${warn ? `<div class="hn-mwarn">${escapeHtmlClient(warn)}</div>` : ''}
+          </div>
+          <button type="button" class="hn-myes" data-match-yes="${escapeHtmlClient(yesKey)}">Да, это она</button>
+        </div>`;
+    }
+
+    function matchBlockHtml(item, withTitle) {
+      if (!needsAnswer(item)) return '';
+      const m = item.match;
+      const was = withTitle ? `<div class="hn-was">Вы писали: «${escapeHtmlClient(item.rawTitle || item.productDisplay)}»</div>` : '';
+      const body = m.state === 'pending'
+        ? `<h3>Мы узнали вашу куклу — это она?</h3>${was}${matchCardHtml(m.applied, '')}`
+        : `<h3>${m.options.length > 1 ? 'Может быть, это одна из них?' : 'Может быть, это она?'}</h3>${was}${m.options.map(o => matchCardHtml(o, o.key)).join('')}`;
+      return `<div class="hn-match" data-wid="${escapeHtmlClient(item.wishlistId)}">
+        ${body}
+        <button type="button" class="hn-mno" data-match-no>${m.state === 'offer' && m.options.length > 1 ? 'Нет, ни одна из них' : 'Нет, другая'}</button>
+        <div class="hn-mhint hidden">
+          <input type="text" maxlength="300" placeholder="А какая? Ссылка или название — необязательно">
+          <button type="button" class="hn-btn soft" data-match-send>Отправить</button>
+        </div>
+        <div data-match-err></div>
+      </div>`;
+    }
+
+    function wireMatchBlock(block, item, onDone) {
+      if (!block) return;
+      const errSlot = block.querySelector('[data-match-err]');
+      const showErr = (message) => { errSlot.innerHTML = `<div class="hn-err mt-2">${escapeHtmlClient(message)}</div>`; };
+      const buttons = () => block.querySelectorAll('button');
+      const busy = (on) => buttons().forEach(b => { b.disabled = on; });
+      block.querySelectorAll('[data-match-yes]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          busy(true);
+          try {
+            await callServer('confirmWishlistMatch', item.wishlistId, btn.dataset.matchYes || null);
+            Hunt.haptic('light');
+            showSaveToast(true, 'Отлично, запомнили');
+            onDone('yes');
+          } catch (error) {
+            busy(false);
+            showErr(error.message);
+          }
+        });
+      });
+      block.querySelector('[data-match-no]').addEventListener('click', () => {
+        block.querySelector('.hn-mhint').classList.remove('hidden');
+        block.querySelector('[data-match-no]').classList.add('hidden');
+        block.querySelector('.hn-mhint input').focus();
+      });
+      block.querySelector('[data-match-send]').addEventListener('click', async () => {
+        busy(true);
+        try {
+          await callServer('rejectWishlistMatch', item.wishlistId, block.querySelector('.hn-mhint input').value.trim());
+          Hunt.haptic('selection');
+          showSaveToast(true, 'Поняли — менеджер уточнит');
+          onDone('no');
+        } catch (error) {
+          busy(false);
+          showErr(error.message);
+        }
+      });
+    }
+
+    function renderMatchBanner() {
+      const banner = document.getElementById('match-banner');
+      if (!banner) return;
+      const asks = allItems.filter(needsAnswer);
+      if (asks.length < 2 || currentTab === 'collections') { banner.classList.add('hidden'); banner.innerHTML = ''; return; }
+      banner.classList.remove('hidden');
+      banner.innerHTML = `<button type="button" class="hn-banner"><i data-lucide="sparkles"></i><span class="flex-1">Мы узнали ${asks.length} ${Hunt.plural(asks.length, 'вашу куклу', 'ваши куклы', 'ваших кукол')} — проверьте</span><i data-lucide="chevron-right"></i></button>`;
+      banner.querySelector('button').addEventListener('click', openMatchBatch);
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Все вопросы разом («сверху» п.2) — по одной карточке было бы долго.
+    function openMatchBatch() {
+      const asks = allItems.filter(needsAnswer);
+      if (asks.length === 0) return;
+      let left = asks.length;
+      const html = `
+        <div class="hn-sh-name">Мы узнали ${asks.length} ${Hunt.plural(asks.length, 'вашу куклу', 'ваши куклы', 'ваших кукол')}</div>
+        <div class="hn-sh-sub">Проверьте: если не та — нажмите «Нет» и подскажите, какая.</div>
+        <div class="mt-3">${asks.map(it => `<div class="hn-batch-item">${matchBlockHtml(it, true)}</div>`).join('')}</div>
+      `;
+      Hunt.sheet(html, (sheetEl) => {
+        sheetEl.querySelectorAll('.hn-match').forEach(block => {
+          const item = asks.find(it => it.wishlistId === block.dataset.wid);
+          wireMatchBlock(block, item, () => {
+            block.closest('.hn-batch-item').remove();
+            left -= 1;
+            if (left === 0) { Hunt.closeSheet(); loadWishlist(); }
+          });
+        });
+      });
+      // Лист закрыли, не ответив на всё, — список всё равно обновить.
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('.hn-sheet')) { observer.disconnect(); if (left > 0 && left < asks.length) loadWishlist(); }
+      });
+      observer.observe(document.body, { childList: true });
     }
 
     // Праздники и анонс при открытии экрана (§2.3/§2.3а плана геймификации).
@@ -1066,6 +1196,7 @@ window.Screens.wishlist = {
 
     function resetModalState() {
       selectedSkuValue = null;
+      selectedReferenceKey = null;
       editingWishlistId = null;
       addingToChecklist = false;
       itemSearch.value = '';
@@ -1167,6 +1298,7 @@ window.Screens.wishlist = {
       manualBlock.classList.add('hidden');
       searchBlock.classList.remove('hidden');
       selectedSkuValue = skuOriginal;
+      selectedReferenceKey = null;
       itemSearch.value = label;
       selectedSkuDisplay.textContent = `Выбрано: ${label}`;
       selectedSkuDisplay.classList.remove('hidden');
@@ -1201,6 +1333,7 @@ window.Screens.wishlist = {
           searchBlock.classList.remove('hidden');
           hideManualCatalogMatch();
           selectedSkuValue = result.sku.original;
+          selectedReferenceKey = null;
           const label = result.sku.shortName || result.sku.original;
           itemSearch.value = label;
           selectedSkuDisplay.textContent = `Выбрано: ${label}`;
@@ -1266,17 +1399,27 @@ window.Screens.wishlist = {
       if (looksLikeUrl(query)) { itemSearchDropdown.classList.remove('active'); return; }
       if (query.length < 2) { itemSearchDropdown.classList.remove('active'); return; }
 
-      const results = await callServer('searchSkuForClient', query);
+      // Каталог + справочник кукол, с фото (§11.16.1 «сверху» п.4): модель не из
+      // каталога сохраняется «по стандарту серии» с фото из справочника.
+      let found;
+      try {
+        found = await callServer('searchWishlistCandidates', query);
+      } catch (_error) {
+        found = { catalog: (await callServer('searchSkuForClient', query)), reference: [] };
+      }
+      if (itemSearch.value.trim() !== query) return;
+      const thumb = (url, name) => `<span class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gray-100 block">${Hunt.imgHtml(url, name).replace('<img ', '<img class="w-full h-full object-cover" ')}</span>`;
       itemSearchDropdown.innerHTML = '';
-      if (results.length === 0) {
+      if (found.catalog.length === 0 && found.reference.length === 0) {
         itemSearchDropdown.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">Ничего не найдено</div>';
       } else {
-        results.forEach(item => {
+        found.catalog.forEach(item => {
           const li = document.createElement('li');
-          li.className = 'p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0';
-          li.innerHTML = `<div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(item.label)}</div>`;
+          li.className = 'p-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0 flex items-center gap-2.5';
+          li.innerHTML = `${thumb(item.imageUrl, item.label)}<div class="font-medium text-gray-800 text-sm min-w-0">${escapeHtmlClient(item.label)}</div>`;
           li.addEventListener('click', () => {
             selectedSkuValue = item.value;
+            selectedReferenceKey = null;
             selectedSkuDisplay.textContent = `Выбрано: ${item.label}`;
             selectedSkuDisplay.classList.remove('hidden');
             itemSearch.value = item.label;
@@ -1284,6 +1427,28 @@ window.Screens.wishlist = {
           });
           itemSearchDropdown.appendChild(li);
         });
+        if (found.reference.length > 0) {
+          const head = document.createElement('li');
+          head.className = 'px-3 pt-2.5 pb-1 text-[11px] text-gray-400 bg-gray-50';
+          head.textContent = 'Из справочника кукол — в нашем каталоге пока нет';
+          itemSearchDropdown.appendChild(head);
+        }
+        found.reference.forEach(ref => {
+          const li = document.createElement('li');
+          li.className = 'p-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 last:border-0 flex items-center gap-2.5';
+          const sub = [ref.series, ref.year, ref.modelCode].filter(Boolean).join(' · ');
+          li.innerHTML = `${thumb(ref.imageUrl, ref.name)}<div class="min-w-0"><div class="font-medium text-gray-800 text-sm">${escapeHtmlClient(ref.name)}</div>${sub ? `<div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(sub)}</div>` : ''}</div>`;
+          li.addEventListener('click', () => {
+            selectedSkuValue = null;
+            selectedReferenceKey = ref.key;
+            selectedSkuDisplay.textContent = `Выбрано: ${ref.name}${ref.year ? ' · ' + ref.year : ''}`;
+            selectedSkuDisplay.classList.remove('hidden');
+            itemSearch.value = ref.name;
+            itemSearchDropdown.classList.remove('active');
+          });
+          itemSearchDropdown.appendChild(li);
+        });
+        Hunt.wireImages(itemSearchDropdown);
       }
       appendManualDropdownOption();
       if (window.lucide) window.lucide.createIcons();
@@ -1307,6 +1472,7 @@ window.Screens.wishlist = {
 
       const payload = {
         skuOriginal: isManualMode ? null : selectedSkuValue,
+        referenceModelKey: isManualMode ? null : selectedReferenceKey,
         rawTitle: document.getElementById('manual-title-input').value.trim(),
         shortNameRu: document.getElementById('manual-short-name-input').value.trim(),
         rawDescription: document.getElementById('manual-description-input').value.trim(),
@@ -1317,7 +1483,7 @@ window.Screens.wishlist = {
       // между табами (см. wishlistService.addWishlistItem's JSDoc).
       if (!editingWishlistId && addingToChecklist) payload.addToChecklist = true;
 
-      if (!isManualMode && !payload.skuOriginal) {
+      if (!isManualMode && !payload.skuOriginal && !payload.referenceModelKey) {
         errorText.textContent = 'Выберите позицию из списка или переключитесь на ручной ввод.';
         errorText.classList.remove('hidden');
         return;
@@ -1398,6 +1564,8 @@ window.Screens.wishlist = {
     // отклонённая позиция меняет разметку строки целиком (была карточка
     // совпадения — становится обычное текстовое поле).
     let scanRowSku = {};
+    let scanRowRef = {}; // ключ модели справочника, выбранной клиентом (§11.16.1 А6)
+    let scanRowRefName = {};
     // idx -> true, если клиент явно нажал "Распознано неверно" (репорт
     // VASY 19.09.2026: обратная связь, что ИИ не всегда правильно
     // распознаёт куклу на фото) — логируется на confirmScan для анализа,
@@ -1476,6 +1644,7 @@ window.Screens.wishlist = {
         btn.addEventListener('click', () => {
           const o = catalogAlternatives[Number(btn.dataset.j)];
           scanRowSku[idx] = o.skuOriginal;
+          scanRowRef[idx] = '';
           renderScanRowBody(row, idx, pos, o);
           if (window.lucide) window.lucide.createIcons();
         });
@@ -1484,6 +1653,8 @@ window.Screens.wishlist = {
         btn.addEventListener('click', () => {
           const o = referenceAlternatives[Number(btn.dataset.j)];
           scanRowSku[idx] = '';
+          scanRowRef[idx] = o.key || '';
+          scanRowRefName[idx] = o.label.slice(0, 150);
           pos.name = o.label.slice(0, 150);
           renderScanRowBody(row, idx, pos, null);
           if (window.lucide) window.lucide.createIcons();
@@ -1523,6 +1694,8 @@ window.Screens.wishlist = {
       }
       photoScanList.innerHTML = '';
       scanRowSku = {};
+      scanRowRef = {};
+      scanRowRefName = {};
       scanRowMisrecognized = {};
       positions.forEach((pos, idx) => {
         const matched = pos.catalogMatch || null;
@@ -1547,6 +1720,8 @@ window.Screens.wishlist = {
           name: nameInput ? nameInput.value.trim() : '',
           quantity: qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1,
           skuOriginal: scanRowSku[idx] || '',
+          // Название поправили руками — выбор из справочника больше не действует.
+          referenceModelKey: scanRowRef[idx] && nameInput && nameInput.value.trim() === scanRowRefName[idx] ? scanRowRef[idx] : '',
           misrecognized: Boolean(scanRowMisrecognized[idx])
         });
       });
