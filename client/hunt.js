@@ -507,7 +507,7 @@
   const HUNT_CAPTIONS = {
     ordered: 'Заказана · ищем и выкупаем',
     secured: 'Выкуплена · скоро отправят',
-    shipping: 'Выкуплена · едет к вам',
+    shipping: 'Едет к вам',
     arrived: 'Получена'
   };
 
