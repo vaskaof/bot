@@ -40,7 +40,7 @@ window.Screens.catalog = {
             <i data-lucide="copy-check" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Дубли</span>
           </button>
-          <button type="button" id="short-name-btn" title="Стандартизация коротких имён" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <button type="button" id="short-name-btn" title="Короткие названия по тегам" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="wand-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Имена</span>
           </button>
@@ -98,21 +98,6 @@ window.Screens.catalog = {
       </div>
 
       ${MergeCompare.html()}
-
-      <div id="short-name-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
-          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900 inline-flex items-center gap-1.5">Короткие имена${helpIcon('Что это', '<p>Позиции каталога с пустым «Коротким именем» — оно показывается клиенту вместо технического названия. Если уже заполнены Бренд и Персонаж — имя собирается автоматически, бесплатно. Иначе — предлагает ИИ, пачками (батчами), по запросу.</p><p>Ничего не применяется автоматически — отметьте нужные строки и нажмите «Применить выбранные», или отклоните конкретную (тогда ИИ больше не будет предлагать её снова, пока название позиции не изменится).</p>')}</h2>
-            <button id="short-name-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
-              <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-          </div>
-          <div id="short-name-body" class="p-4 space-y-2"></div>
-          <div class="p-4 pt-0">
-            <button type="button" id="short-name-apply-btn" class="hidden w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить выбранные</button>
-          </div>
-        </div>
-      </div>
 
       <!-- Тег-агент (репорт VASY 19.09.2026, вариант 1 развилки — "я не
            доверяю конечное решение ИИ") — предложения Бренда/Персонажа/
@@ -258,118 +243,10 @@ window.Screens.catalog = {
     }
     document.getElementById('duplicates-close').addEventListener('click', closeDuplicatesModal);
 
-    // "Короткие имена" — план "Лоты/ИИ", Этап 5, Часть Б (16.09.2026).
-    // Отдельная модалка (не внутри "Аудит каталога" — другой смысл: это
-    // проактивная стандартизация витрины, не пассивный аудит). НИЧЕГО не
-    // применяется автоматически (см. helpIcon в разметке) — только по
-    // явному "Применить выбранные"/"Отклонить" на каждую строку.
-    const shortNameModal = document.getElementById('short-name-modal');
-    const shortNameBody = document.getElementById('short-name-body');
-    const shortNameApplyBtn = document.getElementById('short-name-apply-btn');
-    let currentShortNameSuggestions = [];
-
-    function closeShortNameModal() {
-      shortNameModal.classList.add('hidden');
-      shortNameModal.classList.remove('flex');
-    }
-    document.getElementById('short-name-close').addEventListener('click', closeShortNameModal);
-
-    document.getElementById('short-name-btn').addEventListener('click', () => {
-      shortNameModal.classList.remove('hidden');
-      shortNameModal.classList.add('flex');
-      loadShortNameSuggestions();
-    });
-
-    async function loadShortNameSuggestions() {
-      shortNameBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка предложений...</div>';
-      shortNameApplyBtn.classList.add('hidden');
-      try {
-        const result = await callServer('getCatalogShortNameSuggestions');
-        currentShortNameSuggestions = result.suggestions || [];
-        renderShortNameSuggestions(result.remainingForAi || 0);
-      } catch (error) {
-        shortNameBody.innerHTML = `<div class="text-center text-sm text-red-500 py-6">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
-      }
-    }
-
-    // `remainingForAi` "Загрузить ещё" сознательно показывается ТОЛЬКО когда
-    // текущий список полностью разобран (пуст) — иначе повторный клик до
-    // того, как человек применил/отклонил уже показанные ИИ-предложения,
-    // заново отправил бы ТЕ ЖЕ позиции в Gemini (getShortNameSuggestions не
-    // помнит "уже показано, но ещё не решено" — только "решено") и сжёг бы
-    // токены впустую, прямо против тезиса VASY "разумный прогон".
-    function renderShortNameSuggestions(remainingForAi) {
-      if (currentShortNameSuggestions.length === 0) {
-        shortNameBody.innerHTML = remainingForAi > 0
-          ? `<div class="text-center text-sm text-gray-400 py-6">Список пуст. Ещё ${remainingForAi} — ожидают ИИ-разбора.</div>
-             <button type="button" id="short-name-more-btn" class="w-full py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-medium">Загрузить ещё (ИИ)</button>`
-          : '<div class="text-center text-sm text-gray-400 py-6">Все позиции с пустым коротким именем разобраны.</div>';
-        shortNameApplyBtn.classList.add('hidden');
-        const moreBtn = document.getElementById('short-name-more-btn');
-        if (moreBtn) moreBtn.addEventListener('click', loadShortNameSuggestions);
-        return;
-      }
-
-      shortNameBody.innerHTML = currentShortNameSuggestions.map((s, idx) => `
-        <div class="border border-gray-200 rounded-xl p-3">
-          <div class="flex items-start gap-2">
-            <input type="checkbox" class="short-name-checkbox mt-1.5" data-idx="${idx}">
-            <div class="min-w-0 flex-1">
-              <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(s.original)}</div>
-              <input type="text" class="short-name-input w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-1" data-idx="${idx}" value="${escapeHtmlClient(s.suggested)}">
-              <div class="text-[10px] text-gray-400 mt-1">${s.source === 'ai' ? 'предложено ИИ' : 'из тегов, бесплатно'}</div>
-            </div>
-            <button type="button" class="short-name-reject-btn text-[11px] text-gray-400 hover:text-red-500 shrink-0" data-idx="${idx}">Отклонить</button>
-          </div>
-        </div>
-      `).join('');
-
-      shortNameApplyBtn.classList.remove('hidden');
-      wireShortNameRowEvents(remainingForAi);
-    }
-
-    function wireShortNameRowEvents(remainingForAi) {
-      shortNameBody.querySelectorAll('.short-name-reject-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          if (btn.disabled) return;
-          btn.disabled = true;
-          const idx = parseInt(btn.dataset.idx, 10);
-          const item = currentShortNameSuggestions[idx];
-          try {
-            await callServer('rejectCatalogShortNameSuggestion', item.original);
-            currentShortNameSuggestions = currentShortNameSuggestions.filter((_, i) => i !== idx);
-            renderShortNameSuggestions(remainingForAi);
-          } catch (error) {
-            showSaveToast(false, error.message);
-            btn.disabled = false;
-          }
-        });
-      });
-
-      shortNameApplyBtn.onclick = async () => {
-        if (shortNameApplyBtn.disabled) return;
-        const checkedIdx = [...shortNameBody.querySelectorAll('.short-name-checkbox:checked')].map((cb) => parseInt(cb.dataset.idx, 10));
-        if (checkedIdx.length === 0) { showSaveToast(false, 'Отметьте хотя бы одну позицию.'); return; }
-        shortNameApplyBtn.disabled = true;
-        try {
-          for (const idx of checkedIdx) {
-            const item = currentShortNameSuggestions[idx];
-            const input = shortNameBody.querySelector(`.short-name-input[data-idx="${idx}"]`);
-            const value = input.value.trim();
-            if (value === '') continue;
-            await callServer('applyCatalogShortNameSuggestion', item.original, value);
-          }
-          showSaveToast(true, `Применено: ${checkedIdx.length}`);
-          currentShortNameSuggestions = currentShortNameSuggestions.filter((_, i) => !checkedIdx.includes(i));
-          renderShortNameSuggestions(remainingForAi);
-          loadCatalog(); // короткие имена изменились — обновить список каталога
-        } catch (error) {
-          showSaveToast(false, error.message);
-        } finally {
-          shortNameApplyBtn.disabled = false;
-        }
-      };
-    }
+    // «Имена» — короткие названия по тегам (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.15)
+    // своим экраном. Прежняя модалка «Бренд | Линейка | Персонаж» (Лоты/ИИ, Этап 5) убрана:
+    // формат заменён решением VASY (В4, З1–З4).
+    document.getElementById('short-name-btn').addEventListener('click', () => navigateTo('catalog/short-names'));
 
     // Тег-агент (репорт VASY 19.09.2026, вариант 1 развилки — "я не доверяю
     // конечное решение ИИ") — предложения уже посчитаны фоновым job'ом,
