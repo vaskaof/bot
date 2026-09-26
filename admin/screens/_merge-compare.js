@@ -47,7 +47,7 @@ window.MergeCompare = {
       const tags = [details.brand, details.character, details.series].filter(t => t !== '');
       return `
         <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 min-w-0">
-          ${details.imageUrl ? `<img src="${escapeHtmlClient(details.imageUrl)}" alt="" class="w-16 h-16 rounded-lg object-cover bg-gray-100" onerror="this.style.display='none'">` : ''}
+          ${details.imageUrl ? `<a href="${escapeHtmlClient(details.imageUrl)}" target="_blank" rel="noopener" title="Открыть фото"><img src="${escapeHtmlClient(details.imageUrl)}" alt="" class="w-full aspect-square rounded-lg object-contain bg-gray-100" onerror="this.style.display='none'"></a>` : ''}
           <div class="font-semibold text-gray-900 text-sm break-words">${escapeHtmlClient(details.shortName || details.original)}</div>
           <div class="text-[11px] text-gray-400 break-words">${escapeHtmlClient(details.original)}</div>
           ${tags.length > 0 ? `<div class="flex flex-wrap gap-1">${tags.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}

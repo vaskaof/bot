@@ -9,7 +9,8 @@
  * - «Ссылка ≠ название»: ссылка позиции указывает на другую куклу, чем её
  *   название (или ссылки спорят между собой) — ошибка в ссылке или в названии;
  * - «Несколько»: подходит несколько моделей справочника (Dead Tired 2011 и 2012);
- * - «Дубли»: у нескольких позиций один код модели — это одна кукла;
+ * - «Дубли»: у нескольких позиций один код модели — это одна кукла (плюс позиции без
+ *   кода «предположительно»: у персонажа одна модель в справочнике), с заказами позиций;
  *   объединение — тем же окном «Слияние позиций», что в «Дублях» каталога;
  * - «Не нашлось»: справочник не знает такую куклу (или в названии мало данных).
  * Выбор нажатием: «Это она» пишет теги как решение человека — автоаудит их
@@ -39,7 +40,7 @@ window.Screens.catalogCheck = {
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
-      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2 inline-flex items-center gap-1.5">Проверка${helpIcon('Проверка каталога', '<p>Каждую ночь и после сохранения позиции система сверяет каталог со справочником кукол (вики Monster High, Bratz и Ever After High, магазины Mattel и bratz.com). Если кукла определяется <b>однозначно</b> — по коду модели в ссылке, фото или названии, либо по персонажу и серии, — линейка, персонажи, год, тип и код ставятся сами, с пометкой источника.</p><p>Здесь — только то, где нужен человек:</p><p><b>Ссылка ≠ название</b> — ссылка ведёт на другую куклу, чем названа позиция. Ошибиться могли и в ссылке, и в названии.</p><p><b>Несколько</b> — подходят несколько кукол (одинаковые названия разных лет). Нажмите «Это она» у нужной.</p><p><b>Дубли</b> — у позиций один код модели производителя, это одна кукла. «Сравнить» откроет обычное слияние, ничего не сливается само.</p><p><b>Не нашлось</b> — справочник такую куклу не знает. «Скрыть» убирает строку.</p><p>Ваш выбор система больше не меняет.</p>')}</h1>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2 inline-flex items-center gap-1.5">Проверка${helpIcon('Проверка каталога', '<p>Каждую ночь и после сохранения позиции система сверяет каталог со справочником кукол (вики Monster High, Bratz и Ever After High, магазины Mattel и bratz.com). Если кукла определяется <b>однозначно</b> — по коду модели в ссылке, фото или названии, либо по персонажу и серии, — линейка, персонажи, год, тип и код ставятся сами, с пометкой источника.</p><p>Здесь — только то, где нужен человек:</p><p><b>Ссылка ≠ название</b> — ссылка ведёт на другую куклу, чем названа позиция. Ошибиться могли и в ссылке, и в названии.</p><p><b>Несколько</b> — подходят несколько кукол (одинаковые названия разных лет). Нажмите «Это она» у нужной.</p><p><b>Дубли</b> — у позиций один код модели производителя, это одна кукла. Сюда же попадает позиция без кода, если у её персонажа в справочнике всего одна модель, — «предположительно та же кукла»: сверьте фото и заказы (заказ открывается нажатием) и решите — «Сравнить и объединить» или «Это разные». «Сравнить» откроет обычное слияние, ничего не сливается само.</p><p><b>Не нашлось</b> — справочник такую куклу не знает. «Скрыть» убирает строку.</p><p>Ваш выбор система больше не меняет.</p>')}</h1>
     `;
     document.getElementById('back-btn').addEventListener('click', () => history.back());
     document.getElementById('header-actions').innerHTML = `
@@ -240,15 +241,36 @@ window.Screens.catalogCheck = {
       `;
     }
 
+    // Заказы позиции в «Дублях»: сверить по конкретному заказу (VASY 26.09.2026).
+    function ordersHtml(orders) {
+      if (!orders || orders.length === 0) return '<div class="text-[11px] text-gray-300 mt-1">Заказов нет</div>';
+      return `<div class="flex flex-wrap gap-1 mt-1">${orders.map(o => `
+        <button type="button" class="dup-order-btn text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700 hover:bg-indigo-50" data-order-id="${escapeHtmlClient(o.orderId)}">
+          Заказ ${escapeHtmlClient(o.orderId)}${o.clientName ? ` · ${escapeHtmlClient(o.clientName)}` : ''}${o.lotId ? ` · лот ${escapeHtmlClient(o.lotId)}` : ''}
+        </button>`).join('')}</div>`;
+    }
+
+    function dupSkuHtml(s) {
+      return `
+        ${s.presumed ? '<div class="text-[10px] text-amber-700 mb-1">Код не указан — предположительно та же кукла</div>' : ''}
+        ${skuHeadHtml(s)}
+        ${ordersHtml(s.orders)}
+      `;
+    }
+
     function duplicateGroupHtml(group, gi) {
       const [first, ...others] = group.skus;
+      // Две позиции с настоящим кодом — точно одна кукла; «возможно» — только когда код у одной.
+      const title = group.skus.filter(s => !s.presumed).length < 2
+        ? `Возможно, одна кукла: у персонажа в справочнике одна модель — <b>${escapeHtmlClient(group.modelCode)}</b>. Сверьте фото и заказы`
+        : `Один код модели: <b>${escapeHtmlClient(group.modelCode)}</b> — это одна кукла`;
       return `
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 space-y-2">
-          <div class="text-[12px] text-gray-700">Один код модели: <b>${escapeHtmlClient(group.modelCode)}</b> — это одна кукла</div>
-          <div class="border border-gray-100 rounded-xl p-2">${skuHeadHtml(first)}</div>
+          <div class="text-[12px] text-gray-700">${title}</div>
+          <div class="border border-gray-100 rounded-xl p-2">${dupSkuHtml(first)}</div>
           ${others.map((s, oi) => `
             <div class="border border-gray-100 rounded-xl p-2 space-y-2">
-              ${skuHeadHtml(s)}
+              ${dupSkuHtml(s)}
               <div class="flex justify-end gap-2">
                 <button type="button" class="not-dup-btn px-2 py-1 rounded-lg border border-gray-200 text-gray-600 text-[11px] disabled:opacity-50" data-group="${gi}" data-other="${oi}">Это разные</button>
                 <button type="button" class="merge-btn px-2 py-1 rounded-lg bg-indigo-600 text-white text-[11px]" data-group="${gi}" data-other="${oi}">Сравнить и объединить</button>
@@ -299,6 +321,9 @@ window.Screens.catalogCheck = {
           showSaveToast(false, error.message);
           btn.disabled = false;
         }
+      }));
+      body.querySelectorAll('.dup-order-btn').forEach(btn => btn.addEventListener('click', () => {
+        navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}`);
       }));
       body.querySelectorAll('.merge-btn').forEach(btn => btn.addEventListener('click', () => {
         const group = rows[Number(btn.dataset.group)];
