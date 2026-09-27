@@ -279,7 +279,28 @@ function computeBookingFields(bookingSumRub, alreadyPaidRub) {
   return { bookingPaid: bookingCovered ? 'Да' : 'Нет', bookingAlreadyInMainAmount: bookingCovered };
 }
 
+/**
+ * Пороги комиссии (мягкая подсказка / обязательная причина) — один запрос на
+ * открытие экрана, общий для всех карточек (стадия 0 аудита менеджера,
+ * 27.09.2026, кейс 4DE4BD). Раньше пороги приходили только вместе с
+ * прогнозом логистики, а прогноз запрашивался лишь при введённой цене
+ * позиции: менеджер вводил только «Итог с сайта» — порогов не было, проверка
+ * комиссии на экране молча выключалась, а сервер отклонял заказ.
+ * Пороги от суммы не зависят, поэтому сумма в запросе 0.
+ * @returns {Promise<{warnPercent:number, reasonPercent:number}|null>}
+ */
+let commissionThresholdsPromise = null;
+function loadCommissionThresholds() {
+  if (!commissionThresholdsPromise) {
+    commissionThresholdsPromise = callServer('getOrderForecast', 0, 'Доллар', '')
+      .then((f) => ({ warnPercent: f.commissionWarnPercent, reasonPercent: f.commissionReasonPercent }))
+      .catch(() => { commissionThresholdsPromise = null; return null; });
+  }
+  return commissionThresholdsPromise;
+}
+
 window.CartMoney = {
+  loadCommissionThresholds,
   feeRubFromPercent, feePercentFromRub, totalFromFeeRub, feeRubFromTotal, clampTotal,
   totalBreakdownText, splitProportionallyClient, humanFractionLabel,
   CURRENCY_SYMBOLS, computeBookingFields, FORECAST_FIELD_KEYS,

@@ -101,6 +101,12 @@ window.Screens.cartNew = {
              #draft-recovery-banner в order-new.js. -->
         <div id="multiply-draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
 
+        <!-- Стадия 0 аудита менеджера (27.09.2026, кейс 4DE4BD) — причина,
+             по которой корзина не создалась. Остаётся на экране (не
+             исчезающий тост), форма не закрывается — поправили и сохранили
+             снова. НЕ использовать обратные кавычки в этом комментарии. -->
+        <div id="cart-save-error" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"></div>
+
         <!-- Шапка корзины — общая на все заявки внутри (§4 п.1 плана) -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mb-3">
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
@@ -1801,14 +1807,36 @@ window.Screens.cartNew = {
       // .flatMap, не .map (Волна 7, §7 п.2) — getPayload() позиции теперь
       // ВСЕГДА массив (1 элемент — обычная позиция, N — размноженная на
       // клиентов), см. JSDoc item.getPayload в _cart-position.js.
-      const positions = items.filter((it) => it.type === 'position').flatMap((it) => it.getPayload().map((p) => ({ ...p, statusDelivery, statusOrder })));
+      // Источник каждой заявки payload — карточка на экране (стадия 0 аудита
+      // менеджера, 27.09.2026): после частичного сбоя созданные карточки
+      // убираются с экрана, несозданные остаются с причиной. Одна карточка
+      // «Размножить на клиентов» даёт несколько позиций payload.
+      lastPayloadSources = { positions: [], lots: [] };
+      const positions = items.filter((it) => it.type === 'position').flatMap((it) => it.getPayload().map((p) => {
+        lastPayloadSources.positions.push(it);
+        return { ...p, statusDelivery, statusOrder };
+      }));
       const lots = items.filter((it) => it.type === 'lot').map((it) => {
         const payload = it.getPayload();
         payload.positions = payload.positions.map((p) => ({ ...p, statusDelivery, statusOrder }));
+        lastPayloadSources.lots.push(it);
         return payload;
       });
       return { header, positions, lots };
     }
+    let lastPayloadSources = { positions: [], lots: [] };
+
+    const saveErrorEl = document.getElementById('cart-save-error');
+    /** Показывает причины несохранения на экране (не тостом) — сервер склеивает их через « · ». */
+    function showSaveError(title, message) {
+      const reasons = String(message || '').replace(/^Корзина не создана[^.]*\.\s*/, '').split(' · ').filter(Boolean);
+      saveErrorEl.innerHTML = '<div class="font-semibold mb-1"></div><ul class="list-disc pl-4 space-y-0.5"></ul>';
+      saveErrorEl.firstChild.textContent = title;
+      reasons.forEach((r) => { const li = document.createElement('li'); li.textContent = r; saveErrorEl.lastChild.appendChild(li); });
+      saveErrorEl.classList.remove('hidden');
+      saveErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    function hideSaveError() { saveErrorEl.classList.add('hidden'); saveErrorEl.innerHTML = ''; }
 
     async function saveCart() {
       if (saving) return;
@@ -1925,13 +1953,35 @@ window.Screens.cartNew = {
           failCount += inner.filter((r) => !r.success).length;
         });
         if (failCount === 0) {
+          hideSaveError();
           showSaveToast(true, `Корзина ${response.cartId} создана: ${okCount} из ${okCount} заявок`);
+          navigateTo('orders');
         } else {
-          showSaveToast(false, `Корзина ${response.cartId} создана частично: ${okCount} из ${okCount + failCount} заявок — проверьте список заказов/лотов.`);
+          // Стадия 0 аудита менеджера (27.09.2026) — раньше тост «создана
+          // частично» исчезал через 4 с, экран уходил в «Заказы», введённое
+          // терялось. Теперь созданные карточки убираются, несозданные
+          // остаются на экране с причиной — поправить и сохранить снова.
+          const reasons = [];
+          const createdItems = new Set();
+          const failedItems = new Set();
+          response.positionResults.forEach((r) => {
+            const src = lastPayloadSources.positions[r.positionIndex];
+            if (r.success) createdItems.add(src); else { failedItems.add(src); reasons.push(`Позиция ${r.positionIndex + 1}: ${r.error}`); }
+          });
+          response.lotResults.forEach((lr) => {
+            const src = lastPayloadSources.lots[lr.lotIndex];
+            const innerFailed = lr.success ? (lr.results || []).filter((x) => !x.success) : [];
+            if (!lr.success) { failedItems.add(src); reasons.push(`Лот ${lr.lotIndex + 1}: ${lr.error}`); }
+            else if (innerFailed.length) { failedItems.add(src); innerFailed.forEach((x) => reasons.push(`Лот ${lr.lotIndex + 1}: ${x.error}`)); }
+            else createdItems.add(src);
+          });
+          createdItems.forEach((it) => { if (it && !failedItems.has(it)) removeItem(it.id); });
+          showSaveError(`Создано ${okCount} из ${okCount + failCount} (корзина ${response.cartId}). Не создано — поправьте и сохраните ещё раз:`, reasons.join(' · '));
+          showSaveToast(false, `Создано ${okCount} из ${okCount + failCount} — несозданное осталось на экране.`);
         }
-        navigateTo('orders');
       } catch (error) {
-        showSaveToast(false, `Не удалось создать корзину: ${error.message}`);
+        showSaveError('Не сохранено — ничего не создано. Поправьте и сохраните ещё раз:', error.message);
+        showSaveToast(false, 'Не сохранено — причина показана вверху экрана.');
       } finally {
         saving = false;
         saveBtn.disabled = false;

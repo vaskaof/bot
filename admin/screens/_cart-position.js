@@ -922,7 +922,15 @@ window.CartPosition = {
       item.reconciledShareRub = shareRub;
       if (shareRub === null) item.manualShare.reset(); // реконсиляция выключена целиком — не оставлять «вручную» висеть на скрытом блоке
       else item.manualShare.setAutoPreview(shareRub);
-      updateFeeRub();
+      // Комиссия введена только в рублях (процент пуст — база была 0, пока
+      // не было «Итога с сайта») — теперь база есть: считаем процент из
+      // рублей, а не стираем рубли пустым процентом (стадия 0, кейс 4DE4BD).
+      if (item.feePercentEl.value === '' && item.feeRubEl.value !== '') updateFeePercent();
+      else updateFeeRub();
+      // Гейт и прогноз заводятся ниже по тексту — к моменту реконсиляции уже
+      // есть, но вызов защищён на случай пересчёта во время сборки карточки.
+      if (item.commissionGate) item.commissionGate.refresh();
+      if (!(parseFloat(item.amountInputEl.value) > 0) && item.refreshForecast) item.refreshForecast();
     };
 
     // Комиссионный гейт Э6/D-10 (слияние «Новый заказ»→«Корзина»,
@@ -933,8 +941,19 @@ window.CartPosition = {
       feePercentSelector: '.fee-percent-input', feeRubSelector: '.fee-rub-input'
     });
 
+    // Пороги комиссии — сразу при создании карточки, независимо от цены
+    // (см. CartMoney.loadCommissionThresholds): проверка комиссии работает,
+    // даже если менеджер ввёл только «Итог с сайта выкупа».
+    CartMoney.loadCommissionThresholds().then((t) => { if (t) item.commissionGate.setThresholds(t); });
+
     const fetchForecast = debounce(async () => {
-      const amount = parseFloat(item.amountInputEl.value) || 0;
+      // Сумма для прогноза — введённая цена, а если её нет — доля «Итога с
+      // сайта выкупа», пришедшая на эту заявку (стадия 0 аудита менеджера,
+      // 27.09.2026: без этого прогноз логистики не заполнялся вовсе).
+      const typedAmount = parseFloat(item.amountInputEl.value) || 0;
+      const rate = ctx.getCurrentRate();
+      const amount = typedAmount > 0 ? typedAmount
+        : (item.reconciledShareRub && rate > 0 ? Math.round(item.reconciledShareRub / rate * 100) / 100 : 0);
       if (amount <= 0) return;
       try {
         const forecast = await callServer('getOrderForecast', amount, ctx.getCurrentCurrency(), ctx.currentChannel());
@@ -962,6 +981,7 @@ window.CartPosition = {
         });
       } catch (error) { /* прогноз — необязательное удобство, как в order-new.js */ }
     }, 400);
+    item.refreshForecast = fetchForecast;
 
     item.onRateChanged = () => {
       item.amountCurrencySymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
