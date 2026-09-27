@@ -32,7 +32,7 @@ const WRITEOFF_REASON_STATUSES = new Set(['Не найдено', 'Заказ о�
 // "Пропустить с причиной" (22.09.2026) — та же строка, что серверный
 // reminderService.DISMISSIBLE_KINDS/reminderItems.js's kind, читаемая подпись
 // для баннера на карточке заказа.
-const DISMISSIBLE_KIND_LABELS = { purchase_event_missing: 'Факт выкупа не зафиксирован' };
+const DISMISSIBLE_KIND_LABELS = { purchase_event_missing: 'Факт выкупа не зафиксирован', fields_missing: 'Не заполнены канал/аккаунт/карго/валюта' };
 
 window.Screens = window.Screens || {};
 window.Screens.orderEdit = {

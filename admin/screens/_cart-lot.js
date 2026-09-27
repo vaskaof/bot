@@ -260,6 +260,11 @@ window.CartLot = {
     // такой строки нет (все строки уже с товаром, или строк нет вовсе) —
     // прежнее поведение "только информирует".
     lotPurchaseLinkInputEl.addEventListener('input', () => renderPhotoStrip(lotPurchaseLinkPhotosEl, []));
+    // Волна 1 (28.09.2026) — ссылка выбирает канал корзины, если он пуст.
+    lotPurchaseLinkInputEl.addEventListener('change', () => {
+      const url = lotPurchaseLinkInputEl.value.trim();
+      if (/^https?:\/\//i.test(url) && ctx.onPurchaseLinkEntered) ctx.onPurchaseLinkEntered(url);
+    });
 
     lotPurchaseLinkResolveBtn.addEventListener('click', async () => {
       const url = lotPurchaseLinkInputEl.value.trim();

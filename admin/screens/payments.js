@@ -355,9 +355,20 @@ window.Screens.payments = {
     // scrollToAndHighlightOrder ниже.
     let highlightOrderId = params && params.orderId ? params.orderId : null;
     if (params && params.telegramId) {
-      const displayName = params.name || params.username || params.telegramId;
-      clientSearch.value = displayName;
-      selectClient({ telegramId: params.telegramId, username: params.username || '', name: params.name || '', displayName });
+      const openClient = (name, username) => {
+        const displayName = name && username ? `${name} (${username})` : (name || username || params.telegramId);
+        clientSearch.value = displayName;
+        selectClient({ telegramId: params.telegramId, username: username || '', name: name || '', displayName });
+      };
+      if (params.name || params.username) {
+        openClient(params.name || '', params.username || '');
+      } else {
+        // Волна 1 (28.09.2026) — пришли с одним Telegram ID (старые/внешние
+        // ссылки): подтягиваем имя, чтобы в заголовке был клиент, а не цифры.
+        callServer('getClientByTelegramId', params.telegramId)
+          .then((c) => openClient((c && c.name) || '', (c && c.username) || ''))
+          .catch(() => openClient('', ''));
+      }
     }
 
     function scrollToAndHighlightOrder(orderId) {
@@ -1268,8 +1279,9 @@ window.Screens.payments = {
       // с backend'а (LEFT JOIN clients в paymentClaimsRepository.
       // getPendingClaims), пусто, если клиент не найден в clients — тогда
       // показываем только telegramId, как и раньше.
+      // Волна 1 (28.09.2026) — Telegram ID только когда имени нет вовсе.
       const clientLabel = c.clientDisplay
-        ? `${escapeHtmlClient(c.clientDisplay)} (${escapeHtmlClient(c.clientTelegramId)})`
+        ? escapeHtmlClient(c.clientDisplay)
         : escapeHtmlClient(c.clientTelegramId);
 
       card.innerHTML = `

@@ -109,6 +109,43 @@ window.Screens.cartNew = {
 
         <!-- Шапка корзины — общая на все заявки внутри (§4 п.1 плана) -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mb-3">
+          <!-- Волна 1 аудита менеджера (28.09.2026) — канал первым: по нему
+               подставляются аккаунт, карго и валюта (частые варианты кнопками,
+               «Другой» раскрывает полный список). НЕ использовать обратные
+               кавычки в этом комментарии. -->
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
+                <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Канал выкупа</span>
+            </div>
+            <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseChannel"></select></div>
+          </div>
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                <i data-lucide="user" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Аккаунт</span>
+            </div>
+            <div class="flex-1 w-full min-w-0">
+              <div id="cart-account-chips" class="hidden flex flex-wrap gap-1.5 mb-1"></div>
+              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseAccount"></select>
+            </div>
+          </div>
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+                <i data-lucide="package" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Карго</span>
+            </div>
+            <div class="flex-1 w-full min-w-0">
+              <div id="cart-cargo-chips" class="hidden flex flex-wrap gap-1.5 mb-1"></div>
+              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="cargo"></select>
+            </div>
+          </div>
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -157,6 +194,12 @@ window.Screens.cartNew = {
                    сохранения. Пусто/скрыта, пока курс на сегодня (обычный
                    случай — не загромождать экран без нужды). -->
               <div id="cart-rate-date-caption" class="hidden text-[11px] text-right mt-0.5"></div>
+              <!-- Волна 1 (28.09.2026): заметный выбор валюты для каналов, где
+                   она бывает разной (AmazonUK — $ через конвертацию или £),
+                   и подсказка, если канал обычно в другой валюте, а суммы
+                   уже введены (молча менять валюту нельзя). -->
+              <div id="cart-currency-choice" class="hidden mt-2"></div>
+              <div id="cart-currency-hint" class="hidden mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-800 flex items-center justify-between gap-2"></div>
             </div>
           </div>
 
@@ -244,33 +287,6 @@ window.Screens.cartNew = {
               <span class="text-sm font-medium text-gray-700">Статус заказа</span>
             </div>
             <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusOrder"></select></div>
-          </div>
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
-                <i data-lucide="shopping-bag" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Канал выкупа</span>
-            </div>
-            <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseChannel"></select></div>
-          </div>
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
-                <i data-lucide="user" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Аккаунт</span>
-            </div>
-            <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="purchaseAccount"></select></div>
-          </div>
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
-                <i data-lucide="package" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Карго</span>
-            </div>
-            <div class="flex-1 w-full"><select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="cargo"></select></div>
           </div>
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
@@ -928,6 +944,115 @@ window.Screens.cartNew = {
 
     function currentChannel() { return document.querySelector('select[data-dict="purchaseChannel"]').value; }
 
+    // --- Волна 1 аудита менеджера (28.09.2026): канал → аккаунт/карго/валюта ---
+    // Подставляются самые частые для канала значения из истории заказов
+    // (см. _channel-defaults.js). Поле, выбранное человеком, больше не
+    // перезаписывается. Валюта меняется молча, только пока ни одной суммы
+    // не введено — иначе все введённые числа поменяли бы смысл ($→£ ≈ +35%),
+    // поэтому тогда только подсказка с кнопкой.
+    const channelSelectEl = document.querySelector('select[data-dict="purchaseChannel"]');
+    const accountChips = ChannelDefaults.wireChips(
+      document.querySelector('select[data-dict="purchaseAccount"]'), document.getElementById('cart-account-chips'));
+    const cargoChips = ChannelDefaults.wireChips(
+      document.querySelector('select[data-dict="cargo"]'), document.getElementById('cart-cargo-chips'));
+    const currencyChoiceEl = document.getElementById('cart-currency-choice');
+    const currencyHintEl = document.getElementById('cart-currency-hint');
+    let channelDefaultsData = {};
+    let currencyTouched = false;
+
+    function currentDictionaries() { return window.APP_DICTIONARIES || dictionaries; }
+
+    function cartHasAmounts() {
+      const inputs = document.querySelectorAll('#cart-items-list input[type="number"], #cart-site-total-input, #cart-discount-input');
+      return Array.from(inputs).some((el) => parseFloat(el.value) > 0);
+    }
+
+    function setCartCurrency(value) {
+      if (currencySelect.value === value) return;
+      currencySelect.value = value;
+      currencySelect.dispatchEvent(new Event('change'));
+    }
+
+    function hideCurrencyHint() {
+      currencyHintEl.classList.add('hidden');
+      currencyHintEl.innerHTML = '';
+    }
+
+    function showCurrencyHint(channel, value) {
+      const label = (currencySelect.querySelector(`option[value="${value}"]`) || {}).textContent || value;
+      currencyHintEl.innerHTML = `<span>Для «${escapeHtmlClient(channel)}» обычно ${escapeHtmlClient(label)}. Суммы уже введены — проверьте валюту.</span>`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'shrink-0 px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-800 font-medium';
+      btn.textContent = 'Сменить';
+      btn.addEventListener('click', () => { currencyTouched = true; setCartCurrency(value); hideCurrencyHint(); });
+      currencyHintEl.appendChild(btn);
+      currencyHintEl.classList.remove('hidden');
+    }
+
+    function renderCurrencyChoice() {
+      const choices = ChannelDefaults.CURRENCY_CHOICES[currentChannel()];
+      if (!choices) {
+        currencyChoiceEl.classList.add('hidden');
+        currencyChoiceEl.innerHTML = '';
+        return;
+      }
+      currencyChoiceEl.innerHTML = `<div class="text-[12px] text-gray-600 mb-1.5">В какой валюте платим на ${escapeHtmlClient(currentChannel())}?</div>`;
+      const row = document.createElement('div');
+      row.className = 'grid grid-cols-2 gap-2';
+      choices.forEach((c) => {
+        const active = currencySelect.value === c.value;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.currencyChoice = c.value;
+        btn.className = `py-2 rounded-xl border-2 text-sm font-bold ${active
+          ? 'bg-blue-600 border-blue-600 text-white'
+          : 'bg-white border-blue-200 text-blue-700'}`;
+        btn.innerHTML = `${escapeHtmlClient(c.label)}<div class="text-[10px] font-normal ${active ? 'text-blue-100' : 'text-gray-500'}">${escapeHtmlClient(c.note)}</div>`;
+        btn.addEventListener('click', () => { currencyTouched = true; setCartCurrency(c.value); hideCurrencyHint(); renderCurrencyChoice(); });
+        row.appendChild(btn);
+      });
+      currencyChoiceEl.appendChild(row);
+      currencyChoiceEl.classList.remove('hidden');
+    }
+
+    function applyChannelDefaults() {
+      const channel = currentChannel();
+      const stats = channelDefaultsData[channel] || {};
+      const dicts = currentDictionaries();
+      accountChips.setOptions(ChannelDefaults.topValues(stats.accounts, dicts.purchaseAccount, 3));
+      cargoChips.setOptions(ChannelDefaults.topValues(stats.cargos, dicts.cargo, 3));
+
+      hideCurrencyHint();
+      const known = Array.from(currencySelect.options).map((o) => o.value);
+      const choices = ChannelDefaults.CURRENCY_CHOICES[channel];
+      const usual = (stats.currencies || []).map((c) => c.value).find((v) => known.includes(v))
+        || (choices ? choices[0].value : null);
+      if (usual && usual !== currencySelect.value && !currencyTouched) {
+        if (cartHasAmounts()) showCurrencyHint(channel, usual);
+        else setCartCurrency(usual);
+      }
+      renderCurrencyChoice();
+    }
+
+    channelSelectEl.addEventListener('change', applyChannelDefaults);
+    ChannelDefaults.load().then((data) => {
+      channelDefaultsData = data || {};
+      if (currentChannel()) applyChannelDefaults();
+    });
+
+    // Ссылка определяет канал, ТОЛЬКО если канал ещё не выбран: ссылка
+    // бывает намеренно с другого сайта (Mattel-ссылка ради распознавания
+    // куклы при покупке на Amazon) — выбранный канал она не трогает.
+    function onPurchaseLinkEntered(url) {
+      if (currentChannel()) return;
+      const guessed = FormHelpers.guessPurchaseChannel(url, currentDictionaries().purchaseChannel);
+      if (!guessed) return;
+      FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', guessed);
+      channelSelectEl.dispatchEvent(new Event('change'));
+      showSaveToast(true, `Канал «${guessed}» — по ссылке. Проверьте аккаунт и карго.`);
+    }
+
     // Лестница статусов доставки — та же клиентская механика, что
     // order-new.js/lot-new.js (заявки ещё не сохранены, сервер её посчитать
     // не может).
@@ -1083,6 +1208,8 @@ window.Screens.cartNew = {
 
     document.getElementById('cart-refresh-rate').addEventListener('click', refreshRate);
     currencySelect.addEventListener('change', (e) => { currentCurrency = e.target.value; applyCurrentCurrencyRate(); });
+    currencySelect.addEventListener('input', () => { currencyTouched = true; hideCurrencyHint(); });
+    currencySelect.addEventListener('change', renderCurrencyChoice);
     dateInput.addEventListener('change', refreshRateForDate);
     refreshRate();
 
@@ -1620,7 +1747,9 @@ window.Screens.cartNew = {
       // §3 B1 — читаемая выкладка на карточке ("Доля разницы (по сумме ·
       // N%)"), используется и позицией, и лотом целиком (НЕ строками ВНУТРИ
       // лота — там своя, слайдерная разбивка без переключателя режима, §3 B5).
-      diffSplitModeLabel, diffSharePercentFor
+      diffSplitModeLabel, diffSharePercentFor,
+      // Волна 1 (28.09.2026) — ссылка на покупку выбирает канал, если он пуст.
+      onPurchaseLinkEntered
     };
 
     function removeItem(id) {
@@ -1665,6 +1794,11 @@ window.Screens.cartNew = {
       // применится no-op сейчас, по-настоящему сработает, когда придёт
       // реальный курс (currentCurrency к тому моменту уже верный).
       if (h.currency) { currencySelect.value = h.currency; currencySelect.dispatchEvent(new Event('change')); }
+      // Волна 1 — значения исходной корзины важнее автоподстановки по каналу.
+      if (h.purchaseAccount) accountChips.markTouched();
+      if (h.cargo) cargoChips.markTouched();
+      if (h.currency) currencyTouched = true;
+      renderCurrencyChoice();
       // Статус доставки/заказа НЕ переносится (явное решение VASY,
       // ROLES-AND-NOTIFICATIONS.md §7 п.1) — новая позиция стартует
       // обычным дефолтом, как при создании корзины с нуля, а не

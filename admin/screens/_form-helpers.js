@@ -182,21 +182,37 @@ window.FormHelpers = {
     if (!hostMatch) return null;
     const host = hostMatch[1].toLowerCase();
 
-    const DOMAIN_KEYWORDS = [
-      ['amazon.', 'amazon'],
-      ['ebay.', 'ebay'],
-      ['mercari.', 'mercari'],
-      ['mattel.com', 'mattel'],
-      ['bratz.com', 'bratz'],
-      ['aliexpress.', 'aliexpress'],
-      ['etsy.', 'etsy'],
-      ['walmart.', 'walmart'],
-      ['target.', 'target']
+    // Волна 1 аудита менеджера (28.09.2026) — точные каналы по стране
+    // площадки. Раньше любая amazon-ссылка находила ПЕРВЫЙ канал со словом
+    // "amazon" — рудимент «Amazon» (стоял в справочнике раньше AmazonUSA/UK/
+    // DEU), и заказы продолжали на него заводиться. Сначала ищем точное имя
+    // канала из `exact`, иначе — старое правило "канал содержит keyword".
+    const DOMAIN_RULES = [
+      { test: (h) => /(^|\.)amazon\.co\.uk$/.test(h), exact: ['AmazonUK'], keyword: 'amazon' },
+      { test: (h) => /(^|\.)amazon\.de$/.test(h), exact: ['AmazonDEU'], keyword: 'amazon' },
+      { test: (h) => /(^|\.)amazon\.com$/.test(h), exact: ['AmazonUSA'], keyword: 'amazon' },
+      { test: (h) => h.includes('amazon.'), exact: [], keyword: 'amazon' },
+      { test: (h) => h.includes('ebay.'), exact: ['eBay'], keyword: 'ebay' },
+      { test: (h) => h.includes('mattel.com'), exact: ['Mattel'], keyword: 'mattel' },
+      { test: (h) => h.includes('bratz.com'), exact: ['Bratz'], keyword: 'bratz' },
+      { test: (h) => h.includes('mgae.com') || h.includes('mgashop'), exact: ['MGA SHOP'], keyword: 'mga' },
+      { test: (h) => h.includes('walmart.'), exact: ['Walmart'], keyword: 'walmart' },
+      { test: (h) => h.includes('target.'), exact: ['Target'], keyword: 'target' },
+      { test: (h) => h.includes('shein.'), exact: ['SHEIN'], keyword: 'shein' },
+      { test: (h) => h.includes('pinduoduo.') || h.includes('yangkeduo.'), exact: ['Pinduoduo'], keyword: 'pinduo' },
+      { test: (h) => h.includes('mercari.'), exact: [], keyword: 'mercari' },
+      { test: (h) => h.includes('aliexpress.'), exact: [], keyword: 'aliexpress' },
+      { test: (h) => h.includes('etsy.'), exact: [], keyword: 'etsy' }
     ];
 
-    for (const [domainFragment, keyword] of DOMAIN_KEYWORDS) {
-      if (!host.includes(domainFragment)) continue;
-      const match = availableChannels.find(ch => ch.toLowerCase().includes(keyword));
+    const lower = availableChannels.map((ch) => ch.toLowerCase());
+    for (const rule of DOMAIN_RULES) {
+      if (!rule.test(host)) continue;
+      for (const name of rule.exact) {
+        const idx = lower.indexOf(name.toLowerCase());
+        if (idx !== -1) return availableChannels[idx];
+      }
+      const match = availableChannels.find((ch) => ch.toLowerCase().includes(rule.keyword));
       if (match) return match;
     }
     return null;

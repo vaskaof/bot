@@ -181,6 +181,7 @@ const METHOD_LABELS = {
   getCostBufferReport: 'Отчёт по буферу расходов',
   getDeletedOrdersList: 'Список удалённых заказов',
   getDictionaries: 'Справочники',
+  getChannelDefaults: 'Подстановка по каналу выкупа',
   getEarmarksForClient: 'Метки/резервы клиента',
   getEntityAuditLog: 'Журнал изменений сущности',
   getFinancialSettings: 'Финансовые настройки',

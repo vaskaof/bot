@@ -303,7 +303,10 @@ window.Screens.reminders = {
         payBtn.textContent = 'Записать оплату';
         payBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          navigateTo('payments', { telegramId: card.clientTelegramId, orderId: card.orderId });
+          navigateTo('payments', {
+            telegramId: card.clientTelegramId, orderId: card.orderId,
+            name: card.clientName || '', username: card.clientUsername || ''
+          });
         });
         actionsEl.appendChild(payBtn);
       }
@@ -380,12 +383,12 @@ window.Screens.reminders = {
         });
       }
 
-      // "Пропустить с причиной" (22.09.2026) — ТОЛЬКО для purchase_event_missing
-      // (см. серверный DISMISSIBLE_KINDS за обоснованием, почему это не
-      // общая кнопка на любом пункте). Постоянно, в отличие от "Отложить" на
-      // всей карточке — для старых заказов, где курс на момент выкупа
-      // физически не восстановить, откладывать нечем закрывать.
-      if (item.kind === 'purchase_event_missing') {
+      // "Пропустить с причиной" (22.09.2026) — ТОЛЬКО для видов из серверного
+      // DISMISSIBLE_KINDS (см. обоснование там, почему это не общая кнопка
+      // на любом пункте). С волны 1 (28.09.2026) это "Не заполнено: канал/
+      // аккаунт/карго/валюта" — для старых заказов, где данные уже не
+      // восстановить. "Факт выкупа" больше не напоминание вовсе.
+      if (item.kind === 'fields_missing') {
         const holder = row.querySelector('[data-inline-fill]');
         holder.innerHTML = `
           <div class="flex items-center gap-1.5 mt-1">
@@ -396,7 +399,7 @@ window.Screens.reminders = {
         dismissBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const reason = await showPromptModal(
-            'Почему этот пункт нельзя закрыть? (например: "курс на момент выкупа не восстановить, заказ старше 2 месяцев")',
+            'Почему этот пункт нельзя закрыть? (например: "старый заказ, аккаунт уже не вспомнить")',
             { confirmLabel: 'Пропустить', cancelLabel: 'Отмена' }
           );
           if (reason === null) return;

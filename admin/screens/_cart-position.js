@@ -699,10 +699,18 @@ window.CartPosition = {
     // `item` — здесь отдельная проводка больше не нужна (§3 B1, ИСПРАВЛЕНО
     // 06.09.2026, заменила слайдер).
 
+    // Волна 1 (28.09.2026) — ссылка выбирает канал корзины, если он пуст
+    // ('change', не 'input': на полуввёденном домене угадывать рано).
+    item.purchaseLinkInputEl.addEventListener('change', () => {
+      const url = item.purchaseLinkInputEl.value.trim();
+      if (/^https?:\/\//i.test(url) && ctx.onPurchaseLinkEntered) ctx.onPurchaseLinkEntered(url);
+    });
+
     // Ссылка на покупку — тот же паттерн, что order-new.js:794-969.
     item.purchaseLinkResolveBtn.addEventListener('click', async () => {
       const url = item.purchaseLinkInputEl.value.trim();
       if (!url) return;
+      if (ctx.onPurchaseLinkEntered) ctx.onPurchaseLinkEntered(url);
       item.purchaseLinkResolveBtn.disabled = true;
       try {
         const result = await callServer('resolveOrderProductLink', url);
