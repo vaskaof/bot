@@ -40,7 +40,12 @@ window.Screens = window.Screens || {};
 window.Screens.staff = {
   render(root, dictionaries, params, signal) {
     document.getElementById('header-left').innerHTML = '<h1 class="text-lg font-semibold text-gray-900 tracking-tight">Персонал</h1>';
+    // «Итоги года» (геймификация §4.4) — на широком экране пункта «Ещё» нет,
+    // а «Персонал» там виден в нижней панели: вход отсюда.
     document.getElementById('header-actions').innerHTML = `
+      <button type="button" id="staff-year-summaries-btn" title="Итоги года" class="p-2 text-indigo-600">
+        <i data-lucide="party-popper" class="w-5 h-5"></i>
+      </button>
       <button type="button" id="staff-report-toggle-btn" title="Отчёт по менеджерам" class="p-2 text-indigo-600">
         <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
       </button>
@@ -164,6 +169,7 @@ window.Screens.staff = {
 
     let reportDays = 30;
     let activePanelTab = 'report'; // 'report' | 'audit'
+    document.getElementById('staff-year-summaries-btn').addEventListener('click', () => navigateTo('year-summaries'));
     document.getElementById('staff-report-toggle-btn').addEventListener('click', () => {
       const panel = document.getElementById('staff-report-panel');
       panel.classList.toggle('hidden');
