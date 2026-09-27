@@ -37,7 +37,7 @@ window.Screens.collectionAlbum = {
     function headline(d) {
       const left = d.totalCount - d.ownedCount;
       if (d.totalCount > 0 && left === 0) return 'Коллекция собрана';
-      if (left === 1) return 'Осталась одна кукла';
+      if (left === 1) return 'Осталась всего одна!';
       return `Осталось ${left} ${Hunt.plural(left, 'кукла', 'куклы', 'кукол')}`;
     }
 
@@ -49,8 +49,8 @@ window.Screens.collectionAlbum = {
       const len = 2 * Math.PI * r;
       const pct = d.totalCount > 0 ? d.ownedCount / d.totalCount : 0;
       const hint = done
-        ? 'Золотая рамка — навсегда.'
-        : `${d.wantCount > 0 ? `${d.wantCount} уже в вишлисте. ` : ''}Нажмите на серую — добавим в охоту.`;
+        ? 'Коллекция собрана! Золотая рамка — навсегда 🏆'
+        : `${d.wantCount > 0 ? `${d.wantCount} уже в вишлисте. ` : ''}Нажмите на серую — и начнём охоту за ней.`;
 
       const tiles = d.items.map((it) => Hunt.tileHtml({
         state: it.state,
@@ -136,7 +136,7 @@ window.Screens.collectionAlbum = {
             Hunt.closeSheet();
             Hunt.haptic('light');
             popSku = item.skuOriginal;
-            showSaveToast(true, addToChecklist ? `${item.productDisplay} — на полке` : `${item.productDisplay} — в вишлисте. Охота началась`);
+            showSaveToast(true, addToChecklist ? `${item.productDisplay} — на полке. Коллекция растёт!` : `${item.productDisplay} — в вишлисте. Охота началась! 🎯`);
             load();
           } catch (error) {
             btn.disabled = false;

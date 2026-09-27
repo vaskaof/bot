@@ -437,6 +437,24 @@
   }
 
   /**
+   * Подпись под названием в «Добыто!» — по длине охоты (тон — 27.09.2026:
+   * эмоция по ситуации, не одна формальная строка на все случаи).
+   */
+  function celebrationSub(c) {
+    const d = c.huntDays;
+    if (c.isGrail) {
+      return d > 0
+        ? `Кукла мечты — ваша. <b>${days(d)}</b> охоты, и золотая рамка — навсегда`
+        : 'Кукла мечты — ваша. Золотая рамка — навсегда';
+    }
+    if (d === null || d === undefined) return 'Теперь она ваша — и уже на полке!';
+    if (d === 0) return 'Захотели — и в тот же день ваша. Вот это удача!';
+    if (d < 14) return `Охота длилась <b>${days(d)}</b> — быстро!`;
+    if (d < 90) return `Охота длилась <b>${days(d)}</b> — и она того стоила`;
+    return `<b>${days(d)}</b> охоты — и вы дождались! 💪`;
+  }
+
+  /**
    * Праздник «Добыто!» по данным сервера (huntService.buildCelebrations).
    * S3 — Грааль или закрытая коллекция, иначе S2.
    */
@@ -445,12 +463,9 @@
     const completed = Boolean(coll && coll.completed);
     const gold = c.isGrail || completed;
     const eyebrow = c.isGrail ? 'Грааль найден!' : completed ? 'Коллекция собрана!' : 'Добыто!';
-    let sub;
-    if (c.huntDays === null || c.huntDays === undefined) sub = 'Теперь на вашей полке';
-    else if (c.huntDays === 0) sub = 'Добыта в тот же день';
-    else sub = `Охота длилась <b>${days(c.huntDays)}</b>`;
-    const extra = c.isGrail && completed ? '<div class="hn-csub" style="color:#8A5A00;font-weight:700;margin-top:6px">…и коллекция собрана целиком</div>' : '';
-    const collHtml = coll ? `<div class="hn-coll"><div class="hn-coll-r"><b>${esc(coll.name)}</b><span data-hn-cnt>${coll.before} из ${coll.total}</span></div><div class="hn-bar${gold ? ' gold' : ''}"><i data-hn-bar style="width:${coll.before / coll.total * 100}%"></i></div>${coll.total - coll.after === 1 ? '<div class="hn-last" data-hn-last>Осталась всего одна!</div>' : ''}</div>` : '';
+    const sub = celebrationSub(c);
+    const extra = c.isGrail && completed ? '<div class="hn-csub" style="color:#8A5A00;font-weight:700;margin-top:6px">…и коллекция собрана целиком! Двойной праздник 🎉</div>' : '';
+    const collHtml = coll ? `<div class="hn-coll"><div class="hn-coll-r"><b>${esc(coll.name)}</b><span data-hn-cnt>${coll.before} из ${coll.total}</span></div><div class="hn-bar${gold ? ' gold' : ''}"><i data-hn-bar style="width:${coll.before / coll.total * 100}%"></i></div>${coll.total - coll.after === 1 ? '<div class="hn-last" data-hn-last>Осталась всего одна — и коллекция ваша!</div>' : ''}</div>` : '';
     const actions = gold
       ? '<button type="button" class="hn-btn gold" data-hn-act="share"><i data-lucide="send"></i>Поделиться</button><button type="button" class="hn-btn plain" data-hn-act="shelf">На полку</button>'
       : '<button type="button" class="hn-btn primary" data-hn-act="shelf">На полку</button><button type="button" class="hn-btn plain" data-hn-act="share">Поделиться</button>';
@@ -495,7 +510,7 @@
   function achievementsHtml(list) {
     if (!list || list.length === 0) return '';
     const gold = list.some((a) => a.gold);
-    return `<div class="hn-ach${gold ? ' gold' : ''}">${list.map((a) => `<div>🏅 Новое достижение: <b>${esc(a.title)}</b></div>`).join('')}</div>`;
+    return `<div class="hn-ach${gold ? ' gold' : ''}">${list.map((a) => `<div>🏅 Новое достижение: <b>${esc(a.title)}</b>${a.cheer ? `<div style="font-weight:400;opacity:.85">${esc(a.cheer)}</div>` : ''}</div>`).join('')}</div>`;
   }
 
   function markAchievementsSeen(list) {
@@ -507,7 +522,7 @@
   function achievementsToastText(list) {
     if (!list || list.length === 0) return '';
     return list.length === 1
-      ? `🏅 Новое достижение: ${list[0].title}`
+      ? `🏅 Новое достижение: ${list[0].title}${list[0].cheer ? ` — ${list[0].cheer}` : ''}`
       : `🏅 Новые достижения: ${list.map((a) => a.title).join(', ')}`;
   }
 
@@ -526,7 +541,7 @@
       const result = await callServer('shareWishlistCollage', wishlistIds);
       const achievements = (result && result.achievements) || [];
       const achText = achievementsToastText(achievements);
-      showSaveToast(true, 'Картинка придёт вам в чат с ботом через несколько секунд' + (achText ? ` · ${achText}` : ''));
+      showSaveToast(true, 'Собираем картинку — через несколько секунд она будет в чате с ботом ✨' + (achText ? ` · ${achText}` : ''));
       markAchievementsSeen(achievements);
     } catch (error) {
       showSaveToast(false, error.message);
@@ -594,8 +609,8 @@
     const first = arrivals[0];
     // Дни охоты (§3.5, г) — сервер отдаёт их только для настоящей охоты от недели.
     const text = arrivals.length === 1
-      ? `${first.name} теперь на полке${first.huntDays ? ` — охота заняла ${days(first.huntDays)}` : ''}`
-      : `На полку: ${arrivals.length} ${plural(arrivals.length, 'кукла', 'куклы', 'кукол')}`;
+      ? `${first.name} — у вас!${first.huntDays ? ` ${days(first.huntDays)} охоты позади 💛` : ' 💛'}`
+      : `На полке пополнение: +${arrivals.length} ${plural(arrivals.length, 'кукла', 'куклы', 'кукол')} 💛`;
     showSaveToast(true, text);
   }
 

@@ -30,7 +30,7 @@ window.Screens.yearSummary = {
       try {
         summary = await callServer('getMyYearSummary');
         if (!summary) {
-          body.innerHTML = `<div class="p-6 text-center text-sm text-gray-500">Итоги года появятся 25 декабря — мы пришлём их в чат с ботом.</div>`;
+          body.innerHTML = `<div class="p-6 text-center text-sm text-gray-500">Итоги года ещё копятся 🎄 25 декабря пришлём их в чат с ботом — будет что вспомнить!</div>`;
           return;
         }
         picked = summary.doll ? summary.doll.orderId : null;
@@ -59,11 +59,11 @@ window.Screens.yearSummary = {
 
       const facts = [];
       if (d.ordered > 1 && d.firstDoll) facts.push(['sparkles', `Первая кукла года: ${d.firstDoll.name}`]);
-      if (d.favoriteSeries) facts.push(['layers', `Любимая серия: ${d.favoriteSeries.name} (${d.favoriteSeries.count})`]);
-      if (d.bestMonth) facts.push(['calendar', `Самый активный месяц: ${d.bestMonth.label}`]);
+      if (d.favoriteSeries) facts.push(['layers', `Любимая серия: ${d.favoriteSeries.name} — ${d.favoriteSeries.count} ${P(d.favoriteSeries.count, 'кукла', 'куклы', 'кукол')}`]);
+      if (d.bestMonth) facts.push(['calendar', `Самый охотничий месяц: ${d.bestMonth.label}`]);
       if (d.grails.length > 0) facts.push(['star', `${d.grails.length > 1 ? 'Граали' : 'Грааль'}: ${d.grails.join(', ')}`]);
       if (d.achievements.length > 0) facts.push(['award', `Достижения: ${d.achievements.join(', ')}`]);
-      if (d.since) facts.push(['heart', `С нами с ${d.since}`]);
+      if (d.since) facts.push(['heart', `Охотимся вместе с ${d.since}`]);
 
       const canPick = d.dolls.length > 1;
       const heroLabel = d.ordered === 1 ? 'Ваша первая кукла с нами' : 'Кукла года';
