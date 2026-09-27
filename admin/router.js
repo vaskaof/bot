@@ -77,6 +77,9 @@ const ROUTES = [
   // Короткие названия по тегам (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.15, 26.09.2026).
   { path: 'catalog/short-names', screen: 'catalogShortNames', navKey: null, showNav: false },
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
+  // «Итоги года» — модерация рассылки (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.2),
+  // admin-only, вход из «Ещё» и кнопкой из сообщения бота 18.12.
+  { path: 'year-summaries', screen: 'yearSummaries', navKey: 'more', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 

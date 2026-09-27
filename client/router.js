@@ -63,6 +63,12 @@ function matchRoute(hash) {
     return { screen: 'wishlist', navKey: 'wishlist', params: { openTransit: true } };
   }
 
+  // «Итоги года» (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.2) — кнопка под
+  // картинкой итогов в чате и баннер; часть «Моих кукол».
+  if (clean === 'year') {
+    return { screen: 'yearSummary', navKey: 'wishlist', params: {} };
+  }
+
   // Альбом коллекции (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.3) — часть
   // «Мои куклы», поэтому подсвечен тот же пункт нижней навигации.
   const collectionMatch = clean.match(/^collection\/(\d+)$/);

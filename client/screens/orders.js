@@ -22,6 +22,9 @@ window.Screens.orders = {
 
         <div id="priority-rollup-card" class="hidden bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3"></div>
 
+        <!-- «Итоги года» (§4.2 плана геймификации) — 25.12–31.01, см. year-summary.js -->
+        <div id="year-banner"></div>
+
         <div id="transit-invite" class="hidden mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center gap-3">
           <span class="text-xl shrink-0">🧸</span>
           <div class="flex-1 min-w-0 text-sm text-indigo-900"><span id="transit-invite-text"></span></div>
@@ -128,6 +131,7 @@ window.Screens.orders = {
       try { localStorage.setItem(TRANSIT_INVITE_HIDE_KEY, String(Date.now() + TRANSIT_INVITE_HIDE_MS)); } catch (_e) { /* не критично */ }
     });
     loadTransitInvite();
+    if (window.renderYearSummaryBanner) window.renderYearSummaryBanner(document.getElementById('year-banner'));
 
     function renderPriorityRollup(rollup) {
       const card = document.getElementById('priority-rollup-card');

@@ -44,7 +44,11 @@ window.Screens.more = {
       // вообще не видит (не просто задизейблена — её нет в массиве). Это
       // косметика, реальный гейт уже на сервере (MANAGER_ALLOWED_METHODS).
       ...(window.CURRENT_ACCESS_ROLE === 'admin'
-        ? [{ route: 'staff', icon: 'user-cog', title: 'Персонал', description: 'Менеджеры/админы, роли, журнал изменений' }]
+        ? [
+          { route: 'staff', icon: 'user-cog', title: 'Персонал', description: 'Менеджеры/админы, роли, журнал изменений' },
+          // «Итоги года» (§4.2 плана геймификации) — проверка перед рассылкой 25.12.
+          { route: 'year-summaries', icon: 'party-popper', title: 'Итоги года', description: 'Проверка и рассылка итогов клиентам' }
+        ]
         : [])
     ];
 

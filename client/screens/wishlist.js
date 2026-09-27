@@ -163,6 +163,9 @@ window.Screens.wishlist = {
         <!-- «Мы узнали N ваших кукол» (§11.16.1, «сверху» п.2) -->
         <div id="match-banner" class="hidden"></div>
 
+        <!-- «Итоги года» (§4.2 плана геймификации) — 25.12–31.01, на обоих табах, см. year-summary.js -->
+        <div id="year-banner"></div>
+
         <div id="wishlist-tab">
           <!-- «Ваши заказы в пути» (§3.5 плана геймификации) — пока есть заказы,
                которые клиент ещё не отметил «это мне» / «не мне». -->
@@ -595,6 +598,8 @@ window.Screens.wishlist = {
       await huntStateDone.catch(() => {});
       openTransitModal();
     });
+
+    if (window.renderYearSummaryBanner) window.renderYearSummaryBanner(document.getElementById('year-banner'));
 
     const transitBanner = document.getElementById('transit-banner');
     function renderTransitBanner() {
