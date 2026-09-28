@@ -280,6 +280,90 @@ function computeBookingFields(bookingSumRub, alreadyPaidRub) {
 }
 
 /**
+ * «Итог и оплаты» (волна 2 аудита менеджера, сессия 2, 28.09.2026) — вместо
+ * поля «Сколько уже оплачено» на каждой карточке менеджер в конце
+ * оформления выбирает по каждому клиенту: Ничего / Бронь / Всё / Другое
+ * (выбор обязателен, решение VASY). Бронь — комиссия заказа, Всё — сумма
+ * заказа (стоимость + комиссия, без веса и доставки), Другое — сумма ₽
+ * отдельно на каждый заказ клиента в корзине.
+ * `choice` — {kind, custom:{[uid]: строка ввода}} или null (ещё не выбрано).
+ * @param {{kind:string, custom?:Object}|null|undefined} choice
+ * @param {{uid:string, mainSum:number, commission:number}} order
+ * @returns {number} ₽, >= 0
+ */
+function paidRubFor(choice, order) {
+  if (!choice) return 0;
+  let value = 0;
+  if (choice.kind === 'booking') value = Number(order.commission) || 0;
+  else if (choice.kind === 'full') value = Number(order.mainSum) || 0;
+  else if (choice.kind === 'custom') value = parseFloat((choice.custom || {})[order.uid]) || 0;
+  return value > 0 ? value : 0;
+}
+
+/**
+ * Поля оплаты при создании для одной заявки createOrder. `paidAtCreation`
+ * говорит серверу, ЧТО выбрано: для «Бронь»/«Всё» он сам берёт сумму из
+ * своих (уже пересчитанных) комиссии/суммы заказа — см.
+ * ordersService.applyPaidAtCreation. Остальные поля — прежний контракт,
+ * на случай, если сервер поле не знает.
+ * @param {string} kind 'none'|'booking'|'full'|'custom'
+ * @param {number} paidRub
+ * @param {number} bookingSumRub комиссия заявки на экране
+ */
+function paymentPayloadFields(kind, paidRub, bookingSumRub) {
+  const paid = Number(paidRub) > 0 ? Number(paidRub) : 0;
+  const booking = computeBookingFields(Number(bookingSumRub) || 0, paid);
+  return {
+    paidAtCreation: kind || 'none',
+    mainAmountReceivedAtCreation: paid > 0 ? paid.toFixed(2) : '',
+    bookingPaid: booking.bookingPaid,
+    bookingAlreadyInMainAmount: booking.bookingAlreadyInMainAmount
+  };
+}
+
+/**
+ * Что мешает сохранить выбор оплат. Пустой массив — всё выбрано.
+ * @param {{key:string, label:string, orders:{uid:string, commission:number}[]}[]} groups строки клиентов
+ * @param {{get:function(string)}} choices Map clientKey → choice
+ * @returns {{key:string, message:string}[]}
+ */
+function paymentChoiceProblems(groups, choices) {
+  const problems = [];
+  groups.forEach((g) => {
+    const choice = choices.get(g.key);
+    if (!choice || !choice.kind) { problems.push({ key: g.key, message: `${g.label}: выберите, сколько уже оплачено` }); return; }
+    if (choice.kind === 'booking' && !g.orders.some((o) => (Number(o.commission) || 0) > 0)) {
+      problems.push({ key: g.key, message: `${g.label}: комиссии нет — «Бронь» не подходит` });
+      return;
+    }
+    if (choice.kind === 'custom') {
+      const bad = g.orders.some((o) => {
+        const value = (choice.custom || {})[o.uid];
+        const raw = value === undefined || value === null ? '' : String(value).trim();
+        return raw === '' || !(parseFloat(raw) >= 0);
+      });
+      if (bad) problems.push({ key: g.key, message: `${g.label}: впишите сумму «Другое»${g.orders.length > 1 ? ' по каждому заказу' : ''}` });
+    }
+  });
+  return problems;
+}
+
+/**
+ * Одна позиция в корзине — на карточке одно поле «Сумма по чеку» (итог с
+ * налогом и доставкой) и «Была скидка?». Сервер получает то же, что раньше
+ * давали «цена» + «Итог с сайта»: цена = чек + скидка, итог корзины = чек
+ * (итог нужен только при скидке — без неё цена и есть чек).
+ * @param {number} check в валюте корзины
+ * @param {number} discount в валюте корзины, 0 — скидки не было
+ * @returns {{amount:number, siteTotal:(number|null)}}
+ */
+function singleCheckToAmounts(check, discount) {
+  const c = Number(check) || 0;
+  const d = Number(discount) > 0 ? Number(discount) : 0;
+  return { amount: Math.round((c + d) * 100) / 100, siteTotal: d > 0 && c > 0 ? c : null };
+}
+
+/**
  * Пороги комиссии (мягкая подсказка / обязательная причина) — один запрос на
  * открытие экрана, общий для всех карточек (стадия 0 аудита менеджера,
  * 27.09.2026, кейс 4DE4BD). Раньше пороги приходили только вместе с
@@ -304,5 +388,7 @@ window.CartMoney = {
   feeRubFromPercent, feePercentFromRub, totalFromFeeRub, feeRubFromTotal, clampTotal,
   totalBreakdownText, splitProportionallyClient, humanFractionLabel,
   CURRENCY_SYMBOLS, computeBookingFields, FORECAST_FIELD_KEYS,
-  diffWeightFor, normalizeDegenerateWeights
+  diffWeightFor, normalizeDegenerateWeights,
+  paidRubFor, paymentPayloadFields, paymentChoiceProblems,
+  singleCheckToAmounts
 };

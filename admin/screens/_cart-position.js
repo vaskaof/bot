@@ -153,12 +153,36 @@ window.CartPosition = {
            (светло-синий фон + синий символ валюты) — раньше и «Сумма»
            (валюта), и «Комиссия ₽» (рубли) были одинаковым серым, репорт
            из плана: "Сейчас они одинаковые". -->
+      <!-- Волна 2 аудита менеджера, сессия 2 (28.09.2026): одна позиция в
+           корзине — это поле «Сумма по чеку» (итог с налогом и доставкой),
+           «Итог с сайта» отдельно не вводится; позиций больше — «Цена
+           позиции», итог по чеку — в блоке «Итог и оплаты». Подпись и
+           «Была скидка?» переключает setSingleMode. НЕ использовать обратные
+           кавычки в этом комментарии. -->
+      <label class="amount-label text-[11px] text-gray-500">Цена позиции</label>
       <div class="flex items-center gap-3 mb-2">
         <div class="flex items-center gap-1 flex-1">
           <span class="amount-currency-symbol text-sm text-blue-500 font-medium"></span>
           <input type="number" class="amount-input w-full bg-blue-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
         </div>
         <div class="text-xs text-gray-500 shrink-0">≈ <span class="amount-rub-display">0.00</span> ₽</div>
+      </div>
+      <div class="single-check-extras hidden mb-2 -mt-1">
+        <div class="text-[10px] text-gray-400 mb-1">Итог по чеку — с налогом и доставкой, как списано.</div>
+        <button type="button" class="had-discount-btn text-[11px] text-indigo-600 font-medium">Была скидка?</button>
+        <div class="single-discount-block hidden mt-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200">
+          <label class="text-[11px] text-amber-800">Скидка/купон</label>
+          <div class="flex items-center gap-1 mb-1.5">
+            <span class="single-discount-symbol text-sm text-blue-500 font-medium"></span>
+            <input type="number" class="single-discount-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-amber-200" placeholder="0.00" step="0.01" min="0">
+          </div>
+          <div class="text-[11px] text-amber-800 mb-1">Кому скидка?</div>
+          <div class="flex gap-2">
+            <button type="button" data-recipient="client" class="single-discount-recipient-btn flex-1 px-2 py-1.5 text-[11px] rounded-lg border border-gray-200 bg-white text-gray-600">Клиенту</button>
+            <button type="button" data-recipient="self" class="single-discount-recipient-btn flex-1 px-2 py-1.5 text-[11px] rounded-lg border border-gray-200 bg-white text-gray-600">Себе</button>
+          </div>
+          <div class="single-discount-hint text-[11px] text-amber-800 mt-1.5"></div>
+        </div>
       </div>
 
       <!-- Читаемая выкладка расчёта (§3 B1, IMPLEMENTATION-PLAN-CART-UX-2.md,
@@ -260,10 +284,8 @@ window.CartPosition = {
         Товар выкупил сам клиент (мы только доставляем)
         ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически, т.к. сама не покупала.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
       </label>
-      <div class="mb-2">
-        <label class="text-[11px] text-gray-500">Сколько уже оплачено, ₽</label>
-        <input type="number" class="already-paid-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="0.00" step="0.01">
-      </div>
+      <!-- «Сколько уже оплачено» переехало в блок «Итог и оплаты» в конце
+           экрана (волна 2, сессия 2) — выбор по клиенту. -->
       </div>
       <div class="mb-2">
         <label class="text-[11px] text-gray-500">Примечание</label>
@@ -318,7 +340,15 @@ window.CartPosition = {
       reconciledShareRub: null,
       ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
       clientSelfPurchasedCheckboxEl: rowEl.querySelector('.client-self-purchased-checkbox'),
-      alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
+      // Одна позиция в корзине — «Сумма по чеку» + «Была скидка?» (см. setSingleMode).
+      amountLabelEl: rowEl.querySelector('.amount-label'),
+      singleExtrasEl: rowEl.querySelector('.single-check-extras'),
+      singleDiscountBlockEl: rowEl.querySelector('.single-discount-block'),
+      singleDiscountInputEl: rowEl.querySelector('.single-discount-input'),
+      singleDiscountSymbolEl: rowEl.querySelector('.single-discount-symbol'),
+      singleDiscountHintEl: rowEl.querySelector('.single-discount-hint'),
+      singleMode: false,
+      singleDiscountRecipient: null,
       purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
       purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
       linkStatusEl: rowEl.querySelector('.link-status'),
@@ -369,6 +399,7 @@ window.CartPosition = {
     // полей идентичен уже существующим полям карточки/шапки).
     item.isMultiplied = false;
     item.multiplyRows = [];
+    let multiplyRowSeq = 0;
     const MAX_MULTIPLY_ROWS = 30; // §2 плана — запас над реальным максимумом, встреченным в проде (18 строк, случайный дубль 18.08.2026), без риска повесить форму N полноценными карточками
     const multiplyToggleBtn = rowEl.querySelector('.multiply-toggle-btn');
     const multiplyToggleLabelEl = rowEl.querySelector('.multiply-toggle-label');
@@ -405,7 +436,7 @@ window.CartPosition = {
         rows: item.multiplyRows.map((r) => ({
           telegramId: r.telegramId, username: r.username, name: r.name,
           manualClientData: r.manualClientData, display: r.clientSearchEl.value,
-          amount: r.amountInputEl.value, feePercent: r.feePercentInputEl.value, alreadyPaid: r.alreadyPaidInputEl.value
+          amount: r.amountInputEl.value, feePercent: r.feePercentInputEl.value
         }))
       });
     }, 800);
@@ -419,7 +450,7 @@ window.CartPosition = {
           <input type="text" class="mr-client-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск клиента..." autocomplete="off">
           <ul class="mr-client-dropdown dropdown-menu custom-scrollbar"></ul>
         </div>
-        <div class="grid grid-cols-3 gap-1.5">
+        <div class="grid grid-cols-2 gap-1.5">
           <div>
             <label class="text-[10px] text-gray-500">Сумма</label>
             <div class="flex items-center gap-0.5">
@@ -428,7 +459,6 @@ window.CartPosition = {
             </div>
           </div>
           <div><label class="text-[10px] text-gray-500">Комиссия %</label><input type="number" class="mr-fee-percent-input w-full bg-gray-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
-          <div><label class="text-[10px] text-gray-500">Уже оплачено</label><input type="number" class="mr-already-paid-input w-full bg-gray-50 rounded-lg px-1.5 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
         </div>
         <div class="mr-total-display text-[10px] text-gray-500 text-right mt-1">Итого: 0.00 ₽</div>
         <div class="mr-wishlist-link-slot"></div>
@@ -444,7 +474,9 @@ window.CartPosition = {
         amountInputEl: rEl.querySelector('.mr-amount-input'),
         amountSymbolEl: rEl.querySelector('.mr-amount-symbol'),
         feePercentInputEl: rEl.querySelector('.mr-fee-percent-input'),
-        alreadyPaidInputEl: rEl.querySelector('.mr-already-paid-input'),
+        // Стабильный ключ строки — выбор «Другое» в «Итог и оплаты» хранится
+        // по нему; индекс строки сдвигается при удалении соседней.
+        uid: ++multiplyRowSeq,
         totalDisplayEl: rEl.querySelector('.mr-total-display'),
         // «Личный заказ»/«На продаже» на уровне СТРОКИ (не чекбокс в
         // разметке — семантически не подходит "мини-таблице клиентов",
@@ -505,7 +537,6 @@ window.CartPosition = {
 
       row.amountInputEl.addEventListener('input', refreshRow);
       row.feePercentInputEl.addEventListener('input', refreshRow);
-      row.alreadyPaidInputEl.addEventListener('input', () => { ctx.updateSummaryDisplay(); scheduleMultiplyDraftSave(); });
 
       rEl.querySelector('.remove-multiply-row-btn').addEventListener('click', () => {
         if (item.multiplyRows.length <= 1) { showSaveToast(false, 'Нужна хотя бы одна строка клиента.'); return; }
@@ -523,7 +554,6 @@ window.CartPosition = {
         row.clientSearchEl.value = prefill.display || '';
         row.amountInputEl.value = prefill.amount || '';
         row.feePercentInputEl.value = prefill.feePercent || '';
-        row.alreadyPaidInputEl.value = prefill.alreadyPaid || '';
       }
 
       item.multiplyRows.push(row);
@@ -1013,6 +1043,9 @@ window.CartPosition = {
     // разметки в начале файла).
     function rowBaseRub(row) { return (parseFloat(row.amountInputEl.value) || 0) * ctx.getCurrentRate(); }
     function rowCommissionRub(row) { return CartMoney.feeRubFromPercent(rowBaseRub(row), parseFloat(row.feePercentInputEl.value) || 0); }
+    // Ключ строки для «Итог и оплаты» (выбор «Другое» по заказу) — стабильный,
+    // не индекс: удаление соседней строки не должно переносить сумму.
+    function multiplyRowUid(row) { return `pos${id}-r${row.uid}`; }
     function rowHasClient(row) { return row.isOwnPurchase || row.onSale || !!row.telegramId || !!row.manualClientData; }
 
     // База для комиссии/итога (§2 A1, ИСПРАВЛЕНО 06.09.2026) — если «Итог
@@ -1086,13 +1119,115 @@ window.CartPosition = {
     item.feeRubEl.addEventListener('input', updateFeePercent);
     item.totalPaymentEl.addEventListener('input', updateFromTotal);
     item.totalPaymentEl.addEventListener('blur', clampTotalOnBlur);
-    // §4 C1 — "Уже оплачено"/"Осталось получить" и "Прогноз логистики"
-    // на липкой панели итогов: оба вводятся здесь, но раньше нигде не
-    // суммировались (репорт из плана). ctx.updateSummaryDisplay пересчитывает
-    // ВСЮ сводку — та же, уже дешёвая для размера реальной корзины,
-    // функция, что вызывается на каждый денежный ввод в других полях.
-    item.alreadyPaidInputEl.addEventListener('input', ctx.updateSummaryDisplay);
+    // §4 C1 — "Прогноз логистики" на липкой панели итогов.
+    // ctx.updateSummaryDisplay пересчитывает ВСЮ сводку — та же, уже дешёвая
+    // для размера реальной корзины, функция, что вызывается на каждый
+    // денежный ввод в других полях.
     CartMoney.FORECAST_FIELD_KEYS.forEach((key) => item[key].addEventListener('input', ctx.updateSummaryDisplay));
+
+    // --- Одна позиция в корзине: «Сумма по чеку» + «Была скидка?» ---
+    // (волна 2 аудита менеджера, сессия 2, решение VASY 28.09.2026). Поле
+    // суммы — итог по чеку. Скидка раскрывается ссылкой: «клиенту» — клиент
+    // платит от чека, «себе» — от цены до скидки, скидка остаётся доходом.
+    // Серверу уходит то же, что раньше давали «цена» + «Итог с сайта»:
+    // цена = чек + скидка, итог = чек (CartMoney.singleCheckToAmounts),
+    // cart-new.js подставляет итог и получателя в шапку корзины.
+    const hadDiscountBtn = rowEl.querySelector('.had-discount-btn');
+    const singleDiscountRecipientBtns = Array.from(rowEl.querySelectorAll('.single-discount-recipient-btn'));
+    function singleDiscountOpen() { return !item.singleDiscountBlockEl.classList.contains('hidden'); }
+    // Скидка в валюте корзины; 0 — не одна позиция, блок закрыт или пусто.
+    item.getSingleDiscount = () => {
+      if (!item.singleMode || !singleDiscountOpen()) return 0;
+      const value = parseFloat(item.singleDiscountInputEl.value);
+      return value > 0 ? value : 0;
+    };
+    function renderSingleDiscount() {
+      singleDiscountRecipientBtns.forEach((btn) => {
+        const active = btn.dataset.recipient === item.singleDiscountRecipient;
+        btn.classList.toggle('bg-indigo-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-gray-600', !active);
+      });
+      hadDiscountBtn.textContent = singleDiscountOpen() ? 'Скидки не было' : 'Была скидка?';
+      item.singleDiscountSymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
+      const discount = item.getSingleDiscount();
+      const check = parseFloat(item.amountInputEl.value) || 0;
+      const symbol = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
+      const money = (v) => `${(Math.round(v * 100) / 100).toString()}${symbol}`;
+      let hint = '';
+      if (discount > 0 && check > 0) {
+        if (item.singleDiscountRecipient === 'self') hint = `Клиент платит от ${money(check + discount)} (цена до скидки), ${money(discount)} — ваш доход.`;
+        else if (item.singleDiscountRecipient === 'client') hint = `Клиент платит от ${money(check)} — скидка ему.`;
+        else hint = 'Выберите, кому скидка.';
+        // Та же мягкая проверка, что у «Итога по чеку» корзины (Д10).
+        if (discount > (check + discount) * 0.3) hint += ' ⚠️ Скидка больше 30% от цены — проверьте сумму по чеку.';
+      }
+      item.singleDiscountHintEl.textContent = hint;
+    }
+    function onSingleDiscountChanged() {
+      renderSingleDiscount();
+      updateAmountRub();
+      updateFeeRub();
+    }
+    hadDiscountBtn.addEventListener('click', () => {
+      const open = !singleDiscountOpen();
+      item.singleDiscountBlockEl.classList.toggle('hidden', !open);
+      if (open) item.singleDiscountInputEl.focus();
+      else { item.singleDiscountInputEl.value = ''; item.singleDiscountRecipient = null; }
+      onSingleDiscountChanged();
+    });
+    item.singleDiscountInputEl.addEventListener('input', onSingleDiscountChanged);
+    singleDiscountRecipientBtns.forEach((btn) => btn.addEventListener('click', () => {
+      item.singleDiscountRecipient = btn.dataset.recipient;
+      onSingleDiscountChanged();
+    }));
+    item.amountInputEl.addEventListener('input', renderSingleDiscount);
+
+    // cart-new.js переключает режим, когда меняется число заявок.
+    item.setSingleMode = (on) => {
+      item.singleMode = on;
+      item.amountLabelEl.textContent = on ? 'Сумма по чеку' : 'Цена позиции';
+      item.singleExtrasEl.classList.toggle('hidden', !on);
+      if (on) item.manualShare.reset();
+      renderSingleDiscount();
+    };
+    // Была одна позиция, стало больше: «Сумма по чеку» становится ценой
+    // позиции (со скидкой — ценой до скидки). Чек/скидка/«кому» запоминаются:
+    // вернулись к одной позиции, а цену не трогали — восстанавливаются как
+    // были (добавили и убрали позицию, включили и выключили «Размножить»).
+    // @returns {boolean} сумма была
+    let savedSingle = null;
+    item.leaveSingleMode = () => {
+      const check = parseFloat(item.amountInputEl.value) || 0;
+      const discount = item.getSingleDiscount();
+      if (discount > 0) item.amountInputEl.value = String(CartMoney.singleCheckToAmounts(check, discount).amount);
+      savedSingle = discount > 0
+        ? { price: item.amountInputEl.value, check: String(check), discount: item.singleDiscountInputEl.value, recipient: item.singleDiscountRecipient }
+        : null;
+      item.singleDiscountInputEl.value = '';
+      item.singleDiscountRecipient = null;
+      item.singleDiscountBlockEl.classList.add('hidden');
+      item.setSingleMode(false);
+      updateAmountRub();
+      updateFeeRub();
+      return check > 0;
+    };
+    // Снова одна позиция. Итог по чеку корзины сюда НЕ переносится — он был
+    // за всю корзину, а не за эту позицию (cart-new.js предупреждает тостом):
+    // «Сумма по чеку» = цена, кроме восстановления после leaveSingleMode.
+    item.enterSingleMode = () => {
+      if (savedSingle && item.amountInputEl.value === savedSingle.price) {
+        item.amountInputEl.value = savedSingle.check;
+        item.singleDiscountBlockEl.classList.remove('hidden');
+        item.singleDiscountInputEl.value = savedSingle.discount;
+        item.singleDiscountRecipient = savedSingle.recipient;
+      }
+      savedSingle = null;
+      item.setSingleMode(true);
+      updateAmountRub();
+      updateFeeRub();
+    };
 
     // Реконсиляция по «Итогу с сайта выкупа» (§2 A1) — вызывается из
     // recomputeSiteTotalReconciliation в render(). null — реконсиляция
@@ -1137,7 +1272,8 @@ window.CartPosition = {
       // Сумма для прогноза — введённая цена, а если её нет — доля «Итога с
       // сайта выкупа», пришедшая на эту заявку (стадия 0 аудита менеджера,
       // 27.09.2026: без этого прогноз логистики не заполнялся вовсе).
-      const typedAmount = parseFloat(item.amountInputEl.value) || 0;
+      // Одна позиция со скидкой — прогноз от цены до скидки (она и уйдёт в заказ).
+      const typedAmount = (parseFloat(item.amountInputEl.value) || 0) + item.getSingleDiscount();
       const rate = ctx.getCurrentRate();
       const amount = typedAmount > 0 ? typedAmount
         : (item.reconciledShareRub && rate > 0 ? Math.round(item.reconciledShareRub / rate * 100) / 100 : 0);
@@ -1178,6 +1314,7 @@ window.CartPosition = {
       // собственный проход, т.к. они не завязаны на amountInputEl/feeRubEl
       // связку выше вообще (см. rowBaseRub/rowCommissionRub).
       item.multiplyRows.forEach((r) => r.refresh());
+      renderSingleDiscount();
     };
     // Ручная фиксация доли (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026) — заявка
     // «вручную» использует число, введённое менеджером в «Итог заявки с
@@ -1188,7 +1325,9 @@ window.CartPosition = {
     item.getTotalRub = () => {
       if (item.isMultiplied) return item.multiplyRows.reduce((s, r) => s + rowBaseRub(r), 0);
       const manualRub = item.manualShare.getManualRub();
-      return manualRub !== null ? manualRub : (parseFloat(item.amountInputEl.value) || 0) * ctx.getCurrentRate();
+      // Одна позиция со скидкой: известная цена = чек + скидка (то же, что
+      // уйдёт на сервер в amount, см. getPayload).
+      return manualRub !== null ? manualRub : ((parseFloat(item.amountInputEl.value) || 0) + item.getSingleDiscount()) * ctx.getCurrentRate();
     };
     item.getCommissionRub = () => (item.isMultiplied
       ? item.multiplyRows.reduce((s, r) => s + rowCommissionRub(r), 0)
@@ -1241,10 +1380,10 @@ window.CartPosition = {
     // этой строки, просто объекты с тем же .value/.checked).
     item.getClientRows = () => {
       if (!item.isMultiplied) return [item.getClientRow()];
-      return item.multiplyRows.map((r, i) => ctx.collectClientRow({
+      return item.multiplyRows.map((r) => ctx.collectClientRow({
         rowEl: r.rowEl,
         totalPaymentEl: { value: (rowBaseRub(r) + rowCommissionRub(r)).toFixed(2) },
-        alreadyPaidInputEl: r.alreadyPaidInputEl,
+        feeRubEl: { value: rowCommissionRub(r).toFixed(2) },
         ownPurchaseCheckboxEl: { checked: r.isOwnPurchase },
         onSale: r.onSale,
         productOriginal: item.productOriginal || item.productSearchEl.value.trim(),
@@ -1253,7 +1392,7 @@ window.CartPosition = {
         telegramId: r.telegramId, username: r.username, name: r.name,
         manualClientData: r.manualClientData,
         clientSearchEl: r.clientSearchEl
-      }, `pos${id}-row${i}`));
+      }, multiplyRowUid(r)));
     };
     // §6 Фаза E — клиент не выбран И не отмечено «Личный заказ». Тот же
     // критерий "пусто", что уже использует clientKeyFor (cart-new.js) для
@@ -1357,8 +1496,7 @@ window.CartPosition = {
       if (item.isMultiplied) {
         return item.multiplyRows.map((r) => {
           const bookingSumRub = rowCommissionRub(r);
-          const alreadyPaidRub = parseFloat(r.alreadyPaidInputEl.value) || 0;
-          const booking = CartMoney.computeBookingFields(bookingSumRub, alreadyPaidRub);
+          const pay = ctx.paymentFor(multiplyRowUid(r));
           return {
             client: (r.isOwnPurchase || r.onSale)
               ? { telegramId: '', username: '', name: '' }
@@ -1376,9 +1514,8 @@ window.CartPosition = {
             bookingSum: bookingSumRub.toFixed(2),
             commissionPercent: r.feePercentInputEl.value,
             mainSum: (rowBaseRub(r) + bookingSumRub).toFixed(2),
-            mainAmountReceivedAtCreation: r.alreadyPaidInputEl.value,
-            bookingPaid: booking.bookingPaid,
-            bookingAlreadyInMainAmount: booking.bookingAlreadyInMainAmount,
+            // «Итог и оплаты» (волна 2, сессия 2) — выбор по клиенту строки.
+            ...CartMoney.paymentPayloadFields(pay.kind, pay.paidRub, bookingSumRub),
             purchaseLink: item.purchaseLinkInputEl.value.trim(),
             remark: item.noteInputEl.value,
             notifyClient: item.notifyClientCheckboxEl.checked,
@@ -1397,8 +1534,8 @@ window.CartPosition = {
         });
       }
       const bookingSumRub = parseFloat(item.feeRubEl.value) || 0;
-      const alreadyPaidRub = parseFloat(item.alreadyPaidInputEl.value) || 0;
-      const booking = CartMoney.computeBookingFields(bookingSumRub, alreadyPaidRub);
+      const pay = ctx.paymentFor(`pos${id}`);
+      const singleDiscount = item.getSingleDiscount();
       return [{
         client: (item.ownPurchaseCheckboxEl.checked || item.onSale)
           ? { telegramId: '', username: '', name: '' }
@@ -1413,7 +1550,11 @@ window.CartPosition = {
         // сервер сам решает дефолт статуса).
         ...(item.onSale ? { statusOrder: 'На продаже' } : {}),
         productOriginal: item.productOriginal || item.productSearchEl.value,
-        amount: item.amountInputEl.value,
+        // Одна позиция со скидкой: цена = чек + скидка, итог корзины = чек
+        // (cart-new.js кладёт его в шапку) — см. CartMoney.singleCheckToAmounts.
+        amount: singleDiscount > 0
+          ? String(CartMoney.singleCheckToAmounts(parseFloat(item.amountInputEl.value) || 0, singleDiscount).amount)
+          : item.amountInputEl.value,
         // «Доля разницы»/ручная фиксация (§2 A1, §3 B1/B2) — служебные
         // поля, задействуются ТОЛЬКО если на экране заполнено «Итог с
         // сайта выкупа» (см. cartsService.createCart JSDoc); сервер сам
@@ -1440,12 +1581,9 @@ window.CartPosition = {
         // (getEffectiveBaseRub), не сырая — иначе "Осталось" разошлось бы с
         // тем, что реально показано на экране как "Итог".
         mainSum: (item.getEffectiveBaseRub() + (parseFloat(item.feeRubEl.value) || 0)).toFixed(2),
-        // «Сколько уже оплачено, ₽» (слияние «Новый заказ»→«Корзина»,
-        // 05.09.2026, IMPLEMENTATION-PLAN-CART-MERGE.md §0) — заменяет
-        // старую пару «Оплачена ли бронь?»+«Уже получено при оформлении».
-        mainAmountReceivedAtCreation: item.alreadyPaidInputEl.value,
-        bookingPaid: booking.bookingPaid,
-        bookingAlreadyInMainAmount: booking.bookingAlreadyInMainAmount,
+        // Сколько клиент уже оплатил — выбор в «Итог и оплаты» (волна 2
+        // аудита менеджера, сессия 2): Ничего/Бронь/Всё/Другое.
+        ...CartMoney.paymentPayloadFields(pay.kind, pay.paidRub, bookingSumRub),
         purchaseLink: item.purchaseLinkInputEl.value.trim(),
         remark: item.noteInputEl.value,
         notifyClient: item.notifyClientCheckboxEl.checked,

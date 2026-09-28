@@ -7,7 +7,7 @@
  * полным описанием `ctx`/global-конвенций, не повторяется здесь). Лот —
  * свёрнутая карточка-сводка, разворачивается в мини-версию формы
  * `lot-new.js` (построчные клиент+товар+известная цена+два слайдера
- * доли+комиссия+«Сколько уже оплачено»).
+ * доли+комиссия; «сколько уже оплачено» — в «Итог и оплаты» cart-new.js).
  *
  * `cart-new.js` вызывает `CartLot.create(ctx)` на "+ Добавить лот",
  * получает готовый lotItem-объект с тем же интерфейсом, что был у
@@ -750,10 +750,8 @@ window.CartLot = {
           Личный заказ (без плательщика)
           ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
         </label>
-        <div class="mt-1.5">
-          <label class="text-[10px] text-gray-500">Сколько уже оплачено, ₽</label>
-          <input type="number" class="already-paid-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" placeholder="0.00" step="0.01">
-        </div>
+        <!-- «Сколько уже оплачено» — в блоке «Итог и оплаты» в конце экрана
+             (волна 2 аудита менеджера, сессия 2), выбор по клиенту. -->
         <div class="mt-1.5">
           <label class="text-[10px] text-gray-500">Примечание</label>
           <textarea class="note-input w-full bg-white rounded-lg px-2 py-1.5 text-sm outline-none border border-gray-200" rows="2" maxlength="300" placeholder="Введите примечание..."></textarea>
@@ -797,7 +795,6 @@ window.CartLot = {
         totalPaymentEl: rowEl.querySelector('.total-payment-input'),
         totalBreakdownEl: rowEl.querySelector('.total-breakdown-display'),
         ownPurchaseCheckboxEl: rowEl.querySelector('.own-purchase-checkbox'),
-        alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
         noteInputEl: rowEl.querySelector('.note-input'),
         notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox')
       };
@@ -816,9 +813,6 @@ window.CartLot = {
         row.clientDropdownEl.classList.remove('active');
         ctx.updateSummaryDisplay(); // §4 C1 — метка "Личный заказ" в разбивке "по клиентам"
       });
-      // §4 C1 — "Уже оплачено" на позиции лота тоже участвует в "Уже
-      // оплачено"/"Осталось получить" липкой панели.
-      row.alreadyPaidInputEl.addEventListener('input', ctx.updateSummaryDisplay);
 
       if (prefillClient) {
         row.telegramId = prefillClient.telegramId || '';
@@ -972,6 +966,11 @@ window.CartLot = {
     expanded = true;
     body.classList.remove('hidden');
     chevron.style.transform = 'rotate(180deg)';
+
+    function lotRowPayment(r) {
+      const pay = ctx.paymentFor(`lot${id}-row${r.id}`);
+      return { paidAtCreation: pay.kind, alreadyPaidRub: pay.paidRub };
+    }
 
     const lotItem = {
       id, type: 'lot', rowEl: wrapEl,
@@ -1136,10 +1135,11 @@ window.CartLot = {
           // lotsService.createLot пересчитывает commissionRub от РЕАЛЬНОЙ
           // costShareRub позиции, если этот процент задан — см. её JSDoc.
           commissionPercent: r.feePercentEl.value,
-          // «Сколько уже оплачено, ₽» — bookingPaid/bookingAlreadyInMainAmount
-          // вычисляются на СЕРВЕРЕ внутри lotsService.createLot (см. её
-          // JSDoc), не здесь — сюда уходит только сырое значение.
-          alreadyPaidRub: parseFloat(r.alreadyPaidInputEl.value) || 0,
+          // Сколько клиент уже оплатил — выбор в «Итог и оплаты» (волна 2,
+          // сессия 2). Сумму для «Бронь»/«Всё» сервер берёт из своих
+          // посчитанных комиссии/доли (ordersService.applyPaidAtCreation);
+          // bookingPaid/bookingAlreadyInMainAmount — тоже на сервере.
+          ...lotRowPayment(r),
           // Ссылка на покупку — одна на весь лот (5.2), то же значение
           // уходит в КАЖДУЮ позицию лота (positions[].purchaseLink на
           // backend'е как принимал строку на каждую позицию, так и
