@@ -1828,6 +1828,7 @@ window.Screens.cartNew = {
       if (params.skuOriginal) {
         item.productSearchEl.value = params.productDisplay || params.skuOriginal;
         item.productOriginal = params.skuOriginal;
+        item.productFromCatalog = true;
       } else if (params.productOriginal) {
         item.productSearchEl.value = params.productOriginal;
         item.productOriginal = params.productOriginal;
@@ -1979,6 +1980,36 @@ window.Screens.cartNew = {
         ? !(it.productOriginal || it.productSearchEl.value).trim()
         : (it.hasMissingProduct() || !it.hasPositions()));
       if (missingProduct) { showSaveToast(false, 'У каждой позиции (в том числе внутри лота) должен быть указан товар.'); return; }
+
+      // Волна 2 аудита менеджера (решение VASY 28.09.2026) — товар только из
+      // каталога: свободный текст не сохраняется, у карточки — кнопка создать
+      // позицию. Сбой проверки — не сохраняем (лучше повторить, чем пропустить).
+      const positionItems = items.filter((it) => it.type === 'position');
+      const productNames = [
+        ...positionItems.map((it) => (it.productOriginal || it.productSearchEl.value).trim()),
+        ...items.filter((it) => it.type === 'lot').flatMap((it) => it.getProductNames())
+      ];
+      let missingInCatalog;
+      try {
+        missingInCatalog = (await callServer('findMissingCatalogProducts', productNames)).missing;
+      } catch (error) {
+        showSaveToast(false, `Не удалось проверить товары по каталогу: ${error.message} Попробуйте ещё раз.`);
+        return;
+      }
+      if (missingInCatalog.length > 0) {
+        const missingLower = new Set(missingInCatalog.map((n) => n.toLowerCase()));
+        let first = null;
+        positionItems.forEach((it) => {
+          if (!missingLower.has((it.productOriginal || it.productSearchEl.value).trim().toLowerCase())) { it.productFromCatalog = true; return; }
+          it.productFromCatalog = false;
+          it.setCollapsed(false);
+          it.showNotInCatalogHint();
+          if (!first) first = it;
+        });
+        showSaveError('Товар должен быть из каталога — выберите его в поиске или создайте позицию:', missingInCatalog.map((n) => `«${n}» — нет в каталоге`).join(' · '));
+        if (first) first.productSearchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
 
       // §6 Фаза E — пустой клиент без «Личного заказа» раньше тихо уходил
       // на сервер (репорт плана "заявка тихо уходит с пустым клиентом").

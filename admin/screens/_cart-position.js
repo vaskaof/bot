@@ -105,6 +105,10 @@ window.CartPosition = {
           <input type="text" class="purchase-link-input flex-1 bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="https://...">
           <button type="button" class="purchase-link-resolve-btn shrink-0 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Найти</button>
         </div>
+        <!-- Волна 2 аудита менеджера (28.09.2026): распознавание стартует само
+             при вставке ссылки; здесь — ход и итог, подсказка цены площадки. -->
+        <div class="link-status hidden mt-1 text-[11px] rounded-lg px-2 py-1.5"></div>
+        <div class="link-price-hint hidden mt-1 text-[11px] rounded-lg px-2 py-1.5 bg-gray-50 text-gray-600"></div>
       </div>
 
       <div class="single-client-fields client-row relative mb-2">
@@ -112,8 +116,9 @@ window.CartPosition = {
         <ul class="client-dropdown dropdown-menu custom-scrollbar"></ul>
       </div>
       <div class="relative mb-2">
-        <input type="text" class="product-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск товара..." autocomplete="off">
+        <input type="text" class="product-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск товара в каталоге..." autocomplete="off">
         <ul class="product-dropdown dropdown-menu custom-scrollbar"></ul>
+        <div class="product-catalog-hint hidden mt-1 text-[11px] rounded-lg px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-800"></div>
       </div>
 
       <!-- «Размножить на клиентов» (Волна 7, §7 п.2 IMPLEMENTATION-PLAN-
@@ -316,6 +321,15 @@ window.CartPosition = {
       alreadyPaidInputEl: rowEl.querySelector('.already-paid-input'),
       purchaseLinkInputEl: rowEl.querySelector('.purchase-link-input'),
       purchaseLinkResolveBtn: rowEl.querySelector('.purchase-link-resolve-btn'),
+      linkStatusEl: rowEl.querySelector('.link-status'),
+      linkPriceHintEl: rowEl.querySelector('.link-price-hint'),
+      productHintEl: rowEl.querySelector('.product-catalog-hint'),
+      // Товар — только позиция каталога (решение VASY 28.09.2026). true —
+      // выбран из списка, найден по ссылке или только что создан; свободный
+      // ввод сбрасывает флаг (проверка — на уходе с поля и перед сохранением).
+      productFromCatalog: false,
+      // Товар подставлен распознаванием ссылки — новая ссылка может его заменить.
+      productSetByLink: false,
       noteInputEl: rowEl.querySelector('.note-input'),
       notifyClientCheckboxEl: rowEl.querySelector('.notify-client-checkbox'),
       weightSumEl: rowEl.querySelector('.weight-sum-input'),
@@ -701,51 +715,222 @@ window.CartPosition = {
 
     // Волна 1 (28.09.2026) — ссылка выбирает канал корзины, если он пуст
     // ('change', не 'input': на полуввёденном домене угадывать рано).
+    // Волна 2 (28.09.2026) — и сразу запускает распознавание товара.
     item.purchaseLinkInputEl.addEventListener('change', () => {
       const url = item.purchaseLinkInputEl.value.trim();
       if (/^https?:\/\//i.test(url) && ctx.onPurchaseLinkEntered) ctx.onPurchaseLinkEntered(url);
+      if (url === '') { linkRun = null; setLinkStatus('', ''); hidePriceHint(); return; }
+      startLinkResolve(url, false);
     });
-
-    // Ссылка на покупку — тот же паттерн, что order-new.js:794-969.
-    item.purchaseLinkResolveBtn.addEventListener('click', async () => {
+    // Вставка ссылки — распознавание не ждёт ухода с поля.
+    item.purchaseLinkInputEl.addEventListener('paste', () => {
+      setTimeout(() => {
+        const url = item.purchaseLinkInputEl.value.trim();
+        if (/^https?:\/\//i.test(url)) startLinkResolve(url, false);
+      }, 0);
+    });
+    // «Найти» — то же распознавание, но окна выбора/создания открываются сразу.
+    item.purchaseLinkResolveBtn.addEventListener('click', () => {
       const url = item.purchaseLinkInputEl.value.trim();
       if (!url) return;
       if (ctx.onPurchaseLinkEntered) ctx.onPurchaseLinkEntered(url);
-      item.purchaseLinkResolveBtn.disabled = true;
-      try {
-        const result = await callServer('resolveOrderProductLink', url);
-        // Уровни А/Б/В (§11.12 IMPLEMENTATION-PLAN-GAMIFICATION.md) — общий
-        // разбор в LinkMatch. ИСПРАВЛЕНО 24.09.2026: раньше здесь читались
-        // result.sku.value/label, а сервер отдаёт original/shortName — поле
-        // товара оставалось пустым при тосте «товар найден в каталоге».
-        const choice = await LinkMatch.resolve(result);
-        if (choice && choice.kind === 'sku') {
-          item.productSearchEl.value = choice.sku.original;
-          item.productOriginal = choice.sku.original;
-          ctx.updateSummaryDisplay();
-          showSaveToast(true, choice.via === 'model_code'
-            ? `По коду модели в ссылке — «${choice.sku.shortName || choice.sku.original}» из каталога.`
-            : 'Ссылка распознана — товар найден в каталоге.');
-        } else if (choice && choice.kind === 'new') {
-          const skuModal = SkuModal.init({
-            onSaved: (skuResult, action) => {
-              if (action === 'create') {
-                item.productSearchEl.value = skuResult.value;
-                item.productOriginal = skuResult.value;
-                showSaveToast(true, `Позиция «${skuResult.label || skuResult.value}» создана и добавлена в каталог`);
-              }
-            }
-          });
-          // Ссылка — в форму новой позиции: видна в «Ссылках» и участвует в
-          // проверке на дубль (одинаковый код модели — Ж2).
-          skuModal.open('create', null, choice.prefill, { pendingLink: url, pendingLinkSource: 'Заказ' });
-        }
-      } catch (error) {
-        showSaveToast(false, `Не удалось распознать ссылку: ${error.message}`);
-      } finally {
-        item.purchaseLinkResolveBtn.disabled = false;
-      }
+      startLinkResolve(url, true);
     });
+
+    // --- Распознавание ссылки без ожидания (волна 2 аудита менеджера) ---
+    // Две половины параллельно: быстрая (matchOrderProductLink — только наш
+    // каталог: та же ссылка или код модели, доли секунды) и полная
+    // (resolveOrderProductLink — страница магазина / eBay API, цена). Форму
+    // ничто не держит: через LINK_WAIT_MS без ответа — подсказка искать
+    // вручную; поздний ответ всё равно покажется здесь, но выбранный руками
+    // товар не перезапишет.
+    const LINK_WAIT_MS = 4000;
+    let linkRun = null;
+
+    function setLinkStatus(kind, html) {
+      const el = item.linkStatusEl;
+      if (!kind) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      const tone = { busy: 'bg-indigo-50 text-indigo-700', ok: 'bg-emerald-50 text-emerald-700', warn: 'bg-amber-50 border border-amber-200 text-amber-800' }[kind];
+      el.className = `link-status mt-1 text-[11px] rounded-lg px-2 py-1.5 ${tone}`;
+      el.innerHTML = html;
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function hidePriceHint() { item.linkPriceHintEl.classList.add('hidden'); item.linkPriceHintEl.innerHTML = ''; }
+    const PRICE_CURRENCY_BY_CODE = { USD: 'Доллар', GBP: 'Фунт', EUR: 'Евро', CNY: 'Юань', KZT: 'Тенге' };
+    // Цена объявления — только подсказка: без доставки и налога, итог по чеку
+    // обычно больше (VASY: «не всегда оцениваются все расходы»).
+    function showPriceHint(price) {
+      if (!price || !(Number(price.value) > 0)) { hidePriceHint(); return; }
+      const value = Number(price.value);
+      const sameCurrency = PRICE_CURRENCY_BY_CODE[price.currency] === ctx.getCurrentCurrency();
+      const el = item.linkPriceHintEl;
+      el.innerHTML = `Цена на площадке: <b>${escapeHtmlClient(String(value))} ${escapeHtmlClient(price.currency || '')}</b> — без доставки и налога, итог по чеку обычно больше.`
+        + (sameCurrency ? ' <button type="button" class="link-price-apply text-indigo-600 font-medium underline">Подставить</button>' : ' Валюта корзины другая — не подставляем.');
+      el.classList.remove('hidden');
+      const btn = el.querySelector('.link-price-apply');
+      if (btn) btn.addEventListener('click', () => {
+        item.amountInputEl.value = value.toFixed(2);
+        item.amountInputEl.dispatchEvent(new Event('input'));
+        hidePriceHint();
+      });
+    }
+
+    function productLabel(sku) { return sku.shortName || sku.original; }
+    function applyCatalogProduct(original) {
+      item.productSearchEl.value = original;
+      item.productOriginal = original;
+      item.productFromCatalog = true;
+      item.productDropdownEl.classList.remove('active');
+      hideProductHint();
+      ctx.updateSummaryDisplay();
+    }
+    // Товар по ссылке: подставляется, если поле пустое, введено вручную мимо
+    // каталога или уже было подставлено прошлой ссылкой. Выбранный руками из
+    // каталога — не трогаем, предлагаем заменить.
+    function applyLinkMatch(sku, via) {
+      const current = (item.productOriginal || '').trim().toLowerCase();
+      if (item.productFromCatalog && !item.productSetByLink && current !== '' && current !== sku.original.toLowerCase()) {
+        setLinkStatus('warn', `По ссылке — «${escapeHtmlClient(productLabel(sku))}», а выбран другой товар. <button type="button" class="link-replace text-indigo-600 font-medium underline">Заменить</button>`);
+        item.linkStatusEl.querySelector('.link-replace').addEventListener('click', () => {
+          applyCatalogProduct(sku.original);
+          item.productSetByLink = true;
+          setLinkStatus('ok', `Товар по ссылке: «${escapeHtmlClient(productLabel(sku))}»`);
+        });
+        return;
+      }
+      applyCatalogProduct(sku.original);
+      item.productSetByLink = true;
+      setLinkStatus('ok', via === 'model_code'
+        ? `По коду модели в ссылке — «${escapeHtmlClient(productLabel(sku))}» из каталога.`
+        : `Товар найден в каталоге: «${escapeHtmlClient(productLabel(sku))}».`);
+    }
+
+    function openShortSkuForm(prefill, link) {
+      const skuModal = SkuModal.init({
+        onSaved: (result, action) => {
+          if (action !== 'create' || !result) return;
+          applyCatalogProduct(result.value);
+          item.productSetByLink = false;
+          setLinkStatus('ok', `Выбрано: «${escapeHtmlClient(result.label || result.value)}».`);
+          showSaveToast(true, `Позиция «${result.label || result.value}» в каталоге и выбрана`);
+        }
+      });
+      skuModal.open('create', null, prefill, link
+        ? { pendingLink: link, pendingLinkSource: 'Заказ', compact: true, pickExisting: true }
+        : { compact: true, pickExisting: true });
+    }
+
+    function handleLinkChoice(choice, run) {
+      if (!choice) return;
+      if (choice.kind === 'sku') {
+        // Выбрано явно в окне «Какая это кукла?» — подставляем без вопросов.
+        applyCatalogProduct(choice.sku.original);
+        item.productSetByLink = true;
+        setLinkStatus('ok', `Выбрано: «${escapeHtmlClient(productLabel(choice.sku))}».`);
+        return;
+      }
+      if (choice.kind === 'new') openShortSkuForm(choice.prefill, run.canonicalUrl || run.url);
+    }
+
+    async function handleFullResult(run, result) {
+      showPriceHint(result.price);
+      if (result.status === 'matched') {
+        const s = result.sku;
+        applyLinkMatch({ original: s.original, shortName: s.shortName || '' }, result.via);
+        return;
+      }
+      // Товар уже выбран руками из каталога — ссылка лишь дополняет заказ
+      // (по «Найти» окна выбора всё равно открываются).
+      if (item.productFromCatalog && !item.productSetByLink && !run.interactive) {
+        setLinkStatus('', '');
+        return;
+      }
+      if (run.interactive) {
+        setLinkStatus('', '');
+        handleLinkChoice(await LinkMatch.resolve(result), run);
+        return;
+      }
+      if (result.status === 'suggest') {
+        setLinkStatus('warn', 'По ссылке похоже на несколько кукол. <button type="button" class="link-choose text-indigo-600 font-medium underline">Выбрать</button>');
+        item.linkStatusEl.querySelector('.link-choose').addEventListener('click', async () => handleLinkChoice(await LinkMatch.resolve(result), run));
+        return;
+      }
+      const title = (result.resolved && result.resolved.title) || '';
+      setLinkStatus('warn', `${title ? `«${escapeHtmlClient(title)}» — ` : ''}такого товара нет в каталоге. <button type="button" class="link-create text-indigo-600 font-medium underline">Создать позицию</button> или найдите в поиске ниже.`);
+      item.linkStatusEl.querySelector('.link-create').addEventListener('click', async () => handleLinkChoice(await LinkMatch.resolve(result), run));
+    }
+
+    async function startLinkResolve(url, interactive) {
+      if (!/^https?:\/\//i.test(url)) {
+        if (interactive) showSaveToast(false, 'Введите ссылку, начиная с https://');
+        return;
+      }
+      // Та же ссылка уже распознаётся (вставка → уход с поля → «Найти»):
+      // не второй запрос, а тот же, только с окнами выбора, если нажали «Найти».
+      // После сбоя «Найти» пробует заново.
+      if (linkRun && linkRun.url === url && !(interactive && linkRun.failed)) {
+        if (interactive) {
+          linkRun.interactive = true;
+          if (linkRun.result) handleFullResult(linkRun, linkRun.result);
+        }
+        return;
+      }
+      const run = { url, interactive, result: null, failed: false, fastMatched: false, canonicalUrl: '' };
+      linkRun = run;
+      hidePriceHint();
+      setLinkStatus('busy', '<span class="inline-flex items-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Распознаём товар — заполняйте дальше, он подставится сам.</span>');
+      const isCurrent = () => linkRun === run && item.purchaseLinkInputEl.value.trim() === url;
+
+      callServer('matchOrderProductLink', url).then((r) => {
+        if (!isCurrent() || run.result) return;
+        run.canonicalUrl = r.canonicalUrl || '';
+        if (r.status === 'matched') {
+          run.fastMatched = true;
+          applyLinkMatch({ original: r.sku.original, shortName: r.sku.shortName || '' }, r.via);
+        }
+      }).catch(() => { /* быстрая половина — ускорение, полная всё равно придёт */ });
+
+      const slowTimer = setTimeout(() => {
+        if (!isCurrent() || run.result || run.fastMatched || run.failed) return;
+        setLinkStatus('warn', 'Магазин отвечает долго — найдите товар в поиске ниже или создайте позицию. Если ответ придёт, покажем его здесь.');
+      }, LINK_WAIT_MS);
+
+      try {
+        const result = await callServer('resolveOrderProductLink', url, { withPrice: true });
+        clearTimeout(slowTimer);
+        run.result = result;
+        if (!run.canonicalUrl) run.canonicalUrl = result.canonicalUrl || '';
+        if (!isCurrent()) return;
+        await handleFullResult(run, result);
+      } catch (error) {
+        clearTimeout(slowTimer);
+        run.failed = true;
+        if (!isCurrent()) return;
+        if (run.fastMatched) return; // товар уже найден по каталогу — страница магазина не нужна
+        setLinkStatus('warn', `Не удалось распознать: ${escapeHtmlClient(error.message)} Найдите товар в поиске ниже или создайте позицию.`);
+      }
+    }
+
+    // --- Товар только из каталога: подсказка под полем ---
+    function hideProductHint() { item.productHintEl.classList.add('hidden'); item.productHintEl.innerHTML = ''; }
+    item.showNotInCatalogHint = () => {
+      const text = item.productSearchEl.value.trim();
+      if (text === '') { hideProductHint(); return; }
+      item.productHintEl.innerHTML = `Такого товара нет в каталоге — выберите из списка или <button type="button" class="product-create text-indigo-600 font-medium underline"></button>`;
+      item.productHintEl.querySelector('.product-create').textContent = `создайте позицию «${text}»`;
+      item.productHintEl.querySelector('.product-create').addEventListener('click', () => openShortSkuForm({ original: text }, ''));
+      item.productHintEl.classList.remove('hidden');
+    };
+    const checkTypedProduct = debounce(async () => {
+      const text = (item.productOriginal || item.productSearchEl.value).trim();
+      if (text === '' || item.productFromCatalog) { hideProductHint(); return; }
+      try {
+        const { missing } = await callServer('findMissingCatalogProducts', [text]);
+        if ((item.productOriginal || item.productSearchEl.value).trim() !== text || item.productFromCatalog) return;
+        if (missing.length === 0) { item.productFromCatalog = true; hideProductHint(); } else item.showNotInCatalogHint();
+      } catch (_error) { /* проверка повторится перед сохранением */ }
+    }, 250);
+    item.productSearchEl.addEventListener('blur', () => setTimeout(checkTypedProduct, 200));
 
     const handleClientSearch = debounce(async (e) => {
       const query = e.target.value.trim();
@@ -791,34 +976,28 @@ window.CartPosition = {
       if (query.length < 2) { item.productDropdownEl.classList.remove('active'); return; }
       const results = await callServer('searchSku', query);
       FormHelpers.renderDropdown(item.productDropdownEl, results, (r) => `<div class="font-medium text-gray-800 text-sm truncate">${r.label}</div>`, (r) => {
-        item.productSearchEl.value = r.value;
-        item.productOriginal = r.value;
-        item.productDropdownEl.classList.remove('active');
-        ctx.updateSummaryDisplay(); // §5 D1 — товар в строке сводки свёрнутой карточки
+        applyCatalogProduct(r.value); // §5 D1 — товар в строке сводки свёрнутой карточки
+        item.productSetByLink = false;
       });
       item.productDropdownEl.appendChild(Object.assign(document.createElement('li'), {
         className: 'p-3 cursor-pointer hover:bg-indigo-50 transition-colors text-indigo-600 font-medium text-sm text-center',
         textContent: '+ Добавить товар'
       })).addEventListener('click', () => {
         item.productDropdownEl.classList.remove('active');
-        const skuModal = SkuModal.init({
-          onSaved: (result, action) => {
-            if (action === 'create') {
-              item.productSearchEl.value = result.value;
-              item.productOriginal = result.value;
-              showSaveToast(true, `Позиция «${result.label || result.value}» создана и добавлена в каталог`);
-              ctx.updateSummaryDisplay(); // §5 D1 — товар в строке сводки свёрнутой карточки
-            }
-          }
-        });
-        skuModal.open('create', null, { original: item.productSearchEl.value.trim() });
+        openShortSkuForm({ original: item.productSearchEl.value.trim() }, '');
       });
     }, 300);
     item.productSearchEl.addEventListener('input', handleProductSearch);
     // §5 D1 — свободный ввод товара (без выбора из выпадашки) тоже должен
     // обновить строку сводки свёрнутой карточки (найдено вторым раундом
     // целевого ревью перед деплоем — раньше только выбор клиента это делал).
-    item.productSearchEl.addEventListener('input', () => { item.productOriginal = item.productSearchEl.value; ctx.updateSummaryDisplay(); });
+    item.productSearchEl.addEventListener('input', () => {
+      item.productOriginal = item.productSearchEl.value;
+      item.productFromCatalog = false;
+      item.productSetByLink = false;
+      hideProductHint();
+      ctx.updateSummaryDisplay();
+    });
     item.productSearchEl.addEventListener('focus', () => { if (item.productSearchEl.value.trim().length >= 2) item.productDropdownEl.classList.add('active'); });
 
     function updateAmountRub() {

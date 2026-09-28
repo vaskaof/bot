@@ -268,6 +268,8 @@ const METHOD_LABELS = {
   resolveOrderProductLink: 'Распознать ссылку товара для заказа',
   resolveProductLinkForAdmin: 'Распознать ссылку товара (админ)',
   getReferenceModelPrefill: 'Новая позиция из справочника кукол',
+  matchOrderProductLink: 'Быстрый поиск товара по ссылке в каталоге',
+  findMissingCatalogProducts: 'Проверка: товары корзины есть в каталоге',
   restoreOrder: 'Восстановить заказ',
   revokeClientPayoutRole: 'Снять роль выплаты клиента',
   revokeTaskReward: 'Отозвать награду за задание',

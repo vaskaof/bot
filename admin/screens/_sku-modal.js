@@ -69,6 +69,12 @@ window.SkuModal = {
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Необязательно">
             </div>
+            <!-- Короткая форма (волна 2 аудита менеджера, 28.09.2026): из «Корзины»
+                 теги прячутся под «Подробнее», а подсказка по странице/ИИ
+                 показывается отдельно и попадает в поля только по «Принять». -->
+            <div id="sku-tag-suggestion" class="hidden text-xs bg-indigo-50 border border-indigo-100 rounded-lg p-2"></div>
+            <button type="button" id="sku-more-toggle" class="hidden w-full text-left text-xs text-indigo-600 font-medium"></button>
+            <div id="sku-more-tags" class="space-y-3">
             <div>
               <label class="text-xs font-medium text-gray-500">Бренд</label>
               <div class="relative">
@@ -96,6 +102,7 @@ window.SkuModal = {
                   placeholder="Необязательно">
                 <ul id="sku-series-dropdown" class="dropdown-menu custom-scrollbar"></ul>
               </div>
+            </div>
             </div>
             <!-- Ветка справочника линеек (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1). Скрыто, пока справочник не загрузился. -->
             <div id="sku-line-field" class="hidden">
@@ -127,7 +134,7 @@ window.SkuModal = {
               <img id="sku-image-preview" src="" alt=""
                 class="hidden mt-2 w-20 h-20 rounded-lg object-cover border border-gray-100">
             </div>
-            <div>
+            <div id="sku-more-desc">
               <label class="text-xs font-medium text-gray-500">Описание</label>
               <textarea id="sku-description-input" rows="3"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none"
@@ -166,6 +173,18 @@ window.SkuModal = {
    * @returns {{ open: (mode:'create'|'edit', original?:string, prefill?:Object|null, context?:Object|null) => void }}
    */
   init({ onSaved }) {
+    // Один набор обработчиков на разметку модалки (волна 2 аудита менеджера,
+    // 28.09.2026). Раньше «Корзина» звала init() на каждое «+ Добавить товар» /
+    // «Найти» — обработчики «Сохранить» копились, одно нажатие слало N
+    // createSku: в проде 16 из 60 созданий падали «уже есть в каталоге» в те
+    // же миллисекунды, а onSaved старой карточки мог подставить товар не той
+    // позиции. Повторный init только меняет, кому сообщить о сохранении.
+    const modalRoot = document.getElementById('create-sku-modal');
+    if (modalRoot && modalRoot._skuModalApi) {
+      modalRoot._skuModalApi.setOnSaved(onSaved);
+      return modalRoot._skuModalApi;
+    }
+    let currentOnSaved = onSaved;
     let skuModalMode = 'create';
     let skuModalOldOriginal = null;
     let skuModalContext = null;
@@ -230,7 +249,7 @@ window.SkuModal = {
           }
         }
       }
-      onSaved(result, action, context);
+      currentOnSaved(result, action, context);
     }
 
     // Справочник линеек — один раз при монтировании; до применения миграции
@@ -283,6 +302,75 @@ window.SkuModal = {
       extraLinesInitial = JSON.stringify(extraLines);
       document.getElementById('sku-extra-lines-field').classList.toggle('hidden', !extraLinesEnabled);
       if (extraLinesEnabled) renderExtraLines();
+    }
+
+    // --- Короткая форма из «Корзины» (context.compact) -----------------------
+    let compactMode = false;
+    function setMoreOpen(open) {
+      document.getElementById('sku-more-tags').classList.toggle('hidden', !open);
+      document.getElementById('sku-more-desc').classList.toggle('hidden', !open);
+      renderMoreToggle();
+    }
+    function renderMoreToggle() {
+      const btn = document.getElementById('sku-more-toggle');
+      if (!compactMode) { btn.classList.add('hidden'); return; }
+      const open = !document.getElementById('sku-more-tags').classList.contains('hidden');
+      const filled = [document.getElementById('sku-brand-input').value.trim(), characterChips.join(', '), document.getElementById('sku-series-input').value.trim()].filter(Boolean);
+      btn.textContent = open ? 'Скрыть подробности' : `Подробнее: бренд, персонаж, серия, описание${filled.length ? ` (${filled.join(' · ')})` : ''}`;
+      btn.classList.remove('hidden');
+    }
+    document.getElementById('sku-more-toggle').addEventListener('click', () => {
+      setMoreOpen(document.getElementById('sku-more-tags').classList.contains('hidden'));
+    });
+
+    // Подсказка тегов в короткой форме — только предложение (правило VASY
+    // «я не доверяю конечное решение ИИ»): поля не трогаются до «Принять».
+    function hideTagSuggestion() {
+      const box = document.getElementById('sku-tag-suggestion');
+      box.classList.add('hidden');
+      box.innerHTML = '';
+    }
+    function showTagSuggestion(tags) {
+      const parts = tags ? [tags.brand, tags.character, tags.series].filter(Boolean) : [];
+      if (parts.length === 0) { hideTagSuggestion(); return; }
+      const box = document.getElementById('sku-tag-suggestion');
+      box.innerHTML = `
+        <div class="text-gray-600 mb-1.5">Подсказка по странице товара — проверьте: <b class="text-gray-800">${escapeHtmlClient(parts.join(' · '))}</b></div>
+        <div class="flex gap-2">
+          <button type="button" id="sku-tag-accept" class="px-3 py-1 rounded-lg bg-indigo-600 text-white font-medium">Принять</button>
+          <button type="button" id="sku-tag-dismiss" class="px-3 py-1 rounded-lg border border-gray-200 bg-white text-gray-600">Не нужно</button>
+        </div>`;
+      box.classList.remove('hidden');
+      document.getElementById('sku-tag-accept').addEventListener('click', () => {
+        const brandInput = document.getElementById('sku-brand-input');
+        const seriesInput = document.getElementById('sku-series-input');
+        if (brandInput.value.trim() === '' && tags.brand) brandInput.value = tags.brand;
+        if (characterChips.length === 0 && tags.character) addCharacterChips(tags.character);
+        if (seriesInput.value.trim() === '' && tags.series) seriesInput.value = tags.series;
+        hideTagSuggestion();
+        setMoreOpen(true);
+      });
+      document.getElementById('sku-tag-dismiss').addEventListener('click', hideTagSuggestion);
+    }
+
+    // «Такая позиция уже есть» (createSku с returnExisting) — вместо ошибки:
+    // из «Корзины» — выбрать её, из каталога — открыть её.
+    function showExistsChoice(existing) {
+      document.getElementById('create-sku-save').classList.add('hidden');
+      const box = document.getElementById('sku-merge-conflict');
+      const pick = !!(skuModalContext && skuModalContext.pickExisting);
+      box.innerHTML = `
+        <p class="text-xs text-amber-700 mb-2 px-1">Такая позиция уже есть в каталоге: <b>${escapeHtmlClient(existing.shortName || existing.original)}</b>${existing.shortName ? ` <span class="text-gray-400">(${escapeHtmlClient(existing.original)})</span>` : ''}.</p>
+        <button type="button" id="sku-exists-use" class="w-full p-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">${pick ? 'Выбрать её' : 'Открыть её'}</button>`;
+      box.classList.remove('hidden');
+      document.getElementById('sku-exists-use').addEventListener('click', () => {
+        if (pick) {
+          closeSkuModal();
+          handleSaved({ value: existing.original, label: existing.shortName || existing.original }, 'create', skuModalContext);
+        } else {
+          open('edit', existing.original);
+        }
+      });
     }
 
     function closeSkuModal() {
@@ -438,7 +526,7 @@ window.SkuModal = {
       if (title === '') return;
 
       const guessed = skuModalGuessBrand(title);
-      if (guessed) brandInput.value = guessed;
+      if (guessed) { brandInput.value = guessed; renderMoreToggle(); }
     });
 
     // Живой поиск по каталогу прямо в поле "Выпуск" (по фидбеку VASY
@@ -606,7 +694,9 @@ window.SkuModal = {
       if (descriptionInput.value.trim() === '' && description) {
         descriptionInput.value = description;
       }
-      if (suggestedTags) {
+      if (suggestedTags && compactMode) {
+        showTagSuggestion(suggestedTags);
+      } else if (suggestedTags) {
         const brandInput = document.getElementById('sku-brand-input');
         if (brandInput.value.trim() === '' && suggestedTags.brand) brandInput.value = suggestedTags.brand;
         if (characterChips.length === 0 && suggestedTags.character) addCharacterChips(suggestedTags.character);
@@ -711,6 +801,8 @@ window.SkuModal = {
       skuModalOldOriginal = original || null;
       skuModalContext = context || null;
       prefillModelCode = (mode === 'create' && prefill && prefill.modelCode) ? prefill.modelCode : '';
+      compactMode = mode === 'create' && !!(context && context.compact);
+      hideTagSuggestion();
       document.getElementById('sku-existing-note').classList.add('hidden');
 
       document.getElementById('sku-error-text').classList.add('hidden');
@@ -722,6 +814,8 @@ window.SkuModal = {
       const saveBtn = document.getElementById('create-sku-save');
 
       if (mode === 'edit') {
+        compactMode = false;
+        setMoreOpen(true);
         titleEl.textContent = 'Редактирование позиции';
         saveBtn.textContent = 'Сохранить изменения';
         deleteBtn.classList.remove('hidden');
@@ -755,7 +849,7 @@ window.SkuModal = {
         }
       } else {
         titleEl.textContent = 'Новая позиция каталога';
-        saveBtn.textContent = 'Сохранить';
+        saveBtn.textContent = compactMode ? 'Создать и выбрать' : 'Сохранить';
         deleteBtn.classList.add('hidden');
         ['sku-original-input', 'sku-short-input', 'sku-brand-input', 'sku-character-input', 'sku-series-input',
           'sku-image-input', 'sku-description-input', 'sku-link-add-input']
@@ -780,12 +874,17 @@ window.SkuModal = {
           // гарантированно пусты (очищены строкой выше, в отличие от
           // applyResolvedFields, которая защищается от гонки с уже
           // открытой формой) — прямое присвоение, без доп. проверки.
-          if (prefill.brand) document.getElementById('sku-brand-input').value = prefill.brand;
-          if (prefill.character) addCharacterChips(prefill.character);
-          if (prefill.series) document.getElementById('sku-series-input').value = prefill.series;
+          if (compactMode) {
+            showTagSuggestion({ brand: prefill.brand, character: prefill.character, series: prefill.series });
+          } else {
+            if (prefill.brand) document.getElementById('sku-brand-input').value = prefill.brand;
+            if (prefill.character) addCharacterChips(prefill.character);
+            if (prefill.series) document.getElementById('sku-series-input').value = prefill.series;
+          }
         }
 
         updateImagePreview();
+        setMoreOpen(!compactMode);
         pendingLinks = [];
         // Ссылка, по которой распознали позицию (Фаза 3, resolveOrderProductLink
         // status:'unmatched') — раньше нигде не отображалась в самой модалке,
@@ -899,6 +998,7 @@ window.SkuModal = {
         try {
           if (skuModalMode === 'create') {
             const result = await callServer('createSku', skuData, true);
+            if (result.status === 'exists') { showExistsChoice(result.existing); return; }
             await flushPendingLinks(result.value);
             closeSkuModal();
             handleSaved(result, 'create', skuModalContext);
@@ -968,7 +1068,8 @@ window.SkuModal = {
         link: pendingLinks.length > 0 ? pendingLinks[0].url : '',
         imageUrl: document.getElementById('sku-image-input').value.trim(),
         description: document.getElementById('sku-description-input').value.trim(),
-        modelCode: skuModalMode === 'create' ? prefillModelCode : ''
+        modelCode: skuModalMode === 'create' ? prefillModelCode : '',
+        returnExisting: skuModalMode === 'create'
       };
 
       try {
@@ -976,6 +1077,8 @@ window.SkuModal = {
           const result = await callServer('createSku', skuData);
           if (result.status === 'possible_duplicate') {
             showPossibleDuplicateWarning(result.candidates, skuData);
+          } else if (result.status === 'exists') {
+            showExistsChoice(result.existing);
           } else {
             await flushPendingLinks(result.value);
             closeSkuModal();
@@ -998,6 +1101,8 @@ window.SkuModal = {
       }
     });
 
-    return { open };
+    const api = { open, setOnSaved: (fn) => { currentOnSaved = fn; } };
+    if (modalRoot) modalRoot._skuModalApi = api;
+    return api;
   }
 };

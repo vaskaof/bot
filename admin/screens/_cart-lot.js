@@ -1066,6 +1066,8 @@ window.CartLot = {
         })),
       hasPositions: () => lotRows.length > 0,
       hasMissingProduct: () => lotRows.some((r) => !(r.productOriginal || r.productSearchEl.value).trim()),
+      // Волна 2 аудита менеджера — проверка «товар из каталога» перед сохранением корзины.
+      getProductNames: () => lotRows.map((r) => (r.productOriginal || r.productSearchEl.value).trim()),
       // G1 (§8 IMPLEMENTATION-PLAN-CART-UX-2.md, 08.09.2026) — та же точка
       // входа, что на отдельной позиции (см. её JSDoc в _cart-position.js),
       // здесь на уровне КАЖДОЙ строки лота (не лота целиком) — лот содержит
