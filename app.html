@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Кнопка</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=20260929202201"></script>
-  <script src="common.js?v=20260929202201"></script>
+  <script src="config.js?v=20260930002542"></script>
+  <script src="common.js?v=20260930002542"></script>
   <style>
     body {
       background-color: #f3f4f9;
@@ -24,6 +24,7 @@
       padding: 24px;
     }
     .hidden { display: none; }
+    #entry-status { white-space: pre-line; word-break: break-word; max-width: 360px; }
     /* Волна 1, п.3 (10.09.2026) — см. #network-diagnostic-block ниже. */
     #network-diagnostic-block {
       text-align: left;
@@ -93,11 +94,40 @@
         // admin-панель, что 'admin' (там же серверный whitelist
         // MANAGER_ALLOWED_METHODS решает, что менеджеру реально доступно —
         // здесь только маршрутизация, не проверка прав).
-        if (context.role === 'admin' || context.role === 'manager') {
-          window.location.replace('admin/app.html#/news');
-        } else {
-          window.location.replace('client/app.html#/news');
-        }
+        const target = (context.role === 'admin' || context.role === 'manager') ? 'admin/app.html' : 'client/app.html';
+        window.location.replace(target + '#/news');
+        // Диагностика «вечной Загрузки» (30.09.2026, @kssarna): переход на
+        // панель не случился за 12 с — эта страница всё ещё открыта. Проверяем,
+        // открывается ли сама панель и её файлы, и сообщаем серверу.
+        setTimeout(async function () {
+          const probe = async (url) => {
+            const started = Date.now();
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
+            try {
+              const res = await fetch(url + '?_=' + started, { cache: 'no-store', signal: controller.signal });
+              const size = (await res.text()).length;
+              return res.status + ' ' + size + 'b ' + (Date.now() - started) + 'ms';
+            } catch (e) {
+              return 'ERR ' + (e && e.name) + ' ' + (Date.now() - started) + 'ms';
+            } finally {
+              clearTimeout(timer);
+            }
+          };
+          document.getElementById('entry-status').textContent =
+            'Приложение не открывается. Сделайте скриншот и отправьте нам в бот. Проверяем связь...';
+          const details = {
+            page: 'entry', target,
+            html: await probe(target),
+            vendor: await probe('vendor/lucide-1.48.0.min.js'),
+            ua: navigator.userAgent,
+            tg: window.Telegram && window.Telegram.WebApp ? (window.Telegram.WebApp.platform + ' ' + window.Telegram.WebApp.version) : ''
+          };
+          document.getElementById('entry-status').textContent =
+            'Приложение не открывается. Сделайте скриншот и отправьте нам в бот.\n' +
+            'Страница: ' + details.html + '\nФайлы: ' + details.vendor + '\n' + details.tg + '\n' + details.ua;
+          callServer('reportClientBootIssue', details).catch(() => {});
+        }, 12000);
       } catch (error) {
         // Волна 1, п.3 (10.09.2026) — сеть/провайдер блокируют запрос
         // (`error.isNetworkFailure`, callServer's withRetries) — отдельный

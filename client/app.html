@@ -35,26 +35,33 @@
         '<br>Этап: ' + stageText + '<br>' + navigator.userAgent + '</div>' +
         '<button type="button" onclick="location.reload()" style="margin-top:10px;padding:8px 14px;border:0;border-radius:10px;background:#4f46e5;color:#fff;font-size:13px">Обновить страницу</button>';
       document.documentElement.appendChild(box);
+      // Сообщаем серверу, если common.js/Telegram успели загрузиться (30.09.2026).
+      if (typeof window.callServer === 'function') {
+        window.callServer('reportClientBootIssue', {
+          page: 'client', stage: window.__bootStage, loaded: L,
+          app: typeof window.startClientRouter === 'function', ua: navigator.userAgent
+        }).catch(function () {});
+      }
     }, 15000);
   </script>
-  <script src="../vendor/tailwindcss-play-3.4.17.js?v=20260929202201" onload="__bootLoaded.tailwind=true"></script>
-  <script src="../vendor/lucide-1.48.0.min.js?v=20260929202201" onload="__bootLoaded.lucide=true"></script>
+  <script src="../vendor/tailwindcss-play-3.4.17.js?v=20260930002542" onload="__bootLoaded.tailwind=true"></script>
+  <script src="../vendor/lucide-1.48.0.min.js?v=20260930002542" onload="__bootLoaded.lucide=true"></script>
   <script src="https://telegram.org/js/telegram-web-app.js" onload="__bootLoaded.telegram=true"></script>
-  <script src="../config.js?v=20260929202201"></script>
-  <script src="policyText.js?v=20260929202201"></script>
-  <script src="../common.js?v=20260929202201"></script>
-  <script src="router.js?v=20260929202201"></script>
-  <script src="screens/orders.js?v=20260929202201"></script>
-  <script src="screens/order-details.js?v=20260929202201"></script>
-  <script src="screens/news.js?v=20260929202201"></script>
-  <script src="hunt.js?v=20260929202201"></script>
-  <script src="screens/wishlist.js?v=20260929202201"></script>
-  <script src="screens/collection-album.js?v=20260929202201"></script>
-  <script src="screens/year-summary.js?v=20260929202201"></script>
-  <script src="screens/questions.js?v=20260929202201"></script>
-  <script src="screens/contests.js?v=20260929202201"></script>
-  <script src="screens/profile.js?v=20260929202201"></script>
-  <script src="screens/policy.js?v=20260929202201"></script>
+  <script src="../config.js?v=20260930002542"></script>
+  <script src="policyText.js?v=20260930002542"></script>
+  <script src="../common.js?v=20260930002542"></script>
+  <script src="router.js?v=20260930002542"></script>
+  <script src="screens/orders.js?v=20260930002542"></script>
+  <script src="screens/order-details.js?v=20260930002542"></script>
+  <script src="screens/news.js?v=20260930002542"></script>
+  <script src="hunt.js?v=20260930002542"></script>
+  <script src="screens/wishlist.js?v=20260930002542"></script>
+  <script src="screens/collection-album.js?v=20260930002542"></script>
+  <script src="screens/year-summary.js?v=20260930002542"></script>
+  <script src="screens/questions.js?v=20260930002542"></script>
+  <script src="screens/contests.js?v=20260930002542"></script>
+  <script src="screens/profile.js?v=20260930002542"></script>
+  <script src="screens/policy.js?v=20260930002542"></script>
   <style>
     body {
       background-color: #f3f4f9;

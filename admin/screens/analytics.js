@@ -325,6 +325,7 @@ const METHOD_LABELS = {
   getLotteryBoard: 'Доска лотереи',
   getMyCreditBalance: 'Мой кредитный баланс',
   getMyNotificationSettings: 'Настройки уведомлений',
+  reportClientBootIssue: 'Сбой запуска приложения (диагностика)',
   getMyPaymentClaims: 'Мои заявки об оплате',
   getMyPaymentsRollup: 'Сводка моих платежей',
   getMyPoolLeftover: 'Остаток моего пула',
