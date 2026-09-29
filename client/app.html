@@ -8,24 +8,53 @@
        (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1). Наш сервер Referer не использует. -->
   <meta name="referrer" content="no-referrer" />
   <title>Кнопка</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="../config.js?v=20260928185539"></script>
-  <script src="policyText.js?v=20260928185539"></script>
-  <script src="../common.js?v=20260928185539"></script>
-  <script src="router.js?v=20260928185539"></script>
-  <script src="screens/orders.js?v=20260928185539"></script>
-  <script src="screens/order-details.js?v=20260928185539"></script>
-  <script src="screens/news.js?v=20260928185539"></script>
-  <script src="hunt.js?v=20260928185539"></script>
-  <script src="screens/wishlist.js?v=20260928185539"></script>
-  <script src="screens/collection-album.js?v=20260928185539"></script>
-  <script src="screens/year-summary.js?v=20260928185539"></script>
-  <script src="screens/questions.js?v=20260928185539"></script>
-  <script src="screens/contests.js?v=20260928185539"></script>
-  <script src="screens/profile.js?v=20260928185539"></script>
-  <script src="screens/policy.js?v=20260928185539"></script>
+  <!-- Tailwind/Lucide лежат у нас (vendor/), не на CDN: 29.09.2026 клиентка @kssarna
+       висела на «Загрузке» — крупные скрипты с Cloudflare-CDN у части РФ-провайдеров
+       обрываются, а синхронный script в head вешает всю страницу. -->
+  <!-- Сторож загрузки (29.09.2026, @kssarna): если через 15 с приложение не
+       стартовало — показываем, ЧТО именно не загрузилось, поверх всего. Без
+       Tailwind (он может быть как раз тем, что не загрузилось), в <html>, а не
+       в <body> (пока висит скрипт в head, body ещё нет). Таймеры работают и
+       пока парсер ждёт скрипт. -->
+  <script>
+    window.__bootLoaded = {};
+    window.__bootStage = 'scripts';
+    setTimeout(function () {
+      if (window.__bootStage === 'booted') return;
+      var L = window.__bootLoaded;
+      var rows = [
+        ['Стили', L.tailwind], ['Иконки', L.lucide], ['Telegram', L.telegram],
+        ['Скрипты приложения', typeof window.startClientRouter === 'function']
+      ];
+      var stageText = { scripts: 'загрузка файлов', context: 'ожидание ответа сервера' }[window.__bootStage] || window.__bootStage;
+      var box = document.createElement('div');
+      box.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#fff;border-top:1px solid #e5e7eb;padding:14px 16px;font:13px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;color:#374151');
+      box.innerHTML = '<b>Приложение долго загружается.</b><br>Сделайте скриншот этого окна и отправьте его нам в бот.' +
+        '<div style="margin-top:8px;font-family:monospace;font-size:11px;word-break:break-all">' +
+        rows.map(function (r) { return (r[1] ? '✓ ' : '✗ ') + r[0]; }).join('<br>') +
+        '<br>Этап: ' + stageText + '<br>' + navigator.userAgent + '</div>' +
+        '<button type="button" onclick="location.reload()" style="margin-top:10px;padding:8px 14px;border:0;border-radius:10px;background:#4f46e5;color:#fff;font-size:13px">Обновить страницу</button>';
+      document.documentElement.appendChild(box);
+    }, 15000);
+  </script>
+  <script src="../vendor/tailwindcss-play-3.4.17.js?v=20260929194539" onload="__bootLoaded.tailwind=true"></script>
+  <script src="../vendor/lucide-1.48.0.min.js?v=20260929194539" onload="__bootLoaded.lucide=true"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js" onload="__bootLoaded.telegram=true"></script>
+  <script src="../config.js?v=20260929194539"></script>
+  <script src="policyText.js?v=20260929194539"></script>
+  <script src="../common.js?v=20260929194539"></script>
+  <script src="router.js?v=20260929194539"></script>
+  <script src="screens/orders.js?v=20260929194539"></script>
+  <script src="screens/order-details.js?v=20260929194539"></script>
+  <script src="screens/news.js?v=20260929194539"></script>
+  <script src="hunt.js?v=20260929194539"></script>
+  <script src="screens/wishlist.js?v=20260929194539"></script>
+  <script src="screens/collection-album.js?v=20260929194539"></script>
+  <script src="screens/year-summary.js?v=20260929194539"></script>
+  <script src="screens/questions.js?v=20260929194539"></script>
+  <script src="screens/contests.js?v=20260929194539"></script>
+  <script src="screens/profile.js?v=20260929194539"></script>
+  <script src="screens/policy.js?v=20260929194539"></script>
   <style>
     body {
       background-color: #f3f4f9;

@@ -223,6 +223,7 @@ function initAccessCheck(onSuccess) {
             appContent.classList.remove('hidden');
             onSuccess(dictionaries);
         } catch (error) {
+            window.__bootStage = 'booted';
             loadingScreen.classList.add('hidden');
             _showAccessDeniedScreen(accessDeniedScreen, error);
         }
@@ -641,6 +642,8 @@ function initClientAccess(onSuccess) {
     const appContent = document.getElementById('app-content');
 
     (async function () {
+        // Этапы для сторожа загрузки в client/app.html (29.09.2026).
+        window.__bootStage = 'context';
         try {
             const cached = _readCachedClientContext();
             const context = cached || await fetchUserContext();
@@ -648,6 +651,7 @@ function initClientAccess(onSuccess) {
                 throw new Error('Доступ только для клиентов.');
             }
             if (!cached) _writeCachedClientContext(context);
+            window.__bootStage = 'booted';
             loadingScreen.classList.add('hidden');
 
             // Гейт согласия с политикой конфиденциальности (17.08.2026,
@@ -670,6 +674,7 @@ function initClientAccess(onSuccess) {
             appContent.classList.remove('hidden');
             onSuccess(context);
         } catch (error) {
+            window.__bootStage = 'booted';
             loadingScreen.classList.add('hidden');
             _showAccessDeniedScreen(accessDeniedScreen, error);
         }
