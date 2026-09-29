@@ -214,6 +214,7 @@ const METHOD_LABELS = {
   getRecentApprovedTaskSubmissions: 'Недавно одобренные задания',
   getRemainingLotteryParticipants: 'Оставшиеся участники лотереи',
   getReminders: 'Напоминания',
+  getTasksBoard: 'Задачи (доска)',
   getRemindersSummary: 'Сводка напоминаний',
   getSharePayoutsReport: 'Отчёт по выплатам долей',
   getShippingRecommendations: 'Рекомендации по отправке',

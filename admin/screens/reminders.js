@@ -37,13 +37,26 @@ const INLINE_FILL_FIELDS = {
   'Доставка_РФ': { serverField: 'shippingRfSum', label: 'Стоимость доставки по РФ, ₽' }
 };
 
+// Волна 3 «Задачи» (29.09.2026) — колонки доски = укрупнённые стадии
+// (`server/src/orders/orderStage.js`, общего JS-модуля нет — копия ключей
+// и подписей). Пустые колонки не показываются.
+const TASK_STAGES = [
+  { key: 'e2', label: 'Просчёт' },
+  { key: 'e3', label: 'Выкуп' },
+  { key: 'e4', label: 'Логистика до КЗ' },
+  { key: 'e5', label: 'Консолидация в КЗ' },
+  { key: 'e6', label: 'Доставка в РФ' },
+  { key: 'e7', label: 'Выдача' },
+  { key: '', label: 'Без статуса' }
+];
+
 window.Screens.reminders = {
   render(root) {
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
-      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Напоминания</h1>
+      <h1 class="text-lg font-semibold text-gray-900 tracking-tight ml-2">Задачи</h1>
     `;
     document.getElementById('header-actions').innerHTML = `
       <button id="refresh-reminders" title="Обновить список" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
@@ -52,39 +65,41 @@ window.Screens.reminders = {
     `;
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
+    // Доска: телефон — вкладки стадий и одна колонка; широкий экран (lg) —
+    // все непустые колонки рядом. Фильтры — те же, что были у списка.
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="recommendations-block" class="hidden mb-4"></div>
+      <main class="pt-16 pb-6 px-4 max-w-2xl lg:max-w-none mx-auto">
+        <div class="lg:max-w-2xl">
+          <div id="recommendations-block" class="hidden mb-4"></div>
 
-        <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3" id="reminders-tabs">
-          <button type="button" data-tab="client" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Клиентские</button>
-          <button type="button" data-tab="own" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Личные</button>
-        </div>
-
-        <div class="flex items-center gap-2 mb-3">
-          <div class="relative flex-1">
-            <input type="text" id="reminders-client-filter" placeholder="Фильтр по клиенту..." class="w-full text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-indigo-400">
+          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3" id="reminders-tabs">
+            <button type="button" data-tab="client" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Клиентские</button>
+            <button type="button" data-tab="own" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Личные</button>
           </div>
-          <select id="reminders-channel-filter" class="text-sm bg-white border border-gray-200 rounded-xl px-2 py-2 outline-none focus:border-indigo-400">
-            <option value="">Все каналы</option>
+
+          <div class="flex items-center gap-2 mb-3">
+            <div class="relative flex-1">
+              <input type="text" id="reminders-client-filter" placeholder="Фильтр по клиенту..." class="w-full text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-indigo-400">
+            </div>
+            <select id="reminders-channel-filter" class="text-sm bg-white border border-gray-200 rounded-xl px-2 py-2 outline-none focus:border-indigo-400">
+              <option value="">Все каналы</option>
+            </select>
+          </div>
+
+          <!-- §1.1 (19.09.2026) — сервер УЖЕ ограничил видимый набор ролью,
+               дропдаун только сужает его на экране для admin/менеджера с
+               can_view_all_clients. -->
+          <select id="reminders-manager-filter" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 px-3 py-2 mb-3 text-sm outline-none focus:border-indigo-400">
+            <option value="">Все менеджеры</option>
           </select>
+
+          <div class="text-[11px] text-gray-400 px-1 mb-2" id="reminders-count"></div>
+          <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-2 mb-2 lg:hidden"></div>
         </div>
-
-        <!-- §1.1 (19.09.2026) — тот же паттерн, что manager-filter-select в
-             orders.js: сервер УЖЕ ограничил видимый набор карточек ролью
-             (getReminders(tenantId, user)), этот дропдаун сужает ЕГО же на
-             экране для admin/менеджера с can_view_all_clients — не отдельная
-             граница доступа, чисто отображение. Скрыт по умолчанию (canSeeAll
-             решает, см. render() ниже), обычному менеджеру не нужен — сервер
-             и так вернул только его заказы. -->
-        <select id="reminders-manager-filter" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 px-3 py-2 mb-3 text-sm outline-none focus:border-indigo-400">
-          <option value="">Все менеджеры</option>
-        </select>
-
-        <div class="text-[11px] text-gray-400 px-1 mb-2" id="reminders-count"></div>
-        <div id="reminders-list"></div>
-        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Незакрытых пунктов нет 🎉</div>
+        <div id="reminders-list" class="lg:flex lg:gap-4 lg:items-start lg:overflow-x-auto lg:pb-4"></div>
+        <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Задач нет 🎉</div>
       </main>
+      ${DeliveryStatusModal.html()}
     `;
 
     const listContainer = document.getElementById('reminders-list');
@@ -96,20 +111,48 @@ window.Screens.reminders = {
     const channelFilterSelect = document.getElementById('reminders-channel-filter');
     const managerFilterSelect = document.getElementById('reminders-manager-filter');
     const tabsContainer = document.getElementById('reminders-tabs');
+    const stageTabsContainer = document.getElementById('stage-tabs');
 
     let allCards = [];
+    let stageTotals = {};
     let activeTab = 'client';
+    let activeStageKey = null; // вкладка стадии на телефоне; null — первая с задачами
+    const expandedGroups = new Set(); // id коллективок, раскрытых на доске
 
-    // §1.1 — тот же canSeeAll, что orders.js/clients.js: admin ИЛИ менеджер
-    // с can_view_all_clients=true (глобалы выставляются router.js после
-    // initAccessCheck, см. её JSDoc там же).
+    // «Перевести» по отставшим от коллективки — та же модалка массовой смены
+    // статуса, что в «Заказах»/коллективке (гейт долга и данных внутри неё).
+    const deliveryStatusModal = DeliveryStatusModal.init({
+      getStatusDictionary: async () => (await callServer('getDictionaries')).statusDelivery,
+      onApplied: async ({ closedCount, forcedCount, failedCount }) => {
+        const total = closedCount + forcedCount;
+        if (failedCount > 0) {
+          showSaveToast(false, `Статус изменён у ${total}, не удалось у ${failedCount} (см. лог).`);
+        } else if (total > 0) {
+          showSaveToast(true, `Статус изменён у ${total} заказ(ов).`);
+        }
+        await loadReminders();
+      }
+    });
+
+    // Решение VASY 29.09.2026: догоняющий перевод — БЕЗ уведомлений клиентам
+    // (для августовских заказов «у посредника в РФ» пришло бы с опозданием на
+    // месяц). Галочку менеджер может включить сам.
+    function openCatchUp(orderIds, targetStatus, collectiveName) {
+      deliveryStatusModal.open(orderIds, {
+        presetStatus: targetStatus,
+        presetNotify: false,
+        autoNote: `Догнать коллективку «${collectiveName}»: ${orderIds.length} заказ(ов) → «${targetStatus}». Клиентам по умолчанию не сообщаем.`
+      });
+    }
+
+    // §1.1 — тот же canSeeAll, что orders.js/clients.js.
     const canSeeAll = window.CURRENT_ACCESS_ROLE === 'admin' || window.CURRENT_CAN_VIEW_ALL_CLIENTS === true;
     if (canSeeAll) {
       callServer('getStaffFilterOptions').then((staffList) => {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
         managerFilterSelect.classList.remove('hidden');
-      }).catch(() => { /* фильтр необязателен — список напоминаний это не блокирует, см. orders.js за тем же приёмом */ });
+      }).catch(() => { /* фильтр необязателен */ });
     }
 
     function setActiveTab(tab) {
@@ -126,6 +169,12 @@ window.Screens.reminders = {
     tabsContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-tab]');
       if (btn) setActiveTab(btn.dataset.tab);
+    });
+    stageTabsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-stage-key]');
+      if (!btn) return;
+      activeStageKey = btn.dataset.stageKey;
+      render();
     });
     setActiveTab('client');
 
@@ -147,7 +196,9 @@ window.Screens.reminders = {
     async function loadReminders() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        allCards = await callServer('getReminders');
+        const board = await callServer('getTasksBoard');
+        allCards = board.cards;
+        stageTotals = board.stageTotals || {};
         populateChannelFilter();
         render();
       } catch (error) {
@@ -185,7 +236,7 @@ window.Screens.reminders = {
     function filteredCards() {
       const clientQuery = clientFilterInput.value.trim().toLowerCase();
       const channel = channelFilterSelect.value;
-      const manager = managerFilterSelect.value; // '' — "Все менеджеры" (или скрыт для обычного менеджера)
+      const manager = managerFilterSelect.value;
       return allCards.filter(c => {
         if (activeTab === 'client' && c.isOwnPurchase) return false;
         if (activeTab === 'own' && !c.isOwnPurchase) return false;
@@ -204,10 +255,14 @@ window.Screens.reminders = {
       return 'border-gray-200';
     }
 
+    function stageKeyOf(card) {
+      return card.stage ? card.stage.key : '';
+    }
+
     function render() {
       const cards = filteredCards();
-      const clientCount = allCards.filter(c => !c.isOwnPurchase).length;
-      const ownCount = allCards.filter(c => c.isOwnPurchase).length;
+      const clientCount = allCards.filter(c => !c.isOwnPurchase && !c.quiet).length;
+      const ownCount = allCards.filter(c => c.isOwnPurchase && !c.quiet).length;
       tabsContainer.querySelector('[data-tab="client"]').textContent = `Клиентские (${clientCount})`;
       tabsContainer.querySelector('[data-tab="own"]').textContent = `Личные (${ownCount})`;
 
@@ -215,29 +270,164 @@ window.Screens.reminders = {
       countLabel.textContent = `Срочно: ${criticalCount}`;
 
       listContainer.innerHTML = '';
+      stageTabsContainer.innerHTML = '';
 
-      if (cards.length === 0) {
+      const columns = TASK_STAGES
+        .map(stage => {
+          const stageCards = cards.filter(c => stageKeyOf(c) === stage.key);
+          return { stage, active: stageCards.filter(c => !c.quiet), quiet: stageCards.filter(c => c.quiet) };
+        })
+        .filter(col => col.active.length > 0 || col.quiet.length > 0);
+
+      if (columns.length === 0) {
         emptyMessage.classList.remove('hidden');
         return;
       }
       emptyMessage.classList.add('hidden');
 
-      // Группировка по severity — карточки внутри группы уже пришли с сервера
-      // отсортированными по приоритету (priorityScore), порядок не трогаем.
-      for (const severity of SEVERITY_ORDER) {
-        const group = cards.filter(c => c.severity === severity);
-        if (group.length === 0) continue;
-
-        const header = document.createElement('div');
-        header.className = 'flex items-center gap-2 px-1 mb-2 mt-4 first:mt-0';
-        header.innerHTML = `
-          <span class="w-2 h-2 rounded-full ${SEVERITY_DOT[severity]}"></span>
-          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${SEVERITY_LABELS[severity]} (${group.length})</span>
-        `;
-        listContainer.appendChild(header);
-
-        group.forEach(card => listContainer.appendChild(buildCard(card)));
+      if (!columns.some(col => col.stage.key === activeStageKey)) {
+        const firstWithTasks = columns.find(col => col.active.length > 0) || columns[0];
+        activeStageKey = firstWithTasks.stage.key;
       }
+
+      for (const col of columns) {
+        const isActive = col.stage.key === activeStageKey;
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.dataset.stageKey = col.stage.key;
+        tab.className = `shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`;
+        tab.textContent = `${col.stage.label} · ${col.active.length}`;
+        stageTabsContainer.appendChild(tab);
+
+        listContainer.appendChild(buildColumn(col, isActive));
+      }
+    }
+
+    function buildColumn(col, isActive) {
+      const el = document.createElement('section');
+      el.dataset.stageColumn = col.stage.key;
+      // На телефоне видна только активная вкладка; на lg — все колонки.
+      el.className = `${isActive ? '' : 'hidden'} lg:block lg:w-[340px] lg:shrink-0`;
+      const total = stageTotals[col.stage.key];
+      el.innerHTML = `
+        <div class="flex items-baseline justify-between px-1 mb-2">
+          <span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">${escapeHtmlClient(col.stage.label)} · ${col.active.length}</span>
+          ${total ? `<span class="text-[11px] text-gray-400">всего заказов: ${total}</span>` : ''}
+        </div>
+        <div data-cards></div>
+      `;
+      const cardsEl = el.querySelector('[data-cards]');
+
+      for (const entry of groupByCollective(col.active)) {
+        cardsEl.appendChild(entry.cards.length > 1 ? buildGroupCard(entry) : buildCard(entry.cards[0]));
+      }
+
+      if (col.active.length === 0) {
+        cardsEl.innerHTML = '<div class="text-xs text-gray-400 px-1 pb-3">Задач нет</div>';
+      }
+
+      // Решение VASY 29.09.2026: «дольше нормы» — пока справочно, свёрнуто.
+      if (col.quiet.length > 0) {
+        const details = document.createElement('details');
+        details.className = 'mb-3';
+        details.innerHTML = `<summary class="text-xs text-gray-500 px-1 py-2 cursor-pointer select-none">Долго на этапе (справочно) · ${col.quiet.length}</summary><div data-quiet class="opacity-80"></div>`;
+        const quietEl = details.querySelector('[data-quiet]');
+        col.quiet.forEach(card => quietEl.appendChild(buildCard(card)));
+        cardsEl.appendChild(details);
+      }
+      return el;
+    }
+
+    // Карточки одной коллективки внутри колонки — одной группой; порядок
+    // групп — по первой (самой приоритетной) карточке, как пришло с сервера.
+    function groupByCollective(cards) {
+      const entries = [];
+      const byId = new Map();
+      for (const card of cards) {
+        const id = card.collective ? card.collective.id : null;
+        if (id && byId.has(id)) { byId.get(id).cards.push(card); continue; }
+        const entry = { collective: card.collective, cards: [card] };
+        if (id) byId.set(id, entry);
+        entries.push(entry);
+      }
+      return entries;
+    }
+
+    // Все отставшие от коллективки заказы — по всей доске (с учётом
+    // фильтров), не только в этой колонке: переводятся одним действием.
+    function behindOrdersOf(collectiveId) {
+      const result = [];
+      for (const card of filteredCards()) {
+        const item = card.items.find(i => i.kind === 'behind_collective' && i.collectiveId === collectiveId);
+        if (item) result.push({ orderId: card.orderId, targetStatus: item.targetStatus });
+      }
+      return result;
+    }
+
+    function buildGroupCard(entry) {
+      const { collective, cards } = entry;
+      const el = document.createElement('div');
+      el.className = 'bg-white rounded-2xl shadow-sm border border-violet-200 p-4 mb-3';
+      el.dataset.collectiveGroup = collective.id;
+
+      const counts = new Map();
+      for (const card of cards) {
+        for (const item of card.items) {
+          if (item.quiet) continue;
+          const label = item.kind === 'behind_collective' ? 'Отстал от коллективки' : item.label;
+          counts.set(label, (counts.get(label) || 0) + 1);
+        }
+      }
+      const debt = cards.reduce((sum, c) => sum + (c.debtRub || 0), 0);
+      const worst = SEVERITY_ORDER.find(s => cards.some(c => c.severity === s)) || 'info';
+      const expanded = expandedGroups.has(collective.id);
+
+      el.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full ${SEVERITY_DOT[worst]}"></span>
+              <span class="text-[11px] text-violet-600 font-medium">Коллективка · ${cards.length} заказ(ов)</span>
+            </div>
+            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(collective.name)}</div>
+          </div>
+          ${debt > 0 ? `<div class="shrink-0 text-sm font-semibold text-red-600">${debt.toFixed(2)} ₽</div>` : ''}
+        </div>
+        <div class="mt-2 space-y-0.5 text-[12px] text-gray-700">
+          ${[...counts.entries()].map(([label, n]) => `<div>• ${escapeHtmlClient(label)}${n > 1 ? ` <span class="text-gray-400">×${n}</span>` : ''}</div>`).join('')}
+        </div>
+        <div class="mt-3 flex items-center gap-2" data-group-actions></div>
+        <div data-group-cards class="${expanded ? '' : 'hidden'} mt-3"></div>
+      `;
+
+      const actionsEl = el.querySelector('[data-group-actions]');
+      const behind = behindOrdersOf(collective.id);
+      if (behind.length > 0) {
+        const catchUpBtn = document.createElement('button');
+        catchUpBtn.type = 'button';
+        catchUpBtn.className = 'catch-up-btn flex-1 py-2 rounded-xl bg-violet-50 text-xs font-medium text-violet-700';
+        catchUpBtn.textContent = `Перевести отставших (${behind.length})`;
+        catchUpBtn.addEventListener('click', () => {
+          openCatchUp(behind.map(b => b.orderId), behind[0].targetStatus, collective.name);
+        });
+        actionsEl.appendChild(catchUpBtn);
+      }
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'group-toggle-btn flex-1 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600';
+      toggleBtn.textContent = expanded ? 'Свернуть' : 'Показать заказы';
+      toggleBtn.addEventListener('click', () => {
+        const listEl = el.querySelector('[data-group-cards]');
+        listEl.classList.toggle('hidden');
+        const nowExpanded = !listEl.classList.contains('hidden');
+        if (nowExpanded) expandedGroups.add(collective.id); else expandedGroups.delete(collective.id);
+        toggleBtn.textContent = nowExpanded ? 'Свернуть' : 'Показать заказы';
+      });
+      actionsEl.appendChild(toggleBtn);
+
+      const groupCardsEl = el.querySelector('[data-group-cards]');
+      cards.forEach(card => groupCardsEl.appendChild(buildCard(card)));
+      return el;
     }
 
     function buildCard(card) {
@@ -309,6 +499,20 @@ window.Screens.reminders = {
           });
         });
         actionsEl.appendChild(payBtn);
+      }
+
+      // Волна 3 — «Отстал от коллективки»: перевод одного заказа, без уведомления.
+      const behindItem = card.items.find(i => i.kind === 'behind_collective');
+      if (behindItem) {
+        const catchUpBtn = document.createElement('button');
+        catchUpBtn.type = 'button';
+        catchUpBtn.className = 'catch-up-one-btn flex-1 py-2 rounded-xl bg-violet-50 text-xs font-medium text-violet-700';
+        catchUpBtn.textContent = 'Перевести';
+        catchUpBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openCatchUp([card.orderId], behindItem.targetStatus, behindItem.collectiveName || behindItem.collectiveId);
+        });
+        actionsEl.appendChild(catchUpBtn);
       }
 
       el.querySelector('[data-open]').addEventListener('click', () => {
