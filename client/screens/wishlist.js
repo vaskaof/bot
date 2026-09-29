@@ -1826,6 +1826,7 @@ window.Screens.wishlist = {
       row.innerHTML = `
         <input type="checkbox" class="photo-scan-check mt-2.5" data-idx="${idx}" ${alreadyInChecklist ? '' : 'checked'}>
         <div class="flex-1 min-w-0">
+          ${pos.position ? `<div class="text-[10px] text-gray-400 mb-0.5">На фото: ${escapeHtmlClient(pos.position)}</div>` : ''}
           ${nameFieldHtml}
           ${alternativesHtml}
           <div class="flex items-center gap-2 mt-1">
@@ -2003,9 +2004,15 @@ window.Screens.wishlist = {
 
     photoScanDiscardBtn.addEventListener('click', async () => {
       if (!currentScanId) { closePhotoScanModal(); return; }
+      // 29.09.2026 — «ИИ ошибся» и при отмене всего скана: раньше сигнал
+      // писался только на подтверждении, отклонённые сканы терялись.
+      const hasRows = photoScanList.querySelector('.photo-scan-check') !== null;
+      const aiWrong = hasRows
+        ? await showConfirmModal('Почему не добавляете?', { confirmLabel: 'ИИ распознал неверно', cancelLabel: 'Просто передумал(а)' })
+        : false;
       photoScanDiscardBtn.disabled = true;
       try {
-        await callServer('discardWishlistPhotoScan', currentScanId);
+        await callServer('discardWishlistPhotoScan', currentScanId, aiWrong);
       } catch (_error) {
         // не критично — скан просто останется 'pending', сверх дневного лимита не считается заново
       } finally {

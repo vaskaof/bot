@@ -501,6 +501,19 @@ window.Screens.reminders = {
         actionsEl.appendChild(payBtn);
       }
 
+      // «Списать долг на компанию» (29.09.2026) — только закрытый заказ с долгом.
+      if (card.items.some(i => i.kind === 'debt_on_close')) {
+        const writeoffBtn = document.createElement('button');
+        writeoffBtn.type = 'button';
+        writeoffBtn.className = 'debt-writeoff-btn flex-1 py-2 rounded-xl bg-red-50 text-xs font-medium text-red-600';
+        writeoffBtn.textContent = 'Списать долг';
+        writeoffBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          DebtWriteoffModal.open(card.orderId, { onChanged: () => loadReminders() });
+        });
+        actionsEl.appendChild(writeoffBtn);
+      }
+
       // Волна 3 — «Отстал от коллективки»: перевод одного заказа, без уведомления.
       const behindItem = card.items.find(i => i.kind === 'behind_collective');
       if (behindItem) {

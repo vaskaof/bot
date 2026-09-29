@@ -237,6 +237,7 @@ window.Screens.orderEdit = {
                явно признанные неразрешимыми (см. reminderService.js
                DISMISSIBLE_KINDS). Список пуст → скрыт целиком. -->
           <div id="reminder-dismissals-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
+          <div id="debt-writeoffs-banner" class="hidden field-row flex items-center justify-between p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
@@ -1492,6 +1493,33 @@ window.Screens.orderEdit = {
         } catch { /* best-effort, не блокирует форму */ }
       }
       refreshReminderDismissals();
+
+      // «Списать долг на компанию» (29.09.2026) — закрытый заказ с долгом или
+      // уже списанный долг (отменить можно здесь: карточка в «Задачах» после
+      // полного списания пропадает). Best-effort, как баннеры выше.
+      const debtWriteoffsBanner = document.getElementById('debt-writeoffs-banner');
+      async function refreshDebtWriteoffs() {
+        debtWriteoffsBanner.classList.add('hidden');
+        try {
+          const info = await callServer('getOrderDebtForWriteoff', currentOrderId);
+          const active = (info.writeoffs || []).filter((w) => !w.cancelledAt);
+          const writtenOff = active.reduce((sum, w) => sum + w.amount, 0);
+          const hasDebt = info.canWriteOff && info.totalRemaining > 0.005;
+          if (!hasDebt && active.length === 0) return;
+          debtWriteoffsBanner.innerHTML = `
+            <div class="text-xs text-gray-600 min-w-0">
+              ${hasDebt ? `<div class="font-medium text-red-600">Заказ закрыт, долг ${info.totalRemaining.toFixed(2)} ₽</div>` : ''}
+              ${active.length > 0 ? `<div>Списано на компанию: ${writtenOff.toFixed(2)} ₽</div>` : ''}
+            </div>
+            <button type="button" class="debt-writeoff-open-btn shrink-0 text-xs text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50">${hasDebt ? 'Списать долг' : 'Подробнее'}</button>
+          `;
+          debtWriteoffsBanner.classList.remove('hidden');
+          debtWriteoffsBanner.querySelector('.debt-writeoff-open-btn').addEventListener('click', () => {
+            DebtWriteoffModal.open(currentOrderId, { onChanged: refreshDebtWriteoffs });
+          });
+        } catch { /* best-effort, не блокирует форму */ }
+      }
+      refreshDebtWriteoffs();
 
       FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', details.purchaseChannel);
       FormHelpers.setDictionaryValue('select[data-dict="purchaseAccount"]', details.purchaseAccount);
