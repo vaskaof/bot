@@ -215,6 +215,8 @@ const METHOD_LABELS = {
   getRemainingLotteryParticipants: 'Оставшиеся участники лотереи',
   getReminders: 'Напоминания',
   getTasksBoard: 'Задачи (доска)',
+  getOrderTasks: 'Следующий шаг заказа',
+  getOrderHistory: 'История заказа',
   getRemindersSummary: 'Сводка напоминаний',
   getSharePayoutsReport: 'Отчёт по выплатам долей',
   getShippingRecommendations: 'Рекомендации по отправке',

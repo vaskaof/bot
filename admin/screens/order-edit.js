@@ -53,9 +53,6 @@ window.Screens.orderEdit = {
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить
       </label>
-      <button id="purchase-event-btn" title="Факт выкупа" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
-        <i data-lucide="receipt" class="w-6 h-6"></i>
-      </button>
       <button id="duplicate-order-btn" title="Дублировать заказ" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy" class="w-6 h-6"></i>
       </button>
@@ -80,9 +77,11 @@ window.Screens.orderEdit = {
         </div>
       </div>
 
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-24 sm:pb-6 px-4 md:px-0 max-w-2xl mx-auto">
         <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+        <!-- «Следующий шаг» (волна 3, сессия 2, 30.09.2026) — _order-card.js. -->
+        <div id="order-next-step" class="hidden mb-3"></div>
         <div id="wishlist-link-box"></div>
         <div id="payment-summary-card" class="hidden mb-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div class="grid grid-cols-3 gap-3 text-center">
@@ -101,9 +100,15 @@ window.Screens.orderEdit = {
           </div>
           <div id="ps-hint" class="hidden text-[11px] text-gray-400 mt-2 text-center"></div>
         </div>
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
-
-          <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4">
+        <div id="order-top-banners">
+          <!-- "Пропустить с причиной" (22.09.2026) — пункты напоминаний,
+               явно признанные неразрешимыми (см. reminderService.js
+               DISMISSIBLE_KINDS). Список пуст → скрыт целиком. -->
+          <div id="reminder-dismissals-banner" class="hidden field-row rounded-2xl border mb-3 flex flex-col p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
+          <div id="debt-writeoffs-banner" class="hidden field-row rounded-2xl border mb-3 flex items-center justify-between p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible">
+          <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
                 <i data-lucide="sticky-note" class="w-5 h-5"></i>
@@ -115,23 +120,20 @@ window.Screens.orderEdit = {
               <div class="text-right text-[10px] text-gray-400 mt-1" id="note-counter">0/300</div>
             </div>
           </div>
+        </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                <i data-lucide="link-2" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Ссылка на покупку</span>
-            </div>
-            <div class="flex-1 w-full relative">
-              <input type="text" id="purchase-link-input" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Вставьте ссылку на товар" autocomplete="off">
-              <div id="purchase-link-hint" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
-                <span>Похоже на ссылку на товар</span>
-                <button type="button" id="purchase-link-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Распознать</button>
-              </div>
-            </div>
-          </div>
-
+        <!-- Волна 3, сессия 2 (30.09.2026) — блок «Товар»: сворачивается
+             только визуально (OrderCard), поля остаются в DOM — saveOrder
+             читает их все, а updateOrder пишет пустым любое не переданное поле. -->
+        <section class="order-block bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible" data-block="product">
+          <button type="button" class="order-block-head w-full flex items-center gap-2 px-4 py-3 text-left" data-block-toggle>
+            <i data-lucide="box" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <span class="text-sm font-semibold text-gray-900 shrink-0">Товар</span>
+            <span class="order-block-dirty hidden w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Есть несохранённые изменения"></span>
+            <span class="order-block-summary flex-1 min-w-0 truncate text-xs text-gray-400 text-right"></span>
+            <i data-lucide="chevron-down" class="order-block-chevron w-4 h-4 text-gray-400 shrink-0 transition-transform"></i>
+          </button>
+          <div class="order-block-body border-t border-gray-100">
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -161,83 +163,21 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
-                <i data-lucide="truck" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Доставка</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
-              <div id="delivery-ladder" class="mt-2"></div>
-              <div id="order-stage-label" class="text-[11px] text-violet-600 font-medium mt-1"></div>
-            </div>
-          </div>
-
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-green-100 text-green-600 flex items-center justify-center shrink-0">
-                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Статус заказа</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800" data-dict="statusOrder"></select>
-            </div>
-          </div>
-
-          <!-- Волна 3, остаток, п.6 (13.09.2026) — переназначение менеджера,
-               admin-only (сервер — уже существующий updateOrder's
-               fields.managerId, admin-only и там же). Скрыт целиком для
-               менеджера (у него нет легитимной причины видеть/трогать это
-               поле — тот же принцип, что "Списание"). -->
-          <div id="order-manager-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
-                <i data-lucide="user-cog" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Менеджер</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select id="order-manager-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800">
-                <option value="">Не назначен</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Этап 4 плана "Лоты/ИИ" (15.09.2026) — видно только когда
-               заказ реально входит в лот (details.lotId). Раньше доля веса
-               лота выставлялась только при создании лота и была
-               недоступна для правки здесь вообще. Не admin-only — любой
-               менеджер может править. -->
-          <div id="lot-weight-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                <i data-lucide="scale" class="w-5 h-5"></i>
+                <i data-lucide="link-2" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Доля веса лота</span>
+              <span class="text-sm font-medium text-gray-700">Ссылка на покупку</span>
             </div>
-            <div class="flex-1 w-full flex items-center justify-between gap-2">
-              <span id="lot-weight-display" class="text-[15px] font-medium text-gray-900">—</span>
-              <button type="button" id="lot-weight-edit-btn" class="text-indigo-600 text-xs font-medium px-2 py-1">Изменить</button>
+            <div class="flex-1 w-full relative">
+              <input type="text" id="purchase-link-input" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Вставьте ссылку на товар" autocomplete="off">
+              <div id="purchase-link-hint" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 flex items-center justify-between gap-2">
+                <span>Похоже на ссылку на товар</span>
+                <button type="button" id="purchase-link-resolve-btn" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium">Распознать</button>
+              </div>
             </div>
           </div>
-
-          <!-- Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — видно только при
-               одном из 4 статусов-причин, см. WRITEOFF_REASON_STATUSES ниже. -->
-          <div id="writeoff-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-red-50/50">
-            <div id="writeoff-existing-list" class="hidden text-xs text-gray-600 space-y-1"></div>
-            <button type="button" id="open-writeoff-modal-btn" class="self-start px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">
-              Зафиксировать списание
-            </button>
-          </div>
-
-          <!-- "Пропустить с причиной" (22.09.2026) — пункты напоминаний,
-               явно признанные неразрешимыми (см. reminderService.js
-               DISMISSIBLE_KINDS). Список пуст → скрыт целиком. -->
-          <div id="reminder-dismissals-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
-          <div id="debt-writeoffs-banner" class="hidden field-row flex items-center justify-between p-4 border-b border-gray-100 gap-2 bg-gray-50"></div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
@@ -285,107 +225,6 @@ window.Screens.orderEdit = {
             <div class="flex-1 w-full">
               <input type="date" id="date-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
             </div>
-          </div>
-
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                <i data-lucide="package-check" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Дата получения</span>
-            </div>
-            <div class="flex-1 w-full">
-              <input type="date" id="date-received-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
-            </div>
-          </div>
-
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center shrink-0">
-                <i data-lucide="split" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Тип доставки СДЭК</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select id="sdek-type-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
-                <option value="Коллективная">Коллективная</option>
-                <option value="Индивидуальная">Индивидуальная</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Э4 рефакторинга коллективок (§3, 24.08.2026) — ДВЕ независимые
-               привязки (плечо 1 «КЗ→РФ» / плечо 2 «По РФ») вместо одного
-               селекта — заказ может ехать через оба этапа одновременно. -->
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
-                <i data-lucide="package-2" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Коллективка КЗ→РФ</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select id="collective-select-stage1" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
-                <option value="">— не привязано —</option>
-              </select>
-            </div>
-          </div>
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
-                <i data-lucide="package-2" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Коллективка по РФ</span>
-            </div>
-            <div class="flex-1 w-full">
-              <select id="collective-select-stage2" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
-                <option value="">— не привязано —</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
-            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
-              <div class="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0ea5e9] flex items-center justify-center shrink-0">
-                <i data-lucide="send" class="w-5 h-5"></i>
-              </div>
-              <span class="text-sm font-medium text-gray-700">Телеграм</span>
-            </div>
-            <div class="flex-1 w-full relative">
-              <div class="flex items-center w-full">
-                <input type="text" id="client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск клиента..." autocomplete="off">
-                <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
-              </div>
-              <ul id="client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
-            </div>
-          </div>
-
-          <!-- Личный заказ менеджера (31.08.2026, задача "Напоминания 2.0",
-               Р8) — то же поле, что order-new.js добавил на создание, здесь
-               для правки уже существующего (исправить историческую
-               классификацию). Состояние загружается из getOrderDetails.
-               isOwnPurchase (см. loadOrder), fields.isOwnPurchase уходит на
-               сервер ТОЛЬКО если менеджер реально переключил галочку (см.
-               saveOrder) — "не трогать, если не менял" тот же принцип, что
-               остальные необязательные поля этой формы. -->
-          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
-            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-              <input type="checkbox" id="own-purchase-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
-              Личный заказ (без плательщика)
-            </label>
-          </div>
-
-          <!-- "Товар выкупил сам клиент" (22.09.2026) — тот же undefined="не
-               трогать" приём, что "Личный заказ" выше, НО другое по смыслу
-               поле: клиент реальный, платит за доставку/комиссию как обычно
-               (комиссия вводится суммой в "Комиссия ₽"). Гасит только
-               напоминание "Курсы и сумма не подтверждены" по этому заказу. -->
-          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
-            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-              <input type="checkbox" id="client-self-purchased-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
-              Товар выкупил сам клиент (мы только доставляем)
-              ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
-            </label>
           </div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 bg-[#f8fafc]">
@@ -458,6 +297,45 @@ window.Screens.orderEdit = {
             </div>
           </div>
 
+          <!-- Этап 4 плана "Лоты/ИИ" (15.09.2026) — видно только когда
+               заказ реально входит в лот (details.lotId). Раньше доля веса
+               лота выставлялась только при создании лота и была
+               недоступна для правки здесь вообще. Не admin-only — любой
+               менеджер может править. -->
+          <div id="lot-weight-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="scale" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доля веса лота</span>
+            </div>
+            <div class="flex-1 w-full flex items-center justify-between gap-2">
+              <span id="lot-weight-display" class="text-[15px] font-medium text-gray-900">—</span>
+              <button type="button" id="lot-weight-edit-btn" class="text-indigo-600 text-xs font-medium px-2 py-1">Изменить</button>
+            </div>
+          </div>
+
+
+          <div class="field-row flex items-center justify-end p-3 border-b border-gray-100">
+            <button type="button" id="purchase-event-btn" class="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50">
+              <i data-lucide="receipt" class="w-4 h-4"></i> Факт выкупа (необязательно)
+            </button>
+          </div>
+          </div>
+        </section>
+
+        <!-- Волна 3, сессия 2 (30.09.2026) — блок «Деньги по этапам»: сворачивается
+             только визуально (OrderCard), поля остаются в DOM — saveOrder
+             читает их все, а updateOrder пишет пустым любое не переданное поле. -->
+        <section class="order-block bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible" data-block="money">
+          <button type="button" class="order-block-head w-full flex items-center gap-2 px-4 py-3 text-left" data-block-toggle>
+            <i data-lucide="wallet" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <span class="text-sm font-semibold text-gray-900 shrink-0">Деньги по этапам</span>
+            <span class="order-block-dirty hidden w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Есть несохранённые изменения"></span>
+            <span class="order-block-summary flex-1 min-w-0 truncate text-xs text-gray-400 text-right"></span>
+            <i data-lucide="chevron-down" class="order-block-chevron w-4 h-4 text-gray-400 shrink-0 transition-transform"></i>
+          </button>
+          <div class="order-block-body border-t border-gray-100">
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
@@ -603,7 +481,7 @@ window.Screens.orderEdit = {
           <!-- "Доставка по РФ" (Э4 рефакторинга коллективок, §2.5,
                24.08.2026) — тем же приёмом, что "Доставка КЗ→РФ" выше,
                зеркало, файл в файл. -->
-          <div class="field-row flex flex-col p-4 gap-2 rounded-b-2xl">
+          <div class="field-row flex flex-col p-4 gap-2">
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                 <i data-lucide="truck" class="w-5 h-5"></i>
@@ -633,9 +511,204 @@ window.Screens.orderEdit = {
               <div id="delivery-rf-paid-readonly" class="hidden shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border"></div>
             </div>
           </div>
+          </div>
+        </section>
 
-        </div>
+        <!-- Волна 3, сессия 2 (30.09.2026) — блок «Доставка»: сворачивается
+             только визуально (OrderCard), поля остаются в DOM — saveOrder
+             читает их все, а updateOrder пишет пустым любое не переданное поле. -->
+        <section class="order-block bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible" data-block="delivery">
+          <button type="button" class="order-block-head w-full flex items-center gap-2 px-4 py-3 text-left" data-block-toggle>
+            <i data-lucide="truck" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <span class="text-sm font-semibold text-gray-900 shrink-0">Доставка</span>
+            <span class="order-block-dirty hidden w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Есть несохранённые изменения"></span>
+            <span class="order-block-summary flex-1 min-w-0 truncate text-xs text-gray-400 text-right"></span>
+            <i data-lucide="chevron-down" class="order-block-chevron w-4 h-4 text-gray-400 shrink-0 transition-transform"></i>
+          </button>
+          <div class="order-block-body border-t border-gray-100">
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
+                <i data-lucide="truck" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Доставка</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer" data-dict="statusDelivery"></select>
+              <div id="delivery-ladder" class="mt-2"></div>
+              <div id="order-stage-label" class="text-[11px] text-violet-600 font-medium mt-1"></div>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Статус заказа</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800" data-dict="statusOrder"></select>
+            </div>
+          </div>
+
+          <!-- Списание (Э8, M8.1, D-11/F-27, 27.08.2026) — видно только при
+               одном из 4 статусов-причин, см. WRITEOFF_REASON_STATUSES ниже. -->
+          <div id="writeoff-banner" class="hidden field-row flex flex-col p-4 border-b border-gray-100 gap-2 bg-red-50/50">
+            <div id="writeoff-existing-list" class="hidden text-xs text-gray-600 space-y-1"></div>
+            <button type="button" id="open-writeoff-modal-btn" class="self-start px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium">
+              Зафиксировать списание
+            </button>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center shrink-0">
+                <i data-lucide="split" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Тип доставки СДЭК</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="sdek-type-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+                <option value="Коллективная">Коллективная</option>
+                <option value="Индивидуальная">Индивидуальная</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Э4 рефакторинга коллективок (§3, 24.08.2026) — ДВЕ независимые
+               привязки (плечо 1 «КЗ→РФ» / плечо 2 «По РФ») вместо одного
+               селекта — заказ может ехать через оба этапа одновременно. -->
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                <i data-lucide="package-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Коллективка КЗ→РФ</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="collective-select-stage1" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+                <option value="">— не привязано —</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                <i data-lucide="package-2" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Коллективка по РФ</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="collective-select-stage2" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
+                <option value="">— не привязано —</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <i data-lucide="package-check" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Дата получения</span>
+            </div>
+            <div class="flex-1 w-full">
+              <input type="date" id="date-received-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700">
+            </div>
+          </div>
+          </div>
+        </section>
+
+        <!-- Волна 3, сессия 2 (30.09.2026) — блок «Клиент»: сворачивается
+             только визуально (OrderCard), поля остаются в DOM — saveOrder
+             читает их все, а updateOrder пишет пустым любое не переданное поле. -->
+        <section class="order-block bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-visible" data-block="client">
+          <button type="button" class="order-block-head w-full flex items-center gap-2 px-4 py-3 text-left" data-block-toggle>
+            <i data-lucide="user" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <span class="text-sm font-semibold text-gray-900 shrink-0">Клиент</span>
+            <span class="order-block-dirty hidden w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Есть несохранённые изменения"></span>
+            <span class="order-block-summary flex-1 min-w-0 truncate text-xs text-gray-400 text-right"></span>
+            <i data-lucide="chevron-down" class="order-block-chevron w-4 h-4 text-gray-400 shrink-0 transition-transform"></i>
+          </button>
+          <div class="order-block-body border-t border-gray-100">
+          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4 relative">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0ea5e9] flex items-center justify-center shrink-0">
+                <i data-lucide="send" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Телеграм</span>
+            </div>
+            <div class="flex-1 w-full relative">
+              <div class="flex items-center w-full">
+                <input type="text" id="client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400 py-1" placeholder="Поиск клиента..." autocomplete="off">
+                <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-0"></i>
+              </div>
+              <ul id="client-dropdown" class="dropdown-menu custom-scrollbar"></ul>
+            </div>
+          </div>
+
+          <!-- Личный заказ менеджера (31.08.2026, задача "Напоминания 2.0",
+               Р8) — то же поле, что order-new.js добавил на создание, здесь
+               для правки уже существующего (исправить историческую
+               классификацию). Состояние загружается из getOrderDetails.
+               isOwnPurchase (см. loadOrder), fields.isOwnPurchase уходит на
+               сервер ТОЛЬКО если менеджер реально переключил галочку (см.
+               saveOrder) — "не трогать, если не менял" тот же принцип, что
+               остальные необязательные поля этой формы. -->
+          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" id="own-purchase-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+              Личный заказ (без плательщика)
+            </label>
+          </div>
+
+          <!-- "Товар выкупил сам клиент" (22.09.2026) — тот же undefined="не
+               трогать" приём, что "Личный заказ" выше, НО другое по смыслу
+               поле: клиент реальный, платит за доставку/комиссию как обычно
+               (комиссия вводится суммой в "Комиссия ₽"). Гасит только
+               напоминание "Курсы и сумма не подтверждены" по этому заказу. -->
+          <div class="field-row flex items-center p-4 border-b border-gray-100 gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" id="client-self-purchased-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+              Товар выкупил сам клиент (мы только доставляем)
+              ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
+            </label>
+          </div>
+
+          <!-- Волна 3, остаток, п.6 (13.09.2026) — переназначение менеджера,
+               admin-only (сервер — уже существующий updateOrder's
+               fields.managerId, admin-only и там же). Скрыт целиком для
+               менеджера (у него нет легитимной причины видеть/трогать это
+               поле — тот же принцип, что "Списание"). -->
+          <div id="order-manager-row" class="hidden field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
+              <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+                <i data-lucide="user-cog" class="w-5 h-5"></i>
+              </div>
+              <span class="text-sm font-medium text-gray-700">Менеджер</span>
+            </div>
+            <div class="flex-1 w-full">
+              <select id="order-manager-select" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer text-gray-800">
+                <option value="">Не назначен</option>
+              </select>
+            </div>
+          </div>
+
+
+          <!-- «История» (30.09.2026) — admin-only (getOrderHistory), грузится при раскрытии. -->
+          <details id="order-history-box" class="hidden field-row p-4">
+            <summary class="text-sm font-medium text-gray-700 cursor-pointer select-none">История изменений</summary>
+            <div id="order-history-list" class="mt-2 space-y-1.5 text-xs text-gray-600"></div>
+          </details>
+          </div>
+        </section>
       </main>
+
+      <!-- Телефон (30.09.2026): «Сохранить» всегда под рукой внизу — та же кнопка шапки. -->
+      <div class="sm:hidden fixed bottom-0 inset-x-0 z-30 px-4 pb-4 pt-3 bg-gradient-to-t from-[#f3f4f9] via-[#f3f4f9] to-transparent">
+        <button type="button" id="save-order-sticky-btn" class="w-full py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold shadow-md">Сохранить</button>
+      </div>
 
       ${SkuModal.html()}
       ${ManualClientModal.html()}
@@ -646,6 +719,10 @@ window.Screens.orderEdit = {
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
+
+    // Волна 3, сессия 2 (30.09.2026) — блоки карточки (см. _order-card.js).
+    const orderCard = OrderCard.initBlocks(root);
+    let nextStepLoadedOnce = false;
 
     if (!currentOrderId) {
       showNotFound();
@@ -661,6 +738,9 @@ window.Screens.orderEdit = {
     let amountKztRateHintEl; // п.8 бэклога — hint курса Тенге рядом с "Количество", см. updateKztRateHint()
     let commissionGate; // Э6, D-10/F-24 — FormHelpers.wireCommissionGate(), пороги приходят в loadOrder()
     let refreshExistingWriteoffs = async () => {}; // Э8, M8.1 — переопределяется внутри loadOrder(), нужна снаружи для onRecorded/кнопки
+    // «Следующий шаг» (30.09.2026) — те же hoisted-заглушки: баннеры живут внутри loadOrder().
+    let refreshDismissalsHook = async () => {};
+    let refreshDebtWriteoffsHook = async () => {};
     let originalBookingSum = 0; // снимок "Бронь/комиссия" на момент загрузки — для isDirty() ниже, тот же критерий, что на сервере
     let dateInput, dateReceivedInput, rateKztInput, rateRubInput;
     let weightSumInput;
@@ -1493,6 +1573,7 @@ window.Screens.orderEdit = {
         } catch { /* best-effort, не блокирует форму */ }
       }
       refreshReminderDismissals();
+      refreshDismissalsHook = refreshReminderDismissals;
 
       // «Списать долг на компанию» (29.09.2026) — закрытый заказ с долгом или
       // уже списанный долг (отменить можно здесь: карточка в «Задачах» после
@@ -1520,6 +1601,7 @@ window.Screens.orderEdit = {
         } catch { /* best-effort, не блокирует форму */ }
       }
       refreshDebtWriteoffs();
+      refreshDebtWriteoffsHook = refreshDebtWriteoffs;
 
       FormHelpers.setDictionaryValue('select[data-dict="purchaseChannel"]', details.purchaseChannel);
       FormHelpers.setDictionaryValue('select[data-dict="purchaseAccount"]', details.purchaseAccount);
@@ -1638,6 +1720,8 @@ window.Screens.orderEdit = {
       taxiRfReceiveSumInput.value = details.payments.deliveryRf.taxiRfReceive || '';
       updateDeliveryRfTotalDisplay();
 
+      afterOrderLoaded(details);
+
       if (details.client.telegramId) {
         try {
           const recs = await callServer('getShippingRecommendations');
@@ -1657,6 +1741,245 @@ window.Screens.orderEdit = {
       }
 
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    // --- Волна 3, сессия 2 (30.09.2026): «Следующий шаг», сводки блоков,
+    // «История», «Статус для клиента», «Следующая задача →». Логика
+    // сохранения (saveOrder/updateOrder) не меняется — шаги только
+    // заполняют поля формы или ведут туда же, куда доска «Задачи».
+    function afterOrderLoaded() {
+      orderCard.resetDirty();
+      updateBlockSummaries();
+      loadNextStep();
+      if (window.CURRENT_ACCESS_ROLE === 'admin') wireOrderHistory();
+    }
+
+    const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£', 'Тенге': '₸' };
+    function updateBlockSummaries() {
+      const val = (sel) => { const el = root.querySelector(sel); return el ? el.value : ''; };
+      const amount = val('#amount-input');
+      orderCard.setSummary('product', [
+        val('#short-name-input') || val('#release-search'),
+        val('select[data-dict="purchaseChannel"]'),
+        amount ? `${CURRENCY_SYMBOLS[val('#currency-select')] || ''}${amount}` : ''
+      ].filter(Boolean).join(' · '));
+      const paid = document.getElementById('ps-paid').textContent;
+      const remaining = document.getElementById('ps-remaining').textContent;
+      orderCard.setSummary('money', paid !== '—' ? `оплачено ${paid} · осталось ${remaining}` : '');
+      orderCard.setSummary('delivery', [val('select[data-dict="statusDelivery"]'), val('select[data-dict="statusOrder"]')].filter(Boolean).join(' · '));
+      orderCard.setSummary('client', val('#client-search'));
+    }
+    root.addEventListener('change', updateBlockSummaries);
+    root.addEventListener('input', updateBlockSummaries);
+
+    async function loadNextStep() {
+      if (!loadedDetails) return;
+      const container = document.getElementById('order-next-step');
+      let card = null;
+      let errorText = '';
+      try {
+        card = (await callServer('getOrderTasks', currentOrderId)).card;
+      } catch (error) {
+        errorText = `Не удалось проверить задачи: ${error.message}`;
+      }
+      const steps = OrderCard.nextSteps(card, loadedDetails);
+      const footer = OrderCard.renderNextStep(container, steps, {
+        stageLabel: loadedDetails.stage ? loadedDetails.stage.label : '',
+        errorText,
+        onAction: handleStepAction
+      });
+      // Первый заход: раскрыть блок, к которому ведёт главный шаг.
+      if (!nextStepLoadedOnce) {
+        nextStepLoadedOnce = true;
+        const first = steps.find((s) => !s.quiet);
+        const focus = first && first.buttons.find((b) => b.action.type === 'focus');
+        if (focus) orderCard.expand(focus.action.block);
+        if (first && first.buttons.some((b) => b.action.type === 'setStatus')) orderCard.expand('delivery');
+      }
+      renderStepFooter(footer);
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderStepFooter(footer) {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'copy-client-status-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700';
+      copyBtn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> Статус для клиента';
+      copyBtn.title = 'Скопировать текст для клиента: товар, статус, что сейчас к оплате';
+      copyBtn.addEventListener('click', () => copyClientStatus());
+      footer.appendChild(copyBtn);
+
+      const pos = TasksQueue.positionOf(currentOrderId);
+      if (!pos) return;
+      const nextEl = document.createElement(pos.nextId ? 'button' : 'span');
+      nextEl.className = pos.nextId
+        ? 'next-task-btn ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 text-xs font-medium text-indigo-700'
+        : 'ml-auto text-[11px] text-gray-400';
+      nextEl.textContent = pos.nextId ? `Следующая задача → (${pos.index + 2} из ${pos.total})` : 'Это последняя задача в очереди';
+      if (pos.nextId) {
+        nextEl.type = 'button';
+        nextEl.addEventListener('click', async () => {
+          if (orderCard.hasDirty()) {
+            const go = await showConfirmModal('Есть несохранённые изменения — они пропадут. Перейти к следующей задаче?', { confirmLabel: 'Перейти', danger: true });
+            if (!go) return;
+          }
+          TasksQueue.setCurrent(pos.nextId);
+          // replace, не push: «Назад» из любой задачи очереди ведёт на доску.
+          location.replace(`#/orders/${encodeURIComponent(pos.nextId)}/edit`);
+        });
+      }
+      footer.appendChild(nextEl);
+    }
+
+    async function copyClientStatus() {
+      const text = OrderCard.clientStatusText(loadedDetails);
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch (_e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch (_e2) { ok = false; }
+        ta.remove();
+      }
+      if (ok) showSaveToast(true, 'Текст для клиента скопирован.');
+      else await showPromptModal('Скопируйте текст вручную:', { defaultValue: text.replace(/\n/g, ' · '), confirmLabel: 'Готово' });
+    }
+
+    function focusFields(block, selectors) {
+      orderCard.expand(block);
+      const els = selectors.map((s) => root.querySelector(s)).filter(Boolean);
+      const empty = els.filter((el) => !el.value);
+      empty.forEach((el) => {
+        el.classList.add('ring-2', 'ring-amber-400', 'rounded-lg');
+        const clear = () => { el.classList.remove('ring-2', 'ring-amber-400', 'rounded-lg'); };
+        el.addEventListener('input', clear, { once: true });
+        el.addEventListener('change', clear, { once: true });
+      });
+      const target = empty[0] || els[0];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => target.focus(), 250);
+      }
+    }
+
+    function todayIso() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function setSelectAndNotify(selector, value) {
+      FormHelpers.setDictionaryValue(selector, value);
+      root.querySelector(selector).dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    async function handleStepAction(action, btn) {
+      switch (action.type) {
+        case 'focus':
+          focusFields(action.block, action.selectors);
+          break;
+        case 'payments':
+          navigateTo('payments', {
+            telegramId: loadedDetails.client.telegramId, orderId: currentOrderId,
+            name: loadedDetails.client.name || '', username: loadedDetails.client.username || ''
+          });
+          break;
+        case 'debtWriteoff':
+          DebtWriteoffModal.open(currentOrderId, { onChanged: () => { refreshDebtWriteoffsHook(); loadNextStep(); } });
+          break;
+        case 'writeoff':
+          orderCard.expand('delivery');
+          document.getElementById('open-writeoff-modal-btn').click();
+          break;
+        case 'setStatus': {
+          // Только заполняет форму — сохраняет общая «Сохранить» со всеми
+          // гейтами (долг/данные). Клиенту по умолчанию не сообщаем:
+          // галочка «Уведомить» в шапке как была.
+          orderCard.change('delivery', () => {
+            if (action.statusDelivery) setSelectAndNotify('select[data-dict="statusDelivery"]', action.statusDelivery);
+            if (action.statusOrder) setSelectAndNotify('select[data-dict="statusOrder"]', action.statusOrder);
+          });
+          if (action.fillDateOrder && !dateInput.value) {
+            orderCard.change('product', () => { dateInput.value = todayIso(); });
+          }
+          orderCard.expand('delivery');
+          updateBlockSummaries();
+          btn.disabled = true;
+          btn.textContent = '✓ Выставлено — нажмите «Сохранить»';
+          break;
+        }
+        case 'claimApprove':
+        case 'claimReject': {
+          btn.disabled = true;
+          try {
+            if (action.type === 'claimApprove') {
+              await callServer('approveOrderReceiptClaim', action.claimId);
+              showSaveToast(true, 'Заказ переведён в «Получено клиентом».');
+            } else {
+              await callServer('rejectOrderReceiptClaim', action.claimId, '');
+              showSaveToast(true, 'Заявка отклонена, статус заказа не изменён.');
+            }
+            await loadOrder();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            btn.disabled = false;
+          }
+          break;
+        }
+        case 'dismiss': {
+          const reason = await showPromptModal(
+            'Почему этот пункт нельзя закрыть? (например: "старый заказ, аккаунт уже не вспомнить")',
+            { confirmLabel: 'Пропустить', cancelLabel: 'Отмена' }
+          );
+          if (reason === null) return;
+          if (!reason.trim()) { showSaveToast(false, 'Причина обязательна.'); return; }
+          btn.disabled = true;
+          try {
+            await callServer('dismissReminderItem', currentOrderId, action.kind, reason.trim());
+            showSaveToast(true, 'Пункт пропущен — отменить можно здесь же, в баннере сверху.');
+            refreshDismissalsHook();
+            loadNextStep();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            btn.disabled = false;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+
+    let historyWired = false;
+    function wireOrderHistory() {
+      const box = document.getElementById('order-history-box');
+      const list = document.getElementById('order-history-list');
+      box.classList.remove('hidden');
+      if (historyWired) return;
+      historyWired = true;
+      let loaded = false;
+      box.addEventListener('toggle', async () => {
+        if (!box.open || loaded) return;
+        loaded = true;
+        list.textContent = 'Загрузка...';
+        try {
+          const rows = await callServer('getOrderHistory', currentOrderId);
+          list.innerHTML = rows.length === 0
+            ? '<div class="text-gray-400">Правок пока нет (журнал ведётся с 08.09.2026).</div>'
+            : rows.map((r) => {
+              const line = OrderCard.historyLine(r);
+              return `<div><span class="text-gray-400">${escapeHtmlClient(line.when)}</span> <b class="font-medium text-gray-700">${escapeHtmlClient(line.who)}</b>: ${escapeHtmlClient(line.what)}</div>`;
+            }).join('');
+        } catch (error) {
+          loaded = false;
+          list.textContent = `Не удалось загрузить: ${error.message}`;
+        }
+      });
     }
 
     async function wireWishlistLink(details) {
@@ -1720,10 +2043,12 @@ window.Screens.orderEdit = {
     }
 
     const saveOrderBtn = document.getElementById('save-order-btn');
+    document.getElementById('save-order-sticky-btn').addEventListener('click', () => saveOrderBtn.click());
     saveOrderBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       if (saveOrderBtn.disabled) return;
       if (!releaseSearch.value.trim()) {
+        orderCard.expand('product'); // поле может быть в свёрнутом блоке
         showSaveToast(false, 'Не получилось сохранить: не заполнено поле «Выпуск»');
         return;
       }
@@ -1736,6 +2061,7 @@ window.Screens.orderEdit = {
       // включил в этом заходе, гейт не должен сработать для только что
       // помеченного личным заказа.
       if (!document.getElementById('own-purchase-checkbox').checked && !commissionGate.validate()) {
+        orderCard.expand('money'); // поле причины — в свёрнутом блоке
         showSaveToast(false, 'Комиссия ниже порога — укажите причину занижения');
         return;
       }

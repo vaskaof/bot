@@ -50,8 +50,17 @@ const TASK_STAGES = [
   { key: '', label: 'Без статуса' }
 ];
 
+// Состояние доски переживает уход в заказ и «Назад» (30.09.2026, репорт
+// VASY: «Назад» из задачи уводил в начало доски, место приходилось искать
+// заново) — вне render(), тот же приём, что ordersListState в orders.js.
+// Живёт в рамках SPA-сессии, полную перезагрузку не переживает.
+const tasksBoardState = {
+  activeTab: 'client', activeStageKey: null, expandedGroups: new Set(), openQuiet: new Set(),
+  clientFilter: '', channelFilter: '', managerFilter: '', scrollY: 0, scrollX: 0, openedOrderId: null
+};
+
 window.Screens.reminders = {
-  render(root) {
+  render(root, _dictionaries, _params, signal) {
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
@@ -115,9 +124,23 @@ window.Screens.reminders = {
 
     let allCards = [];
     let stageTotals = {};
-    let activeTab = 'client';
-    let activeStageKey = null; // вкладка стадии на телефоне; null — первая с задачами
-    const expandedGroups = new Set(); // id коллективок, раскрытых на доске
+    let activeTab = tasksBoardState.activeTab;
+    let activeStageKey = tasksBoardState.activeStageKey; // вкладка стадии на телефоне; null — первая с задачами
+    const expandedGroups = tasksBoardState.expandedGroups; // id коллективок, раскрытых на доске
+    let restorePending = true; // вернуть место на доске после первой загрузки этого захода
+
+    clientFilterInput.value = tasksBoardState.clientFilter;
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        tasksBoardState.activeTab = activeTab;
+        tasksBoardState.activeStageKey = activeStageKey;
+        tasksBoardState.clientFilter = clientFilterInput.value;
+        tasksBoardState.channelFilter = channelFilterSelect.value;
+        tasksBoardState.managerFilter = managerFilterSelect.value;
+        tasksBoardState.scrollY = window.scrollY;
+        tasksBoardState.scrollX = listContainer.scrollLeft;
+      });
+    }
 
     // «Перевести» по отставшим от коллективки — та же модалка массовой смены
     // статуса, что в «Заказах»/коллективке (гейт долга и данных внутри неё).
@@ -152,6 +175,10 @@ window.Screens.reminders = {
         managerFilterSelect.innerHTML = '<option value="">Все менеджеры</option>' +
           staffList.map(s => `<option value="${escapeHtmlClient(s.telegramId)}">${escapeHtmlClient(s.name || s.telegramId)}</option>`).join('');
         managerFilterSelect.classList.remove('hidden');
+        if (tasksBoardState.managerFilter && staffList.some(s => s.telegramId === tasksBoardState.managerFilter)) {
+          managerFilterSelect.value = tasksBoardState.managerFilter;
+          render();
+        }
       }).catch(() => { /* фильтр необязателен */ });
     }
 
@@ -176,7 +203,7 @@ window.Screens.reminders = {
       activeStageKey = btn.dataset.stageKey;
       render();
     });
-    setActiveTab('client');
+    setActiveTab(activeTab);
 
     clientFilterInput.addEventListener('input', () => render());
     channelFilterSelect.addEventListener('change', () => render());
@@ -201,17 +228,61 @@ window.Screens.reminders = {
         stageTotals = board.stageTotals || {};
         populateChannelFilter();
         render();
+        if (restorePending) {
+          restorePending = false;
+          restoreBoardPosition();
+        }
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
       }
     }
 
+    // Вернуть место: к карточке, из которой открывали заказ (она по центру
+    // и подсвечена), иначе — на прежнюю прокрутку. Карточка могла исчезнуть
+    // (задача закрыта) — тогда тоже прежняя прокрутка.
+    function restoreBoardPosition() {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const id = tasksBoardState.openedOrderId;
+        tasksBoardState.openedOrderId = null;
+        const cardEl = id ? [...listContainer.querySelectorAll('[data-order-card]')].find(el => el.dataset.orderCard === id && el.offsetParent !== null) : null;
+        if (cardEl) {
+          cardEl.scrollIntoView({ block: 'center', inline: 'center' });
+          cardEl.classList.add('ring-2', 'ring-indigo-300');
+          setTimeout(() => cardEl.classList.remove('ring-2', 'ring-indigo-300'), 1800);
+        } else {
+          listContainer.scrollLeft = tasksBoardState.scrollX;
+          window.scrollTo(0, tasksBoardState.scrollY);
+        }
+      }));
+    }
+
+    // Порядок, в котором карточки видны на доске (колонки слева направо,
+    // внутри — группы коллективок, потом справочные) — очередь для
+    // «Следующая задача →» в карточке заказа.
+    function boardQueue() {
+      const cards = filteredCards();
+      const ids = [];
+      for (const stage of TASK_STAGES) {
+        const stageCards = cards.filter(c => stageKeyOf(c) === stage.key);
+        for (const entry of groupByCollective(stageCards.filter(c => !c.quiet))) entry.cards.forEach(c => ids.push(c.orderId));
+        stageCards.filter(c => c.quiet).forEach(c => ids.push(c.orderId));
+      }
+      return ids;
+    }
+
+    function openOrderFromBoard(orderId) {
+      tasksBoardState.openedOrderId = orderId;
+      TasksQueue.save(boardQueue(), orderId);
+      navigateTo(`orders/${encodeURIComponent(orderId)}/edit`);
+    }
+
     function populateChannelFilter() {
-      const current = channelFilterSelect.value;
+      const current = channelFilterSelect.value || tasksBoardState.channelFilter;
       const channels = Array.from(new Set(allCards.map(c => c.purchaseChannel).filter(Boolean))).sort();
       channelFilterSelect.innerHTML = '<option value="">Все каналы</option>' +
         channels.map(ch => `<option value="${escapeHtmlClient(ch)}">${escapeHtmlClient(ch)}</option>`).join('');
       if (channels.includes(current)) channelFilterSelect.value = current;
+      tasksBoardState.channelFilter = '';
     }
 
     async function loadRecommendations() {
@@ -330,6 +401,10 @@ window.Screens.reminders = {
       if (col.quiet.length > 0) {
         const details = document.createElement('details');
         details.className = 'mb-3';
+        details.open = tasksBoardState.openQuiet.has(col.stage.key);
+        details.addEventListener('toggle', () => {
+          if (details.open) tasksBoardState.openQuiet.add(col.stage.key); else tasksBoardState.openQuiet.delete(col.stage.key);
+        });
         details.innerHTML = `<summary class="text-xs text-gray-500 px-1 py-2 cursor-pointer select-none">Долго на этапе (справочно) · ${col.quiet.length}</summary><div data-quiet class="opacity-80"></div>`;
         const quietEl = details.querySelector('[data-quiet]');
         col.quiet.forEach(card => quietEl.appendChild(buildCard(card)));
@@ -432,7 +507,8 @@ window.Screens.reminders = {
 
     function buildCard(card) {
       const el = document.createElement('div');
-      el.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 ${getAgeColorClass(card.oldestSinceMs)}`;
+      el.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 transition-shadow ${getAgeColorClass(card.oldestSinceMs)}`;
+      el.dataset.orderCard = card.orderId;
 
       const positionLabel = card.statusPosition
         ? `<span class="text-[11px] text-gray-400">${card.statusPosition}/${DELIVERY_LADDER_TOTAL} — ${escapeHtmlClient(card.statusDelivery || '')}</span>`
@@ -528,9 +604,7 @@ window.Screens.reminders = {
         actionsEl.appendChild(catchUpBtn);
       }
 
-      el.querySelector('[data-open]').addEventListener('click', () => {
-        navigateTo(`orders/${encodeURIComponent(card.orderId)}/edit`);
-      });
+      el.querySelector('[data-open]').addEventListener('click', () => openOrderFromBoard(card.orderId));
 
       return el;
     }
