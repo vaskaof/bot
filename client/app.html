@@ -19,8 +19,58 @@
   <script>
     window.__bootLoaded = {};
     window.__bootStage = 'scripts';
+    window.__bootErrors = [];
+    window.addEventListener('error', function (e) {
+      if (window.__bootErrors.length < 5) {
+        window.__bootErrors.push(String(e.message || (e.target && e.target.src) || 'error').slice(0, 200) +
+          (e.filename ? ' @' + String(e.filename).split('/').pop() + ':' + e.lineno : ''));
+      }
+    }, true);
+    // 03.10.2026 — у @kssarna сервер отвечает на getUserContext, этап «booted»
+    // наступает, а на экране всё равно «Загрузка». Поэтому смотрим не на флаг,
+    // а на то, что реально видно: экран загрузки скрыт и есть что показать.
+    function __bootVisualState() {
+      function shown(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        var s = window.getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden';
+      }
+      var probe = document.createElement('div');
+      probe.className = 'hidden';
+      document.documentElement.appendChild(probe);
+      var tailwindWorks = window.getComputedStyle(probe).display === 'none';
+      probe.remove();
+      return {
+        loading: shown('loading-screen'), app: shown('app-content'), gate: shown('consent-gate-screen'),
+        denied: shown('access-denied-screen'), tailwindWorks: tailwindWorks,
+        screen: window.innerWidth + 'x' + window.innerHeight
+      };
+    }
+    // Отчёт серверу: через callServer, а если common.js не загрузился — напрямую,
+    // initData берём у Telegram SDK или из sessionStorage, куда его кладёт SDK.
+    function __bootReport(details) {
+      try {
+        if (typeof window.callServer === 'function') {
+          window.callServer('reportClientBootIssue', details).catch(function () {});
+          return;
+        }
+        var initData = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp.initData : '';
+        if (!initData) {
+          var raw = sessionStorage.getItem('__telegram__initParams');
+          initData = raw ? (JSON.parse(raw).tgWebAppData || '') : '';
+        }
+        if (!initData) return;
+        fetch('https://api.dreamdool.ru', {
+          method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ method: 'reportClientBootIssue', args: [details], initData: initData })
+        }).catch(function () {});
+      } catch (e) { /* диагностика не должна ломать страницу */ }
+    }
     setTimeout(function () {
-      if (window.__bootStage === 'booted') return;
+      var vs = __bootVisualState();
+      var looksStuck = window.__bootStage !== 'booted' || vs.loading || (!vs.app && !vs.gate && !vs.denied);
+      if (!looksStuck) return;
       var L = window.__bootLoaded;
       var rows = [
         ['Стили', L.tailwind], ['Иконки', L.lucide], ['Telegram', L.telegram],
@@ -32,36 +82,36 @@
       box.innerHTML = '<b>Приложение долго загружается.</b><br>Сделайте скриншот этого окна и отправьте его нам в бот.' +
         '<div style="margin-top:8px;font-family:monospace;font-size:11px;word-break:break-all">' +
         rows.map(function (r) { return (r[1] ? '✓ ' : '✗ ') + r[0]; }).join('<br>') +
-        '<br>Этап: ' + stageText + '<br>' + navigator.userAgent + '</div>' +
+        '<br>Этап: ' + stageText + '<br>Экран: ' + JSON.stringify(vs) +
+        (window.__bootErrors.length ? '<br>Ошибки: ' + window.__bootErrors.join(' | ').replace(/</g, '&lt;') : '') +
+        '<br>' + navigator.userAgent + '</div>' +
         '<button type="button" onclick="location.reload()" style="margin-top:10px;padding:8px 14px;border:0;border-radius:10px;background:#4f46e5;color:#fff;font-size:13px">Обновить страницу</button>';
       document.documentElement.appendChild(box);
-      // Сообщаем серверу, если common.js/Telegram успели загрузиться (30.09.2026).
-      if (typeof window.callServer === 'function') {
-        window.callServer('reportClientBootIssue', {
-          page: 'client', stage: window.__bootStage, loaded: L,
-          app: typeof window.startClientRouter === 'function', ua: navigator.userAgent
-        }).catch(function () {});
-      }
+      __bootReport({
+        page: 'client', stage: window.__bootStage, loaded: L, visual: vs, errors: window.__bootErrors,
+        app: typeof window.startClientRouter === 'function', ua: navigator.userAgent,
+        tg: window.Telegram && window.Telegram.WebApp ? (window.Telegram.WebApp.platform + ' ' + window.Telegram.WebApp.version) : ''
+      });
     }, 15000);
   </script>
-  <script src="../vendor/tailwindcss-play-3.4.17.js?v=20260930073151" onload="__bootLoaded.tailwind=true"></script>
-  <script src="../vendor/lucide-1.48.0.min.js?v=20260930073151" onload="__bootLoaded.lucide=true"></script>
+  <script src="../vendor/tailwindcss-play-3.4.17.js?v=20261003153035" onload="__bootLoaded.tailwind=true"></script>
+  <script src="../vendor/lucide-1.48.0.min.js?v=20261003153035" onload="__bootLoaded.lucide=true"></script>
   <script src="https://telegram.org/js/telegram-web-app.js" onload="__bootLoaded.telegram=true"></script>
-  <script src="../config.js?v=20260930073151"></script>
-  <script src="policyText.js?v=20260930073151"></script>
-  <script src="../common.js?v=20260930073151"></script>
-  <script src="router.js?v=20260930073151"></script>
-  <script src="screens/orders.js?v=20260930073151"></script>
-  <script src="screens/order-details.js?v=20260930073151"></script>
-  <script src="screens/news.js?v=20260930073151"></script>
-  <script src="hunt.js?v=20260930073151"></script>
-  <script src="screens/wishlist.js?v=20260930073151"></script>
-  <script src="screens/collection-album.js?v=20260930073151"></script>
-  <script src="screens/year-summary.js?v=20260930073151"></script>
-  <script src="screens/questions.js?v=20260930073151"></script>
-  <script src="screens/contests.js?v=20260930073151"></script>
-  <script src="screens/profile.js?v=20260930073151"></script>
-  <script src="screens/policy.js?v=20260930073151"></script>
+  <script src="../config.js?v=20261003153035"></script>
+  <script src="policyText.js?v=20261003153035"></script>
+  <script src="../common.js?v=20261003153035"></script>
+  <script src="router.js?v=20261003153035"></script>
+  <script src="screens/orders.js?v=20261003153035"></script>
+  <script src="screens/order-details.js?v=20261003153035"></script>
+  <script src="screens/news.js?v=20261003153035"></script>
+  <script src="hunt.js?v=20261003153035"></script>
+  <script src="screens/wishlist.js?v=20261003153035"></script>
+  <script src="screens/collection-album.js?v=20261003153035"></script>
+  <script src="screens/year-summary.js?v=20261003153035"></script>
+  <script src="screens/questions.js?v=20261003153035"></script>
+  <script src="screens/contests.js?v=20261003153035"></script>
+  <script src="screens/profile.js?v=20261003153035"></script>
+  <script src="screens/policy.js?v=20261003153035"></script>
   <style>
     body {
       background-color: #f3f4f9;
