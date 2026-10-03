@@ -1832,7 +1832,7 @@ window.Screens.wishlist = {
           <div class="flex items-center gap-2 mt-1">
             <label class="text-[11px] text-gray-400">Кол-во</label>
             <input type="number" min="1" max="20" class="photo-scan-qty w-14 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" data-idx="${idx}" value="${pos.quantity}">
-            ${confidencePct !== null ? `<span class="text-[11px] text-gray-400">уверенность ${confidencePct}%</span>` : ''}
+            ${confidencePct !== null && confidencePct < 90 ? `<span class="text-[11px] text-amber-600">ИИ не уверен (${confidencePct}%)</span>` : ''}
           </div>
           ${pos.note ? `<div class="text-[11px] text-amber-600 mt-1">${escapeHtmlClient(pos.note)}</div>` : ''}
           <button type="button" class="photo-scan-misrecognized-btn text-[11px] mt-1.5 font-medium ${isFlagged ? 'text-red-600' : 'text-gray-400'}" data-idx="${idx}">
