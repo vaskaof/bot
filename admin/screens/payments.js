@@ -103,40 +103,42 @@ window.Screens.payments = {
         </div>
       </main>
 
-      <!-- Модалка "Записать платёж" — куда (пул/конкретный old-model заказ) + сумма + опциональные метки -->
+      <!-- Модалка "Занести оплату" (волна 4, 03.10.2026) — сумма + за какие заказ/этап, одной записью на сервере -->
       <div id="record-payment-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Записать платёж</h2>
+            <h2 class="text-base font-semibold text-gray-900">Занести оплату</h2>
             <button id="rp-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
           </div>
           <div class="p-4 space-y-3">
-            <div>
+            <div id="rp-target-row" class="hidden">
               <label class="text-xs font-medium text-gray-500">Куда</label>
               <select id="rp-target" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"></select>
-              <p id="rp-target-hint" class="hidden text-[11px] text-gray-400 mt-1">У клиента только заказы новой модели — деньги всегда идут в общий пул, дальше их распределяет автоматика по приоритету (или ручная метка «Закрепить»), а не выбор конкретного заказа.</p>
             </div>
             <div>
-              <label class="text-xs font-medium text-gray-500">Сумма, ₽</label>
-              <input type="number" id="rp-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+              <label class="text-xs font-medium text-gray-500">Сколько пришло, ₽</label>
+              <input type="number" id="rp-amount" step="0.01" min="0.01" inputmode="decimal" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
+              <button type="button" id="rp-fill-due" class="hidden mt-1 text-[11px] font-medium text-indigo-600"></button>
+            </div>
+            <div id="rp-alloc-section">
+              <div class="text-xs font-medium text-gray-500">За что</div>
+              <div id="rp-alloc-rows" class="mt-1 space-y-2"></div>
+              <button type="button" id="rp-alloc-add" class="mt-2 text-xs font-medium text-indigo-600">+ ещё заказ или этап</button>
+              <p id="rp-alloc-pool" class="text-[11px] text-gray-500 mt-2"></p>
             </div>
             <div id="rp-note-row">
               <label class="text-xs font-medium text-gray-500">Заметка (необязательно)</label>
               <input type="text" id="rp-note" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Например: перевод от 11.08">
             </div>
-            <div id="rp-split-section" class="hidden border-t border-gray-100 pt-3">
-              <label class="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" id="rp-split-toggle">
-                Сразу закрепить часть суммы за конкретной стадией (точечное распределение)
-              </label>
-              <div id="rp-split-rows" class="hidden mt-2 space-y-2"></div>
-              <button type="button" id="rp-split-add" class="hidden mt-2 text-xs font-medium text-indigo-600">+ добавить ещё одну метку</button>
-            </div>
+            <label id="rp-notify-row" class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" id="rp-notify" checked>
+              Сообщить клиенту в Telegram «получили оплату»
+            </label>
             <p id="rp-error" class="text-xs text-red-500 hidden"></p>
           </div>
           <div class="p-4 border-t border-gray-100 flex gap-2">
             <button id="rp-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
-            <button id="rp-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Записать</button>
+            <button id="rp-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Занести</button>
           </div>
         </div>
       </div>
@@ -594,7 +596,7 @@ window.Screens.payments = {
         </div>
 
         <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-4 flex items-center justify-center gap-2">
-          <i data-lucide="plus" class="w-4 h-4"></i> Записать платёж
+          <i data-lucide="plus" class="w-4 h-4"></i> Занести оплату
         </button>
 
         ${newModelOrders.length > 0 ? `
@@ -655,7 +657,7 @@ window.Screens.payments = {
       });
       document.getElementById('release-credit-btn').addEventListener('click', onReleaseCredit);
       document.getElementById('open-refund-btn').addEventListener('click', openRefundModal);
-      document.getElementById('open-record-payment-btn').addEventListener('click', openRecordPaymentModal);
+      document.getElementById('open-record-payment-btn').addEventListener('click', () => openRecordPaymentModal(null));
 
       const ordersSortField = document.getElementById('payments-orders-sort-field');
       if (ordersSortField) {
@@ -727,6 +729,11 @@ window.Screens.payments = {
               </div>
             ` : ''}
           </div>
+          ${PaymentAlloc.stageOptions([o], currentEarmarks).length > 0 ? `
+            <button data-action="record-for-order" data-order-id="${escapeHtmlClient(o.orderId)}" class="w-full mb-2 text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg py-1.5 flex items-center justify-center gap-1">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i> Занести оплату за этот заказ
+            </button>
+          ` : ''}
           <div class="space-y-1.5">
             ${stages.map((s) => renderStageRow(o.orderId, s)).join('')}
           </div>
@@ -839,7 +846,9 @@ window.Screens.payments = {
       if (!btn) return;
       const action = btn.dataset.action;
 
-      if (action === 'edit-order') {
+      if (action === 'record-for-order') {
+        openRecordPaymentModal(btn.dataset.orderId);
+      } else if (action === 'edit-order') {
         navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
       } else if (action === 'apply-credit-to-order') {
         openApplyCreditModal(btn.dataset.orderId, parseFloat(btn.dataset.remaining));
@@ -990,100 +999,143 @@ window.Screens.payments = {
       }
     });
 
-    // === Модалка "Записать платёж" ===
+    // === Модалка "Занести оплату" (волна 4, 03.10.2026) ===
+    // Платёж и закрепления за заказом/этапом уходят ОДНИМ вызовом
+    // recordPaymentForStages (раньше — платёж, потом метки по одной, сбой
+    // посередине оставлял платёж без части меток). Подстановка «за что» —
+    // PaymentAlloc (_payment-alloc.js): этапы одного заказа, остальное в пул.
+    // Предупреждения сервера (этап уже оплачен, такая же сумма только что) —
+    // НЕ запрет: менеджер подтверждает, и платёж записывается (VASY 03.10.2026).
     const rpModal = document.getElementById('record-payment-modal');
     const rpTarget = document.getElementById('rp-target');
     const rpAmount = document.getElementById('rp-amount');
-    const rpNoteRow = document.getElementById('rp-note-row');
     const rpNote = document.getElementById('rp-note');
-    const rpSplitSection = document.getElementById('rp-split-section');
-    const rpSplitToggle = document.getElementById('rp-split-toggle');
-    const rpSplitRows = document.getElementById('rp-split-rows');
-    const rpSplitAdd = document.getElementById('rp-split-add');
+    const rpNotify = document.getElementById('rp-notify');
+    const rpAllocSection = document.getElementById('rp-alloc-section');
+    const rpAllocRows = document.getElementById('rp-alloc-rows');
+    const rpAllocPool = document.getElementById('rp-alloc-pool');
+    const rpFillDue = document.getElementById('rp-fill-due');
     const rpError = document.getElementById('rp-error');
+    let rpOptions = [];       // PaymentAlloc.stageOptions — этапы, за которыми можно закрепить
+    let rpAllocs = [];        // [{key, amount, manual}] — строки «За что»
+    let rpRequestId = null;   // один на открытие модалки — повторное «Занести» не задвоит платёж
 
-    function stageOptionsForSplit() {
-      // Тот же учёт активных меток, что renderStageRow (13.08.2026, см. её
-      // комментарий) — иначе инлайн-разбивка при "Записать платёж" тоже могла
-      // предложить закрепиться ещё раз на уже полностью закреплённую стадию.
-      const options = [];
-      currentOrders.filter((o) => o.isNewModel).forEach((o) => {
-        (o.details.stagesBalance || []).forEach((s) => {
-          const earmarked = earmarksForStage(o.orderId, s.stage).reduce((sum, m) => sum + m.amount, 0);
-          const earmarkable = Math.max(0, s.remaining - earmarked);
-          if (earmarkable > 0.01) {
-            options.push({ orderId: o.orderId, stage: s.stage, label: `${o.orderId} — ${o.productDisplay} — ${stageLabel(s.stage)} (ещё нужно: ${money(earmarkable)} ₽)`, remaining: earmarkable });
-          }
-        });
-      });
-      return options;
+    const optionKey = (o) => `${o.orderId}|||${o.stage}`;
+    const optionByKey = (key) => rpOptions.find((o) => optionKey(o) === key);
+    const optionLabel = (o) => `№ ${o.orderId} · ${o.productDisplay} · ${stageLabel(o.stage)} — осталось ${money(o.free)} ₽${o.eligible ? '' : ' (ещё не пора)'}`;
+
+    // Автостроки (менеджер не трогал сумму) раскладывают введённую сумму по
+    // очереди; строки, где сумму вписали руками, не перезаписываются.
+    function redistributeAuto() {
+      const amount = parseFloat(rpAmount.value) || 0;
+      const manualTotal = rpAllocs.filter((r) => r.manual).reduce((sum, r) => sum + (r.amount || 0), 0);
+      const auto = rpAllocs.filter((r) => !r.manual);
+      const { rows } = PaymentAlloc.distribute(Math.max(0, amount - manualTotal), auto.map((r) => optionByKey(r.key) || { free: 0 }));
+      auto.forEach((r, i) => { r.amount = rows[i].amount; });
     }
 
-    function addSplitRow() {
-      const options = stageOptionsForSplit();
-      if (options.length === 0) {
-        // Раньше здесь был тихий no-op (return без объяснения) — с точки зрения
-        // менеджера чекбокс/кнопка просто "ничего не делали", неотличимо от
-        // поломки. Теперь явно говорим почему нечего распределять.
-        rpSplitRows.innerHTML = '<p class="text-xs text-gray-400 py-1">Нет открытых стадий с известной целью ни у одного заказа новой модели — сначала должна быть задана цена веса/СДЭК/доставки хотя бы одного открытого заказа.</p>';
-        return;
+    function renderAllocRows() {
+      document.getElementById('rp-alloc-add').classList.toggle('hidden', rpOptions.length === 0);
+      if (rpOptions.length === 0) {
+        rpAllocRows.innerHTML = '<p class="text-xs text-gray-400">Нет этапов, за которыми можно закрепить: у заказов не указаны цены или всё уже оплачено. Деньги уйдут в пул клиента.</p>';
+      } else {
+        rpAllocRows.innerHTML = rpAllocs.map((r, i) => `
+          <div class="flex items-center gap-2" data-alloc-index="${i}">
+            <select class="alloc-target flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
+              ${rpOptions.map((o) => `<option value="${escapeHtmlClient(optionKey(o))}" ${optionKey(o) === r.key ? 'selected' : ''}>${escapeHtmlClient(optionLabel(o))}</option>`).join('')}
+            </select>
+            <input type="number" step="0.01" min="0" inputmode="decimal" value="${r.amount ? r.amount.toFixed(2) : ''}" placeholder="₽" class="alloc-amount w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
+            <button type="button" class="alloc-remove text-gray-400 hover:text-red-500 shrink-0" title="Убрать — эта часть уйдёт в пул"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </div>
+        `).join('');
       }
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-2 split-row';
-      row.innerHTML = `
-        <select class="split-target flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
-          ${options.map((o) => `<option value="${o.orderId}|||${o.stage}">${escapeHtmlClient(o.label)}</option>`).join('')}
-        </select>
-        <input type="number" step="0.01" min="0.01" placeholder="₽" class="split-amount w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none">
-        <button type="button" class="split-remove text-gray-400 hover:text-red-500 shrink-0"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-      `;
-      row.querySelector('.split-remove').addEventListener('click', () => row.remove());
-      rpSplitRows.appendChild(row);
+      updateAllocPool();
       if (window.lucide) window.lucide.createIcons();
     }
 
-    rpSplitToggle.addEventListener('change', () => {
-      const on = rpSplitToggle.checked;
-      rpSplitRows.classList.toggle('hidden', !on);
-      if (on && rpSplitRows.children.length === 0) addSplitRow();
-      // Кнопка "+ добавить ещё одну метку" видна только если есть ЧТО добавлять —
-      // иначе это ещё один вариант того же тихого no-op, что чинили выше.
-      rpSplitAdd.classList.toggle('hidden', !on || stageOptionsForSplit().length === 0);
-    });
-    rpSplitAdd.addEventListener('click', addSplitRow);
+    function updateAllocPool() {
+      const amount = parseFloat(rpAmount.value) || 0;
+      const allocated = rpAllocs.reduce((sum, r) => sum + (r.amount || 0), 0);
+      const rest = Math.round((amount - allocated) * 100) / 100;
+      rpAllocPool.className = `text-[11px] mt-2 ${rest < -0.005 ? 'text-red-500' : 'text-gray-500'}`;
+      rpAllocPool.textContent = rest < -0.005
+        ? `Закреплено на ${money(-rest)} ₽ больше, чем пришло.`
+        : (rest > 0.005 ? `В пул клиента (распределится по очереди): ${money(rest)} ₽` : (amount > 0 ? 'Вся сумма закреплена.' : ''));
+    }
 
-    function openRecordPaymentModal() {
+    rpAllocRows.addEventListener('change', (e) => {
+      if (!e.target.classList.contains('alloc-target')) return;
+      const r = rpAllocs[parseInt(e.target.closest('[data-alloc-index]').dataset.allocIndex, 10)];
+      r.key = e.target.value;
+      if (!r.manual) redistributeAuto();
+      renderAllocRows();
+    });
+    rpAllocRows.addEventListener('input', (e) => {
+      if (!e.target.classList.contains('alloc-amount')) return;
+      const r = rpAllocs[parseInt(e.target.closest('[data-alloc-index]').dataset.allocIndex, 10)];
+      r.amount = parseFloat(e.target.value) || 0;
+      r.manual = true;
+      updateAllocPool();
+    });
+    rpAllocRows.addEventListener('click', (e) => {
+      const btn = e.target.closest('.alloc-remove');
+      if (!btn) return;
+      rpAllocs.splice(parseInt(btn.closest('[data-alloc-index]').dataset.allocIndex, 10), 1);
+      redistributeAuto();
+      renderAllocRows();
+    });
+    document.getElementById('rp-alloc-add').addEventListener('click', () => {
+      const used = new Set(rpAllocs.map((r) => r.key));
+      const next = rpOptions.find((o) => !used.has(optionKey(o))) || rpOptions[0];
+      if (!next) return;
+      rpAllocs.push({ key: optionKey(next), amount: 0, manual: false });
+      redistributeAuto();
+      renderAllocRows();
+    });
+    rpAmount.addEventListener('input', () => { redistributeAuto(); renderAllocRows(); });
+    rpFillDue.addEventListener('click', () => {
+      rpAmount.value = rpFillDue.dataset.amount;
+      redistributeAuto();
+      renderAllocRows();
+    });
+
+    // orderId — пришли с карточки заказа в «Оплатах» (кнопка «Занести»):
+    // подставляются этапы этого заказа; без него — один этап самого старого заказа.
+    function openRecordPaymentModal(orderId) {
       rpError.classList.add('hidden');
       rpAmount.value = '';
       rpNote.value = '';
-      rpSplitToggle.checked = false;
-      rpSplitRows.innerHTML = '';
-      rpSplitRows.classList.add('hidden');
-      rpSplitAdd.classList.add('hidden');
+      rpRequestId = generateRequestId();
+      rpOptions = PaymentAlloc.stageOptions(currentOrders, currentEarmarks);
+      const defaults = PaymentAlloc.defaultTargets(rpOptions, orderId || null);
+      rpAllocs = defaults.map((o) => ({ key: optionKey(o), amount: 0, manual: false }));
+      const due = PaymentAlloc.totalFree(defaults);
+      rpFillDue.classList.toggle('hidden', due <= 0.01);
+      rpFillDue.dataset.amount = due.toFixed(2);
+      rpFillDue.textContent = `Подставить ${money(due)} ₽ — ${orderId ? 'к оплате по заказу' : 'к оплате по этапу'}`;
+      // «Неподтверждённый» клиент (заказ вписан вручную) — Telegram ещё нет, писать некуда.
+      rpNotify.checked = !currentClient.pending;
 
-      // "Общий пул" доступен всегда, даже без единого заказа — клиент может
-      // заплатить заранее (§D допускает кредит без заказов вообще).
+      // Старая модель (по заказу) — на проде таких заказов больше нет (Э8),
+      // ветка оставлена на случай восстановления старых данных.
       const oldModelOrders = currentOrders.filter((o) => !o.isNewModel);
-
       rpTarget.innerHTML = `
-        <option value="pool">Общий пул (новая финансовая модель)</option>
+        <option value="pool">Клиенту (новая финансовая модель)</option>
         ${oldModelOrders.map((o) => `<option value="order:${o.orderId}">${escapeHtmlClient(o.orderId)} — ${escapeHtmlClient(o.productDisplay)} (старая модель)</option>`).join('')}
       `;
-      document.getElementById('rp-target-hint').classList.toggle('hidden', oldModelOrders.length > 0);
+      document.getElementById('rp-target-row').classList.toggle('hidden', oldModelOrders.length === 0);
       onTargetChange();
+      renderAllocRows();
       rpModal.classList.remove('hidden');
       rpModal.classList.add('flex');
+      rpAmount.focus();
     }
 
     function onTargetChange() {
       const isPool = rpTarget.value === 'pool';
-      rpNoteRow.classList.toggle('hidden', !isPool);
-      rpSplitSection.classList.toggle('hidden', !isPool);
-      if (!isPool) {
-        rpSplitToggle.checked = false;
-        rpSplitRows.classList.add('hidden');
-        rpSplitAdd.classList.add('hidden');
-      }
+      rpAllocSection.classList.toggle('hidden', !isPool);
+      document.getElementById('rp-note-row').classList.toggle('hidden', !isPool);
+      document.getElementById('rp-notify-row').classList.toggle('hidden', !isPool || !!currentClient.pending);
     }
     rpTarget.addEventListener('change', onTargetChange);
 
@@ -1095,37 +1147,44 @@ window.Screens.payments = {
     document.getElementById('rp-cancel').addEventListener('click', closeRecordPaymentModal);
 
     document.getElementById('rp-save').addEventListener('click', async () => {
+      const saveBtn = document.getElementById('rp-save');
+      if (saveBtn.disabled) return;
       rpError.classList.add('hidden');
+      const showError = (text) => { rpError.textContent = text; rpError.classList.remove('hidden'); };
       const amount = parseFloat(rpAmount.value);
-      if (isNaN(amount) || amount <= 0) { rpError.textContent = 'Укажите сумму больше нуля.'; rpError.classList.remove('hidden'); return; }
+      if (isNaN(amount) || amount <= 0) { showError('Укажите сумму больше нуля.'); return; }
 
       const target = rpTarget.value;
-      const saveBtn = document.getElementById('rp-save');
+      const allocations = target === 'pool'
+        ? rpAllocs.filter((r) => r.amount > 0.005 && optionByKey(r.key)).map((r) => {
+          const o = optionByKey(r.key);
+          return { orderId: o.orderId, stage: o.stage, amount: Math.round(r.amount * 100) / 100 };
+        })
+        : [];
+      const allocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+      if (allocated > amount + 0.005) { showError('Закреплено больше, чем пришло — уменьшите суммы в «За что».'); return; }
+
       saveBtn.disabled = true;
       try {
         if (target === 'pool') {
-          await callServer('recordClientPaymentDirect', currentClient.telegramId, amount, rpNote.value.trim(), generateRequestId());
-
-          if (rpSplitToggle.checked) {
-            const rows = Array.from(rpSplitRows.querySelectorAll('.split-row'));
-            for (const row of rows) {
-              const [orderId, stage] = row.querySelector('.split-target').value.split('|||');
-              const splitAmount = parseFloat(row.querySelector('.split-amount').value);
-              if (isNaN(splitAmount) || splitAmount <= 0) continue; // пустая строка — просто пропускаем, деньги остаются в пуле
-              await callServer('createManualAllocation', currentClient.telegramId, orderId, stage, splitAmount, rpNote.value.trim(), generateRequestId());
-              highlightOrderId = orderId; // 22.09.2026 — последняя размеченная строка, см. em-save за обоснованием
-            }
+          const options = { notifyClient: rpNotify.checked && !currentClient.pending };
+          let result = await callServer('recordPaymentForStages', currentClient.telegramId, amount, allocations, rpNote.value.trim(), rpRequestId, options);
+          if (result && result.status === 'confirm') {
+            const ok = await showConfirmModal(`Проверьте перед записью:\n\n${result.warnings.map((w) => '• ' + w).join('\n')}`, { confirmLabel: 'Всё верно, занести' });
+            if (!ok) return;
+            result = await callServer('recordPaymentForStages', currentClient.telegramId, amount, allocations, rpNote.value.trim(), rpRequestId, Object.assign({}, options, { confirmed: true }));
           }
+          if (allocations.length > 0) highlightOrderId = allocations[allocations.length - 1].orderId;
+          showSaveToast(true, result && result.notified ? 'Оплата занесена, клиенту отправлено сообщение' : 'Оплата занесена');
         } else {
           const orderId = target.slice('order:'.length);
-          await callServer('recordOrderPayment', orderId, amount, generateRequestId());
+          await callServer('recordOrderPayment', orderId, amount, rpRequestId);
           highlightOrderId = orderId;
         }
         closeRecordPaymentModal();
         await loadClientData();
       } catch (error) {
-        rpError.textContent = 'Не удалось записать платёж: ' + error.message;
-        rpError.classList.remove('hidden');
+        showError('Не удалось занести оплату: ' + error.message);
       } finally {
         saveBtn.disabled = false;
       }

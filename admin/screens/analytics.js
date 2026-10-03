@@ -203,6 +203,7 @@ const METHOD_LABELS = {
   getOrderWriteoffs: 'Списания по заказу',
   getOrdersForClientAdmin: 'Заказы клиента (админ)',
   getPaymentsScreenOrders: 'Экран «Оплаты»: заказы клиента',
+  recordPaymentForStages: 'Занести оплату (за заказ и этап)',
   getOrdersList: 'Список заказов',
   getOwnPurchasesReport: 'Отчёт по личным закупкам',
   getPaymentsForClient: 'Платежи клиента',
