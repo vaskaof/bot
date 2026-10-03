@@ -77,10 +77,14 @@ function _rememberWorkingApiUrl(url, firstTried) {
         else sessionStorage.setItem(_PREFERRED_API_KEY, url);
     } catch (e) { /* нет sessionStorage — просто не запоминаем */ }
     // Один раз за сессию сообщаем серверу, что основной адрес у клиента не работает.
-    if (url !== firstTried && !_failoverReported) {
-        _failoverReported = true;
-        callServer('reportClientBootIssue', { page: 'failover', from: firstTried, to: url, ua: navigator.userAgent }).catch(() => {});
-    }
+    // Побочная диагностика не должна ломать уже успешный вызов.
+    try {
+        if (url !== firstTried && !_failoverReported) {
+            _failoverReported = true;
+            const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+            callServer('reportClientBootIssue', { page: 'failover', from: firstTried, to: url, ua }).catch(() => {});
+        }
+    } catch (e) { /* не критично */ }
 }
 
 function callServer(methodName, ...args) {
