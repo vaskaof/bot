@@ -130,6 +130,17 @@ window.Screens.payments = {
               <label class="text-xs font-medium text-gray-500">Заметка (необязательно)</label>
               <input type="text" id="rp-note" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Например: перевод от 11.08">
             </div>
+            <div id="rp-receipt-row">
+              <label class="text-xs font-medium text-gray-500">Скриншот чека (необязательно)</label>
+              <div class="mt-1 flex items-center gap-2">
+                <label class="text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg px-3 py-1.5 cursor-pointer">
+                  <i data-lucide="paperclip" class="w-3.5 h-3.5 inline"></i> <span id="rp-receipt-label">Прикрепить</span>
+                  <input type="file" id="rp-receipt-input" accept="image/*" class="hidden">
+                </label>
+                <img id="rp-receipt-preview" class="hidden w-10 h-10 object-cover rounded border border-gray-200" alt="">
+                <button type="button" id="rp-receipt-clear" class="hidden text-xs text-gray-400">убрать</button>
+              </div>
+            </div>
             <label id="rp-notify-row" class="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" id="rp-notify" checked>
               Сообщить клиенту в Telegram «получили оплату»
@@ -139,6 +150,43 @@ window.Screens.payments = {
           <div class="p-4 border-t border-gray-100 flex gap-2">
             <button id="rp-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
             <button id="rp-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Занести</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка "Напомнить об оплате" (волна 4, п.5) — только вручную, текст можно поправить -->
+      <div id="reminder-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900">Напомнить об оплате</h2>
+            <button id="rm-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-4 space-y-3">
+            <div id="rm-facts" class="text-[12px] text-gray-600 space-y-0.5"></div>
+            <p class="text-[11px] text-amber-700 bg-amber-50 rounded-lg p-2">Сначала проверьте банк: если клиент уже перевёл — занесите оплату, а не напоминайте.</p>
+            <div>
+              <label class="text-xs font-medium text-gray-500">Текст (можно поправить)</label>
+              <textarea id="rm-text" rows="9" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"></textarea>
+            </div>
+            <p id="rm-error" class="text-xs text-red-500 hidden"></p>
+          </div>
+          <div class="p-4 border-t border-gray-100 flex gap-2">
+            <button id="rm-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+            <button id="rm-send" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка "Чек" — просмотр скриншота чека платежа -->
+      <div id="receipt-modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div class="p-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-900">Чек платежа</h2>
+            <button id="rc-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="p-3"><img id="rc-image" class="w-full rounded-lg" alt="Чек"></div>
+          <div class="p-3 border-t border-gray-100 text-center">
+            <label class="text-xs font-medium text-indigo-600 cursor-pointer">Заменить скриншот<input type="file" id="rc-replace-input" accept="image/*" class="hidden"></label>
           </div>
         </div>
       </div>
@@ -356,6 +404,8 @@ window.Screens.payments = {
     // renderClientView() подхватывает и подсвечивает/скроллит один раз, см.
     // scrollToAndHighlightOrder ниже.
     let highlightOrderId = params && params.orderId ? params.orderId : null;
+    let pendingDeepLinkAction = params && params.openPay ? { kind: 'pay', orderId: params.orderId || null }
+      : (params && params.remind ? { kind: 'remind' } : null);
     if (params && params.telegramId) {
       const openClient = (name, username) => {
         const displayName = name && username ? `${name} (${username})` : (name || username || params.telegramId);
@@ -528,6 +578,11 @@ window.Screens.payments = {
               <div class="text-xs text-gray-400">осталось из ${money(grandTarget)} ₽ (оплачено ${money(grandPaid)} ₽)</div>
             </div>
             ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели Вес/СДЭК/Доставка по РФ считаются по флажку — «Да» значит оплачено целиком, без частичного учёта.</p>` : ''}
+            ${grandRemaining > 0.01 ? `
+              <button data-action="open-reminder" class="mt-2 text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg px-3 py-1.5 flex items-center gap-1">
+                <i data-lucide="bell" class="w-3.5 h-3.5"></i> Напомнить об оплате
+              </button>
+            ` : ''}
           </div>
         ` : ''}
 
@@ -681,6 +736,13 @@ window.Screens.payments = {
         scrollToAndHighlightOrder(highlightOrderId);
         highlightOrderId = null;
       }
+      // Волна 4 — с доски «Задачи»: сразу «Занести оплату» по заказу или «Напомнить».
+      if (pendingDeepLinkAction) {
+        const action = pendingDeepLinkAction;
+        pendingDeepLinkAction = null;
+        if (action.kind === 'pay') openRecordPaymentModal(action.orderId || null);
+        else if (action.kind === 'remind') openReminderModal();
+      }
     }
 
     function renderPaymentRow(p, scope, orderId) {
@@ -691,6 +753,9 @@ window.Screens.payments = {
             <div class="text-[11px] text-gray-400">${p.date ? new Date(p.date).toLocaleString('ru-RU') : ''}${p.reason ? ' · ' + escapeHtmlClient(p.reason) : ''}</div>
           </div>
           <div class="shrink-0 flex items-center gap-1">
+            ${scope === 'pool' ? (p.hasReceipt
+              ? `<button data-action="view-receipt" data-payment-id="${escapeHtmlClient(p.id)}" title="Чек" class="p-1.5 text-emerald-600"><i data-lucide="receipt" class="w-4 h-4"></i></button>`
+              : `<label title="Прикрепить скриншот чека" class="p-1.5 text-gray-400 hover:text-indigo-600 cursor-pointer"><i data-lucide="paperclip" class="w-4 h-4"></i><input type="file" accept="image/*" class="hidden attach-receipt-input" data-payment-id="${escapeHtmlClient(p.id)}"></label>`) : ''}
             <button data-action="edit-payment" data-scope="${scope}" data-order-id="${orderId || ''}" data-payment-id="${escapeHtmlClient(p.id)}" data-amount="${p.amount}" title="Изменить сумму" class="p-1.5 text-gray-400 hover:text-indigo-600"><i data-lucide="pencil" class="w-4 h-4"></i></button>
             <button data-action="cancel-payment" data-scope="${scope}" data-order-id="${orderId || ''}" data-payment-id="${escapeHtmlClient(p.id)}" title="Отменить" class="p-1.5 text-gray-400 hover:text-red-500"><i data-lucide="x" class="w-4 h-4"></i></button>
           </div>
@@ -846,7 +911,11 @@ window.Screens.payments = {
       if (!btn) return;
       const action = btn.dataset.action;
 
-      if (action === 'record-for-order') {
+      if (action === 'open-reminder') {
+        openReminderModal();
+      } else if (action === 'view-receipt') {
+        openReceiptModal(btn.dataset.paymentId);
+      } else if (action === 'record-for-order') {
         openRecordPaymentModal(btn.dataset.orderId);
       } else if (action === 'edit-order') {
         navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
@@ -1099,6 +1168,174 @@ window.Screens.payments = {
       renderAllocRows();
     });
 
+    // === Скриншот чека (волна 4, 03.10.2026) ===
+    // Сжимаем в браузере (до 1600 px по длинной стороне, JPEG): тело запроса
+    // к серверу ограничено 1 МБ, сервер принимает до 700 КБ.
+    async function compressReceiptImage(file) {
+      if (!file || !/^image\//.test(file.type)) throw new Error('Нужна картинка (скриншот или фото чека).');
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error('Не удалось открыть картинку.'));
+          el.src = url;
+        });
+        let maxSide = 1600;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', attempt < 3 ? 0.8 : 0.6);
+          const data = dataUrl.slice(dataUrl.indexOf(',') + 1);
+          if (data.length * 0.75 <= 650 * 1024) return { mimeType: 'image/jpeg', data, previewUrl: dataUrl };
+          maxSide = Math.round(maxSide * 0.75);
+        }
+        throw new Error('Картинка слишком большая даже после сжатия.');
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    let rpReceipt = null; // {mimeType, data, previewUrl} — чек к заносимой оплате
+    const rpReceiptInput = document.getElementById('rp-receipt-input');
+    const rpReceiptPreview = document.getElementById('rp-receipt-preview');
+    function setRpReceipt(receipt) {
+      rpReceipt = receipt;
+      rpReceiptPreview.classList.toggle('hidden', !receipt);
+      if (receipt) rpReceiptPreview.src = receipt.previewUrl;
+      document.getElementById('rp-receipt-clear').classList.toggle('hidden', !receipt);
+      document.getElementById('rp-receipt-label').textContent = receipt ? 'Заменить' : 'Прикрепить';
+    }
+    rpReceiptInput.addEventListener('change', async () => {
+      const file = rpReceiptInput.files[0];
+      rpReceiptInput.value = '';
+      if (!file) return;
+      try {
+        setRpReceipt(await compressReceiptImage(file));
+      } catch (error) {
+        rpError.textContent = error.message;
+        rpError.classList.remove('hidden');
+      }
+    });
+    document.getElementById('rp-receipt-clear').addEventListener('click', () => setRpReceipt(null));
+
+    // Прикрепить чек к уже занесённому платежу (скрепка в строке «Платежи в общий пул»).
+    clientView.addEventListener('change', async (e) => {
+      const input = e.target.closest('.attach-receipt-input');
+      if (!input || !input.files[0]) return;
+      const file = input.files[0];
+      const paymentId = input.dataset.paymentId;
+      input.value = '';
+      try {
+        const receipt = await compressReceiptImage(file);
+        await callServer('attachPaymentReceipt', currentClient.telegramId, paymentId, { mimeType: receipt.mimeType, data: receipt.data });
+        showSaveToast(true, 'Чек прикреплён');
+        await loadClientData();
+      } catch (error) {
+        showSaveToast(false, 'Не удалось прикрепить чек: ' + error.message);
+      }
+    });
+
+    const rcModal = document.getElementById('receipt-modal');
+    let rcPaymentId = null;
+    async function openReceiptModal(paymentId) {
+      rcPaymentId = paymentId;
+      try {
+        const receipt = await callServer('getPaymentReceipt', currentClient.telegramId, paymentId);
+        if (!receipt) { showSaveToast(false, 'Чек не найден'); return; }
+        document.getElementById('rc-image').src = `data:${receipt.mimeType};base64,${receipt.data}`;
+        rcModal.classList.remove('hidden');
+        rcModal.classList.add('flex');
+      } catch (error) {
+        showSaveToast(false, 'Не удалось открыть чек: ' + error.message);
+      }
+    }
+    function closeReceiptModal() {
+      rcModal.classList.add('hidden');
+      rcModal.classList.remove('flex');
+    }
+    document.getElementById('rc-close').addEventListener('click', closeReceiptModal);
+    rcModal.addEventListener('click', (e) => { if (e.target === rcModal) closeReceiptModal(); });
+    document.getElementById('rc-replace-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const receipt = await compressReceiptImage(file);
+        await callServer('attachPaymentReceipt', currentClient.telegramId, rcPaymentId, { mimeType: receipt.mimeType, data: receipt.data });
+        document.getElementById('rc-image').src = receipt.previewUrl;
+        showSaveToast(true, 'Чек заменён');
+      } catch (error) {
+        showSaveToast(false, 'Не удалось заменить чек: ' + error.message);
+      }
+    });
+
+    // === «Напомнить об оплате» (волна 4, п.5) — только вручную ===
+    const rmModal = document.getElementById('reminder-modal');
+    const rmText = document.getElementById('rm-text');
+    const rmError = document.getElementById('rm-error');
+    const rmSend = document.getElementById('rm-send');
+    let rmPreview = null;
+    let rmRequestId = null;
+    const daysAgo = (date) => Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+    const agoText = (date) => { const d = daysAgo(date); return d <= 0 ? 'сегодня' : (d === 1 ? 'вчера' : `${d} дн. назад`); };
+
+    async function openReminderModal() {
+      rmError.classList.add('hidden');
+      rmText.value = '';
+      document.getElementById('rm-facts').innerHTML = '<div class="text-gray-400">Загрузка...</div>';
+      rmRequestId = generateRequestId();
+      rmModal.classList.remove('hidden');
+      rmModal.classList.add('flex');
+      try {
+        rmPreview = await callServer('getPaymentReminderPreview', currentClient.telegramId);
+      } catch (error) {
+        document.getElementById('rm-facts').innerHTML = `<div class="text-red-500">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
+        rmSend.disabled = true;
+        return;
+      }
+      const facts = [
+        `К оплате сейчас: <b>${money(rmPreview.toPay)} ₽</b>${rmPreview.poolLeftover > 0.01 ? ` (с учётом ${money(rmPreview.poolLeftover)} ₽ в пуле)` : ''}`,
+        rmPreview.lastPayment
+          ? `Последняя оплата занесена: ${money(rmPreview.lastPayment.amount)} ₽, ${new Date(rmPreview.lastPayment.at).toLocaleDateString('ru-RU')} (${agoText(rmPreview.lastPayment.at)})`
+          : 'Оплат от клиента ещё не заносили.',
+        rmPreview.lastReminder
+          ? `<span class="${daysAgo(rmPreview.lastReminder.sentAt) < 3 ? 'text-amber-700 font-medium' : ''}">Последнее напоминание: ${agoText(rmPreview.lastReminder.sentAt)}${rmPreview.lastReminder.sentByName ? ` (${escapeHtmlClient(rmPreview.lastReminder.sentByName)})` : ''}</span>`
+          : 'Напоминаний ещё не отправляли.'
+      ];
+      if (!rmPreview.canSend) facts.push(`<span class="text-red-600 font-medium">${escapeHtmlClient(rmPreview.cannotSendReason)}</span>`);
+      document.getElementById('rm-facts').innerHTML = facts.map((f) => `<div>${f}</div>`).join('');
+      rmText.value = rmPreview.text;
+      rmSend.disabled = !rmPreview.canSend;
+      rmSend.classList.toggle('opacity-50', !rmPreview.canSend);
+    }
+    function closeReminderModal() {
+      rmModal.classList.add('hidden');
+      rmModal.classList.remove('flex');
+    }
+    document.getElementById('rm-close').addEventListener('click', closeReminderModal);
+    document.getElementById('rm-cancel').addEventListener('click', closeReminderModal);
+    rmSend.addEventListener('click', async () => {
+      if (rmSend.disabled || !rmPreview) return;
+      rmError.classList.add('hidden');
+      if (rmPreview.lastReminder && daysAgo(rmPreview.lastReminder.sentAt) < 3
+        && !(await showConfirmModal(`Клиенту уже напоминали ${agoText(rmPreview.lastReminder.sentAt)}. Отправить ещё раз?`, { confirmLabel: 'Отправить' }))) return;
+      rmSend.disabled = true;
+      try {
+        const result = await callServer('sendPaymentReminder', currentClient.telegramId, rmText.value, rmPreview.toPay, rmRequestId);
+        closeReminderModal();
+        showSaveToast(true, result && result.queued ? 'Напоминание уйдёт утром (сейчас ночное окно)' : 'Напоминание отправлено');
+      } catch (error) {
+        rmError.textContent = 'Не удалось отправить: ' + error.message;
+        rmError.classList.remove('hidden');
+      } finally {
+        rmSend.disabled = false;
+      }
+    });
+
     // orderId — пришли с карточки заказа в «Оплатах» (кнопка «Занести»):
     // подставляются этапы этого заказа; без него — один этап самого старого заказа.
     function openRecordPaymentModal(orderId) {
@@ -1106,6 +1343,7 @@ window.Screens.payments = {
       rpAmount.value = '';
       rpNote.value = '';
       rpRequestId = generateRequestId();
+      setRpReceipt(null);
       rpOptions = PaymentAlloc.stageOptions(currentOrders, currentEarmarks);
       const defaults = PaymentAlloc.defaultTargets(rpOptions, orderId || null);
       rpAllocs = defaults.map((o) => ({ key: optionKey(o), amount: 0, manual: false }));
@@ -1136,6 +1374,7 @@ window.Screens.payments = {
       rpAllocSection.classList.toggle('hidden', !isPool);
       document.getElementById('rp-note-row').classList.toggle('hidden', !isPool);
       document.getElementById('rp-notify-row').classList.toggle('hidden', !isPool || !!currentClient.pending);
+      document.getElementById('rp-receipt-row').classList.toggle('hidden', !isPool);
     }
     rpTarget.addEventListener('change', onTargetChange);
 
@@ -1168,6 +1407,7 @@ window.Screens.payments = {
       try {
         if (target === 'pool') {
           const options = { notifyClient: rpNotify.checked && !currentClient.pending };
+          if (rpReceipt) options.receipt = { mimeType: rpReceipt.mimeType, data: rpReceipt.data };
           let result = await callServer('recordPaymentForStages', currentClient.telegramId, amount, allocations, rpNote.value.trim(), rpRequestId, options);
           if (result && result.status === 'confirm') {
             const ok = await showConfirmModal(`Проверьте перед записью:\n\n${result.warnings.map((w) => '• ' + w).join('\n')}`, { confirmLabel: 'Всё верно, занести' });

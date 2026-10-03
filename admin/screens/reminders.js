@@ -566,15 +566,30 @@ window.Screens.reminders = {
         const payBtn = document.createElement('button');
         payBtn.type = 'button';
         payBtn.className = 'flex-1 py-2 rounded-xl bg-indigo-50 text-xs font-medium text-indigo-600';
-        payBtn.textContent = 'Записать оплату';
+        payBtn.textContent = 'Занести оплату';
         payBtn.addEventListener('click', (e) => {
           e.stopPropagation();
+          // Волна 4 (03.10.2026) — «Оплаты» сразу открывают «Занести оплату» по этому заказу.
           navigateTo('payments', {
             telegramId: card.clientTelegramId, orderId: card.orderId,
-            name: card.clientName || '', username: card.clientUsername || ''
+            name: card.clientName || '', username: card.clientUsername || '', openPay: '1'
           });
         });
         actionsEl.appendChild(payBtn);
+
+        // Волна 4, п.5 — напоминание клиенту, только вручную, с предпросмотром в «Оплатах».
+        const remindBtn = document.createElement('button');
+        remindBtn.type = 'button';
+        remindBtn.className = 'flex-1 py-2 rounded-xl border border-indigo-100 text-xs font-medium text-indigo-600';
+        remindBtn.textContent = 'Напомнить';
+        remindBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigateTo('payments', {
+            telegramId: card.clientTelegramId, orderId: card.orderId,
+            name: card.clientName || '', username: card.clientUsername || '', remind: '1'
+          });
+        });
+        actionsEl.appendChild(remindBtn);
       }
 
       // «Списать долг на компанию» (29.09.2026) — только закрытый заказ с долгом.
