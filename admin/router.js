@@ -64,12 +64,17 @@ const ROUTES = [
   // иконкой с orders.js. Карточка одной корзины — regex-маршрут ниже
   // (cartMatch), по образцу lotMatch.
   { path: 'carts', screen: 'carts', navKey: null, showNav: true },
+  // Волна 5 (03.10.2026) — «Покупки»: корзины и лоты одним списком, вход с «Заказов».
+  { path: 'purchases', screen: 'purchases', navKey: null, showNav: true },
   { path: 'orders/deleted', screen: 'deletedOrders', navKey: null, showNav: true },
-  { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: null, showNav: false },
+  { path: 'wishlist-demand', screen: 'wishlistDemand', navKey: 'catalog', showNav: true }, // волна 5: вкладка «Спрос» каталога
   // «Коллекции» (§4 IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md, 20.09.2026)
   // — тот же паттерн, что 'wishlist-demand': не в нижней навигации, вход
   // иконкой с catalog.js.
   { path: 'catalog/collections', screen: 'catalogCollections', navKey: null, showNav: false },
+  // Волна 5 (03.10.2026) — разделы «Порядок»/«Справочники» каталога (_catalog-tabs.js).
+  { path: 'catalog/tools', screen: 'catalogTools', navKey: 'catalog', showNav: true },
+  { path: 'catalog/refs', screen: 'catalogRefs', navKey: 'catalog', showNav: true },
   // Справочник линеек (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1, 24.09.2026).
   { path: 'catalog/lines', screen: 'catalogLines', navKey: null, showNav: false },
   // «Проверка каталога» по справочнику кукол (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.10, 24.09.2026).

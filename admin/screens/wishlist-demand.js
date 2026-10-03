@@ -7,7 +7,7 @@
  */
 window.Screens = window.Screens || {};
 window.Screens.wishlistDemand = {
-  render(root) {
+  render(root, dictionaries, params) {
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
@@ -26,6 +26,7 @@ window.Screens.wishlistDemand = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+        ${CatalogTabs.html('demand')}
         <!-- «Уже заказано — связать?» (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.5): у клиента есть
              позиция вишлиста под его заказ в пути, а связи нет — клиент не видит охоту. -->
         <div id="link-suggest"></div>
@@ -284,6 +285,17 @@ window.Screens.wishlistDemand = {
     });
 
     document.getElementById('add-manual-wishlist-btn').addEventListener('click', openManualWishlistModal);
+    CatalogTabs.wire();
+    // «Добавить в вишлист» с карточки клиента (волна 5, VASY 03.10: вместо
+    // «Купить ещё» — работаем под заказ) — окно сразу с выбранным клиентом.
+    if (params && (params.addForTelegramId || params.addForUsername)) {
+      openManualWishlistModal();
+      manualWishlistClientId = params.addForTelegramId || '';
+      manualWishlistClientUsername = params.addForUsername || '';
+      manualWishlistClientName = params.addForName || '';
+      manualWishlistClientSearch.value = params.addForName && params.addForUsername
+        ? `${params.addForName} (${params.addForUsername})` : (params.addForName || params.addForUsername);
+    }
     document.getElementById('manual-wishlist-close').addEventListener('click', closeManualWishlistModal);
     document.getElementById('manual-wishlist-cancel').addEventListener('click', closeManualWishlistModal);
     document.getElementById('manual-wishlist-use-manual-client').addEventListener('click', () => manualClientModal.open());

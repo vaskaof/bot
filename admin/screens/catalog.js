@@ -7,7 +7,7 @@
  */
 window.Screens = window.Screens || {};
 window.Screens.catalog = {
-  render(root) {
+  render(root, dictionaries, params) {
     document.getElementById('header-left').innerHTML = `
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
@@ -26,50 +26,13 @@ window.Screens.catalog = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <!-- 19.09.2026 (репорт VASY): 6 иконок в header-actions (фиксированная
-             h-14 шапка) перестали помещаться рядом с "Каталог" на узких экранах
-             Telegram Mini App — тот же класс переполнения, что уже чинили на
-             "Заказы" 07.09.2026 (см. orders.js). Тем же приёмом: в шапке
-             остаются только 2 самые частые кнопки (Обновить/Добавить), четыре
-             реже используемых инструмента переехали в свой ряд icon+подпись
-             внутри тела экрана. -->
-        <!-- 24.09.2026: седьмая иконка «Проверка» — сетка 4×2 вместо 6 в ряд
-             (7 подписей в один ряд на узком экране не читаются). -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
-          <button type="button" id="find-duplicates-btn" title="Аудит каталога: дубли, позиции без ссылки/фото" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="copy-check" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Дубли</span>
-          </button>
-          <button type="button" id="short-name-btn" title="Короткие названия по тегам" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="wand-2" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Имена</span>
-          </button>
-          <button type="button" id="tag-suggestions-btn" title="Теги ИИ" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="tags" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Теги ИИ</span>
-          </button>
-          <button type="button" id="wishlist-demand-btn" title="Спрос клиентов" class="relative flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="heart" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Спрос</span>
-            <span id="wishlist-queue-badge" class="hidden absolute top-0 right-1/2 translate-x-4 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center"></span>
-          </button>
-          <!-- «Коллекции» (§4 IMPLEMENTATION-PLAN-PROCESS-AND-WISHLIST.md, 20.09.2026) -->
-          <button type="button" id="collections-nav-btn" title="Коллекции" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="layers" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Коллекции</span>
-          </button>
-          <!-- «Линейки» — справочник веток (IMPLEMENTATION-PLAN-GAMIFICATION.md §2.7 Т1, 24.09.2026) -->
-          <button type="button" id="lines-nav-btn" title="Линейки" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="git-branch" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Линейки</span>
-          </button>
-          <!-- «Проверка каталога» — автоаудит по справочнику кукол (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.10) -->
-          <button type="button" id="catalog-check-nav-btn" title="Проверка каталога по справочнику" class="relative flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="scan-search" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Проверка</span>
-            <span id="catalog-check-badge" class="hidden absolute top-0 right-1/2 translate-x-4 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center"></span>
-          </button>
-        </div>
+        <!-- Волна 5 аудита менеджера (03.10.2026): список + 7 иконок-инструментов
+             заменены 4 разделами (CatalogTabs, _catalog-tabs.js): «Каталог» |
+             «Спрос» | «Порядок» (Проверка, Похожие названия, Теги ИИ, Имена) |
+             «Справочники» (Линейки, Коллекции). Окна «Похожие названия» и
+             «Теги ИИ» по-прежнему живут здесь — «Порядок» открывает их через
+             параметр tool. -->
+        ${CatalogTabs.html('catalog')}
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
@@ -203,27 +166,7 @@ window.Screens.catalog = {
     }
 
     document.getElementById('add-sku-btn').addEventListener('click', () => skuModal.open('create'));
-    // wishlist-demand-btn переехал из header-actions в тело экрана 19.09.2026
-    // (см. комментарий у разметки выше) — слушатель теперь вешается здесь,
-    // после root.innerHTML, а не сразу за header-actions, как раньше.
-    document.getElementById('wishlist-demand-btn').addEventListener('click', () => navigateTo('wishlist-demand'));
-    document.getElementById('collections-nav-btn').addEventListener('click', () => navigateTo('catalog/collections'));
-    document.getElementById('lines-nav-btn').addEventListener('click', () => navigateTo('catalog/lines'));
-    document.getElementById('catalog-check-nav-btn').addEventListener('click', () => navigateTo('catalog/check'));
-    // Счётчик строк, ждущих решения человека, — в фоне, экран от него не зависит.
-    callServer('getCatalogCheckCount').then((count) => {
-      const badge = document.getElementById('catalog-check-badge');
-      if (!badge || !count) return;
-      badge.textContent = count > 99 ? '99+' : String(count);
-      badge.classList.remove('hidden');
-    }).catch(() => {});
-    // «Недобавленные из вишлиста» (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1 А5) — ждут решения.
-    callServer('getWishlistMatchQueueCount').then((count) => {
-      const badge = document.getElementById('wishlist-queue-badge');
-      if (!badge || !count) return;
-      badge.textContent = count > 99 ? '99+' : String(count);
-      badge.classList.remove('hidden');
-    }).catch(() => {});
+    CatalogTabs.wire(); // вкладки разделов и их счётчики (волна 5)
 
     // Аудит существующего каталога — кластеры вероятных дублей + позиции без
     // ссылки/фото (инструмент "Найти вероятные дубли", 03.08.2026).
@@ -254,7 +197,6 @@ window.Screens.catalog = {
     // «Имена» — короткие названия по тегам (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.15)
     // своим экраном. Прежняя модалка «Бренд | Линейка | Персонаж» (Лоты/ИИ, Этап 5) убрана:
     // формат заменён решением VASY (В4, З1–З4).
-    document.getElementById('short-name-btn').addEventListener('click', () => navigateTo('catalog/short-names'));
 
     // Тег-агент (репорт VASY 19.09.2026, вариант 1 развилки — "я не доверяю
     // конечное решение ИИ") — предложения уже посчитаны фоновым job'ом,
@@ -274,11 +216,11 @@ window.Screens.catalog = {
     }
     document.getElementById('tag-suggestions-close').addEventListener('click', closeTagSuggestionsModal);
 
-    document.getElementById('tag-suggestions-btn').addEventListener('click', () => {
+    function openTagSuggestions() {
       tagSuggestionsModal.classList.remove('hidden');
       tagSuggestionsModal.classList.add('flex');
       loadTagSuggestions();
-    });
+    }
 
     async function loadTagSuggestions() {
       tagSuggestionsBody.innerHTML = '<div class="text-center text-sm text-gray-400 py-6">Загрузка предложений...</div>';
@@ -407,11 +349,14 @@ window.Screens.catalog = {
       }
     }
 
-    document.getElementById('find-duplicates-btn').addEventListener('click', () => {
+    function openDuplicatesReport() {
       duplicatesModal.classList.remove('hidden');
       duplicatesModal.classList.add('flex');
       loadDuplicatesReport();
-    });
+    }
+    // Открытие из раздела «Порядок» (волна 5): catalog?tool=duplicates|tags.
+    if (params && params.tool === 'duplicates') openDuplicatesReport();
+    if (params && params.tool === 'tags') openTagSuggestions();
 
     function renderDuplicatesReport(result) {
       // conflicts/aiSuggestedMerges — план "Лоты/ИИ", Этап 2/5 (15-16.09.2026):

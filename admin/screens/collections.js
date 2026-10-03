@@ -135,7 +135,9 @@ window.Screens.catalogCollections = {
         collections = await callServer('listCatalogCollections');
         renderCollectionsList();
       } catch (error) {
-        document.getElementById('collections-list').innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+        const listEl = document.getElementById('collections-list');
+        if (!listEl) return; // ушли с экрана, пока грузилось (волна 5: вкладки каталога)
+        listEl.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
       }
     }
 

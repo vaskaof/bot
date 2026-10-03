@@ -65,6 +65,19 @@ window.CartPosition = {
   // экрана — тот же ключ, что пишет scheduleMultiplyDraftSave ниже.
   MULTIPLY_DRAFT_KEY,
 
+  // Волна 5: счётчики «уже брал» по клиенту — один запрос на клиента за
+  // время жизни страницы (повтор в той же сессии не меняет картину).
+  _skuCountsCache: new Map(),
+  clientSkuCounts(telegramId) {
+    if (!this._skuCountsCache.has(telegramId)) {
+      this._skuCountsCache.set(telegramId, callServer('getClientSkuPurchaseCounts', telegramId).catch(() => {
+        this._skuCountsCache.delete(telegramId);
+        return {};
+      }));
+    }
+    return this._skuCountsCache.get(telegramId);
+  },
+
   create(ctx, prefillClient) {
     const id = ctx.nextItemId();
     const rowEl = document.createElement('div');
@@ -119,6 +132,8 @@ window.CartPosition = {
         <input type="text" class="product-search w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="Поиск товара в каталоге..." autocomplete="off">
         <ul class="product-dropdown dropdown-menu custom-scrollbar"></ul>
         <div class="product-catalog-hint hidden mt-1 text-[11px] rounded-lg px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-800"></div>
+        <!-- Волна 5 (03.10.2026): «уже брал N раз» — повтор не ошибка, просто видно. -->
+        <div class="product-repeat-hint hidden mt-1 text-[11px] text-indigo-600 inline-flex items-center gap-1"></div>
       </div>
 
       <!-- «Размножить на клиентов» (Волна 7, §7 п.2 IMPLEMENTATION-PLAN-
@@ -354,6 +369,7 @@ window.CartPosition = {
       linkStatusEl: rowEl.querySelector('.link-status'),
       linkPriceHintEl: rowEl.querySelector('.link-price-hint'),
       productHintEl: rowEl.querySelector('.product-catalog-hint'),
+      productRepeatHintEl: rowEl.querySelector('.product-repeat-hint'),
       // Товар — только позиция каталога (решение VASY 28.09.2026). true —
       // выбран из списка, найден по ссылке или только что создан; свободный
       // ввод сбрасывает флаг (проверка — на уходе с поля и перед сохранением).
@@ -702,6 +718,7 @@ window.CartPosition = {
     item.wishlistLink = WishlistLink.attach(rowEl.querySelector('.wishlist-link-slot'));
     item.refreshWishlistLinks = debounce(() => {
       const product = item.productOriginal || item.productSearchEl.value;
+      refreshRepeatHint(product);
       item.wishlistLink.el.parentElement.classList.toggle('hidden', item.isMultiplied);
       if (item.isMultiplied) {
         item.multiplyRows.forEach((r) => r.wishlistLink.refresh((r.isOwnPurchase || r.onSale || r.manualClientData) ? '' : r.telegramId, product));
@@ -710,6 +727,23 @@ window.CartPosition = {
       const noClient = item.ownPurchaseCheckboxEl.checked || item.onSale || item.manualClientData;
       item.wishlistLink.refresh(noClient ? '' : item.telegramId, product);
     }, 400);
+
+    // «Уже брал N раз» (волна 5) — по живым заказам клиента той же позиции.
+    function refreshRepeatHint(product) {
+      const el = item.productRepeatHintEl;
+      const noClient = item.isMultiplied || item.ownPurchaseCheckboxEl.checked || item.onSale || item.manualClientData;
+      const tid = noClient ? '' : (item.telegramId || '');
+      const key = `${tid}|${product}`;
+      el.dataset.key = key;
+      if (!tid || !product) { el.classList.add('hidden'); return; }
+      CartPosition.clientSkuCounts(tid).then((counts) => {
+        if (el.dataset.key !== key) return;
+        const entry = counts[product];
+        if (!entry) { el.classList.add('hidden'); return; }
+        el.textContent = `↻ Уже брал(а) ${entry.count} раз${entry.lastDate ? `, последний — ${entry.lastDate}` : ''}`;
+        el.classList.remove('hidden');
+      });
+    }
 
     if (prefillClient) {
       item.telegramId = prefillClient.telegramId || '';

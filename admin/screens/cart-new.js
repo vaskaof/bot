@@ -2070,11 +2070,15 @@ window.Screens.cartNew = {
       // унаследованным статусом старого (возможно уже завершённого) заказа.
 
       dupPrefill.positions.forEach((p) => {
-        const item = CartPosition.create(cartItemCtx);
+        // Волна 5: «тот же клиент» из «Повторить покупку»; цена — только
+        // подсказкой в пустом поле (p.priceHint), значение не подставляется.
+        const item = CartPosition.create(cartItemCtx, p.client || undefined);
         if (p.productOriginal) {
           item.productSearchEl.value = p.productShort || p.productOriginal;
           item.productOriginal = p.productOriginal;
+          item.productFromCatalog = true;
         }
+        if (p.priceHint) item.amountInputEl.placeholder = p.priceHint;
         if (p.amount) {
           item.amountInputEl.value = p.amount;
           item.amountInputEl.dispatchEvent(new Event('input'));

@@ -532,7 +532,12 @@ window.Screens.clients = {
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
-          <div class="text-sm font-semibold text-gray-900 mb-2">Вишлист (${wishlist.length})</div>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-sm font-semibold text-gray-900">Вишлист (${wishlist.length})</div>
+            <!-- Волна 5 (03.10.2026): работаем под заказ — вместо «Купить ещё»
+                 менеджер добавляет позицию в вишлист клиента. -->
+            <button type="button" id="add-to-wishlist-btn" class="text-xs text-indigo-600 font-medium inline-flex items-center gap-1"><i data-lucide="heart" class="w-4 h-4"></i> Добавить в вишлист</button>
+          </div>
           ${wishlist.length === 0 ? '<div class="text-xs text-gray-400">Вишлист пуст.</div>' :
             wishlist.map((w) => `
               <div class="border-t border-gray-100 pt-2 mt-2 first:border-0 first:pt-0 first:mt-0 flex items-center justify-between gap-2">
@@ -544,6 +549,9 @@ window.Screens.clients = {
       `;
 
       document.getElementById('detail-back-btn').addEventListener('click', closeClient);
+      document.getElementById('add-to-wishlist-btn').addEventListener('click', () => {
+        navigateTo('wishlist-demand', { addForTelegramId: currentClient.telegramId, addForUsername: currentClient.username || '', addForName: currentClient.name || '' });
+      });
       document.getElementById('open-payments-btn').addEventListener('click', () => {
         navigateTo('payments', { telegramId: currentClient.telegramId, name: currentClient.name, username: currentClient.username });
       });

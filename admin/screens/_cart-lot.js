@@ -151,6 +151,19 @@ window.CartLot = {
             </div>
           </div>
         </div>
+        <!-- Волна 5 (03.10.2026, запрос VASY) — общая стоимость карго на
+             весь лот; делится по «Доле веса» строк. Пусто — прогноз из
+             финансовых настроек, как раньше. Позже сумму можно задать или
+             поменять на карточке лота. -->
+        <div class="mb-2">
+          <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Вес (карго) на весь лот, ₽ — необязательно${helpIcon('Вес на весь лот', '<p>Общая стоимость карго за весь лот. Делится между позициями по «Доле веса» (×1 — как у всех, 0 — позиция не платит за вес).</p><p>Не знаете сейчас — оставьте пустым: возьмётся обычный прогноз, а точную сумму можно задать позже на карточке лота.</p>')}</label>
+          <div class="flex items-center gap-2">
+            <input type="number" class="lot-weight-total-input w-full bg-amber-50 rounded-lg px-2 py-1.5 text-sm outline-none" placeholder="прогноз" step="0.01" min="0">
+            <span class="text-xs text-gray-400">$</span>
+            <input type="number" class="lot-weight-usd-input w-20 bg-gray-50 rounded-lg px-2 py-1.5 text-xs outline-none" placeholder="0.00" step="0.01" title="Сумма в долларах — рубли подставятся по курсу">
+          </div>
+          <div class="lot-weight-split-hint hidden text-[11px] text-gray-500 mt-1"></div>
+        </div>
         <div class="mb-2">
           <label class="text-[11px] text-gray-500 inline-flex items-center gap-1">Округление${helpIcon('Округление', '<p>Сумма каждой позиции лота округляется до выбранного шага, остаток от округления уходит на позицию с наибольшей долей разницы.</p>')}</label>
           <select class="lot-rounding-select w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none">
@@ -199,6 +212,25 @@ window.CartLot = {
     const amountInput = wrapEl.querySelector('.lot-amount-input');
     const amountSymbolEl = wrapEl.querySelector('.lot-amount-currency-symbol');
     const roundingSelect = wrapEl.querySelector('.lot-rounding-select');
+    const weightTotalInput = wrapEl.querySelector('.lot-weight-total-input');
+    const weightSplitHintEl = wrapEl.querySelector('.lot-weight-split-hint');
+    WeightUsd.wire(wrapEl.querySelector('.lot-weight-usd-input'), weightTotalInput);
+    // Подсказка «кому сколько веса» — та же раскладка, что сделает сервер
+    // (splitProportionally по долям веса, шаг 0.01).
+    function renderWeightSplitHint() {
+      const total = parseFloat(weightTotalInput.value);
+      if (!(total > 0) || lotRows.length === 0) { weightSplitHintEl.classList.add('hidden'); return; }
+      const rows = lotRows.map((r) => ({ id: r.id, weight: r.weightCoefficient, basePrice: 0 }));
+      if (rows.every((r) => !(r.weight > 0))) {
+        weightSplitHintEl.textContent = 'У всех позиций доля веса 0 — вес некому распределить.';
+        weightSplitHintEl.classList.remove('hidden');
+        return;
+      }
+      const shares = CartMoney.splitProportionallyClient(total, rows, 0.01);
+      weightSplitHintEl.textContent = 'Вес по позициям: ' + lotRows.map((r, i) => `${i + 1}) ${(shares.get(r.id) || 0).toFixed(2)} ₽`).join(' · ');
+      weightSplitHintEl.classList.remove('hidden');
+    }
+    weightTotalInput.addEventListener('input', renderWeightSplitHint);
     const positionsList = wrapEl.querySelector('.lot-positions-list');
     const addPositionBtn = wrapEl.querySelector('.add-lot-position-btn');
     // Ручная фиксация доли лота целиком (§3 B1/B2, ИСПРАВЛЕНО 06.09.2026)
@@ -580,6 +612,7 @@ window.CartLot = {
     // (реконсилированную) сумму — иначе шапка лота показывает одно число,
     // а строки внутри в сумме дают другое (репорт VASY).
     function patchAllCostShares() {
+      renderWeightSplitHint();
       const pool = effectivePoolRub();
       const roundingStep = parseFloat(roundingSelect.value) || 1;
       const costRows = lotRows.map((r) => ({ id: r.id, weight: r.costCoefficient, basePrice: knownPriceRub(r) }));
@@ -913,6 +946,7 @@ window.CartLot = {
       row.weightSliderEl.addEventListener('input', () => {
         row.weightCoefficient = parseFloat(row.weightSliderEl.value);
         row.weightFractionLabelEl.textContent = CartMoney.humanFractionLabel(row.weightCoefficient);
+        renderWeightSplitHint();
       });
       row.feePercentEl.addEventListener('input', () => updateRowFeeRub(row));
       row.feeRubEl.addEventListener('input', () => updateRowFeePercent(row));
@@ -1112,7 +1146,8 @@ window.CartLot = {
         fixedShareRub: lotManualShare.getManualRub(),
         header: {
           totalAmountInCurrency: amountInput.value,
-          roundingStep: roundingSelect.value
+          roundingStep: roundingSelect.value,
+          weightTotalRub: weightTotalInput.value.trim()
         },
         positions: lotRows.map((r) => ({
           client: (r.ownPurchaseCheckboxEl.checked || r.onSale)

@@ -30,7 +30,7 @@ window.Screens.cartDetail = {
         <i data-lucide="banknote" class="w-5 h-5"></i>
       </button>
     `;
-    document.getElementById('back-btn').addEventListener('click', () => navigateBack('carts'));
+    document.getElementById('back-btn').addEventListener('click', () => navigateBack('purchases'));
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">

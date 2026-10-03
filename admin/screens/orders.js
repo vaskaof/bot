@@ -74,18 +74,17 @@ window.Screens.orders = {
           <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026) —
                тот же паттерн, что "Коллективки": ведёт на список, создание —
                внутри lots.js (две кнопки "+ Лот"/"+ Корзина" на самом списке). -->
-          <button type="button" id="lots-btn" title="Лоты" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
+          <!-- Волна 5 (03.10.2026) — «Лоты» и «Корзины» объединены в
+               «Покупки» (фильтр «Только лоты» внутри). Старые списки
+               остаются по адресам #/lots и #/carts. -->
+          <button type="button" id="purchases-btn" title="Покупки: корзины и лоты" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="boxes" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Лоты</span>
+            <span class="text-[10px] font-medium leading-none">Покупки</span>
           </button>
           <!-- Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7 F1, 07.09.2026) —
                список корзин, тот же паттерн, что "Лоты" рядом. Кнопка
                "Корзина" (new-cart-btn) выше остаётся точкой входа в
                СОЗДАНИЕ (навигация 'carts/new'), эта — в СПИСОК ('carts'). -->
-          <button type="button" id="carts-list-btn" title="Корзины" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
-            <i data-lucide="list" class="w-5 h-5"></i>
-            <span class="text-[10px] font-medium leading-none">Корзины</span>
-          </button>
           <button type="button" id="deleted-orders-btn" title="Удалённые" class="flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="trash-2" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">Удалённые</span>
@@ -158,12 +157,15 @@ window.Screens.orders = {
                  ordersService.setOrdersStatusOrder — без гейта долга/готовности,
                  та лестница не про это поле). -->
             <button type="button" id="bulk-status-order-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Статус заказа</button>
+            <!-- Волна 5 (03.10.2026): выбранные заказы из любых корзин — в новую корзину. -->
+            <button type="button" id="bulk-repeat-btn" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Повторить</button>
             <button type="button" id="bulk-delete-btn" class="py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
           </div>
         </div>
       </div>
 
       ${CollectivePickerModal.html()}
+      ${DuplicatePositionsModal.html()}
       ${DeliveryStatusModal.html()}
       ${StatusOrderModal.html()}
 
@@ -195,6 +197,7 @@ window.Screens.orders = {
     // Режим "Выбрать" (Э3) — module-scope этого render(), НЕ ordersListState
     // (см. её комментарий выше).
     let selectMode = false;
+    let suppressClickUntil = 0; // волна 5: долгое нажатие, см. wireLongPress
     const selectedIds = new Set();
 
     const listContainer = document.getElementById('orders-list');
@@ -215,11 +218,11 @@ window.Screens.orders = {
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
     const bulkStatusOrderBtn = document.getElementById('bulk-status-order-btn'); // Волна 6, находка 5
+    const bulkRepeatBtn = document.getElementById('bulk-repeat-btn'); // Волна 5 аудита менеджера
 
     document.getElementById('new-cart-btn').addEventListener('click', () => navigateTo('carts/new'));
     document.getElementById('collectives-btn').addEventListener('click', () => navigateTo('collectives'));
-    document.getElementById('lots-btn').addEventListener('click', () => navigateTo('lots'));
-    document.getElementById('carts-list-btn').addEventListener('click', () => navigateTo('carts'));
+    document.getElementById('purchases-btn').addEventListener('click', () => navigateTo('purchases'));
     // Экран "Удалённые" (16.08.2026) — тот же паттерн входа, что "Коллективки":
     // отдельный экран, БЕЗ добавления пункта в нижнюю навигацию (см. известный
     // долг frontend-nav.md — не плодить копии <nav> без отдельного обсуждения).
@@ -343,6 +346,50 @@ window.Screens.orders = {
     }
 
     selectModeBtn.addEventListener('click', () => setSelectMode(!selectMode));
+
+    // Долгое нажатие на карточку (волна 5, просьба VASY 03.10) — включает
+    // «Выбрать» и сразу отмечает этот заказ; в режиме выбора — переключает
+    // отметку. Сдвиг пальца >10px (прокрутка) отменяет. Клик, который
+    // браузер шлёт после отпускания, гасится окном suppressClickUntil
+    // (флаг «до следующего клика» нельзя: карточка перерисована, и клик
+    // после отпускания может не прийти вовсе — тогда съелся бы следующий).
+    function wireLongPress(card, orderId) {
+      let timer = null;
+      let startX = 0;
+      let startY = 0;
+      const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+      card.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        startX = e.clientX; startY = e.clientY;
+        cancel();
+        timer = setTimeout(() => {
+          timer = null;
+          suppressClickUntil = Infinity;
+          window.addEventListener('pointerup', () => { suppressClickUntil = Date.now() + 300; }, { once: true });
+          if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) { /* необязательно */ } }
+          if (!selectMode) { setSelectMode(true); selectedIds.add(orderId); updateBulkBar(); render(); }
+          else { toggleSelected(orderId); render(); }
+        }, 500);
+      });
+      card.addEventListener('pointermove', (e) => {
+        if (timer && (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10)) cancel();
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => card.addEventListener(ev, cancel));
+      card.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    // «Повторить» выбранные (волна 5) — та же модалка «Повторить покупку», что
+    // на карточке заказа; все выбранные ×1. Канал/валюта — только если у всех
+    // одинаковые (аккаунт/карго подставит «Новая корзина» по каналу).
+    const repeatModal = DuplicatePositionsModal.init();
+    bulkRepeatBtn.addEventListener('click', () => {
+      const orders = selectedOrders();
+      if (orders.length === 0) return;
+      const uniform = (key) => { const vals = [...new Set(orders.map((o) => o[key] || ''))]; return vals.length === 1 ? vals[0] : ''; };
+      repeatModal.open(orders.map((o) => DuplicatePositionsModal.fromOrdersListItem(o)), {
+        header: { purchaseChannel: uniform('purchaseChannel'), currency: uniform('currency') }
+      });
+    });
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
 
     function updateBulkBar() {
@@ -353,6 +400,7 @@ window.Screens.orders = {
       bulkDeleteBtn.disabled = disabled;
       bulkStatusBtn.disabled = disabled;
       bulkStatusOrderBtn.disabled = disabled;
+      bulkRepeatBtn.disabled = disabled;
     }
 
     function toggleSelected(orderId) {
@@ -452,8 +500,11 @@ window.Screens.orders = {
     function buildCard(o) {
       const card = document.createElement('div');
       const isSelected = selectedIds.has(o.orderId);
-      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
+      card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors select-none ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-gray-100'}`;
+      card.style.webkitTouchCallout = 'none';
+      wireLongPress(card, o.orderId);
       card.addEventListener('click', (e) => {
+        if (Date.now() < suppressClickUntil) { e.preventDefault(); return; }
         const lotChipEl = e.target.closest('[data-lot-id]');
         if (lotChipEl) { e.stopPropagation(); navigateTo(`lots/${encodeURIComponent(lotChipEl.dataset.lotId)}`); return; }
         if (selectMode) { toggleSelected(o.orderId); render(); return; }
