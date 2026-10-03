@@ -214,7 +214,7 @@ window.Screens.payments = {
 
     // === Состояние экрана — живёт внутри render(), не утекает между заходами ===
     let currentClient = null; // {telegramId, username, name, displayName}
-    let currentOrders = [];   // getOrdersForClientAdmin(...) + details:getOrderDetails(...) на каждый
+    let currentOrders = [];   // getPaymentsScreenOrders(...) — сводка заказа + details (подмножество getOrderDetails)
     let currentPayments = []; // getPaymentsForClient — только new-model, {id,date,amount,reason}
     let currentEarmarks = []; // getEarmarksForClient — {id,orderId,stage,amount,note,createdBy,createdAt}
     let currentCreditBalance = 0;
@@ -389,15 +389,17 @@ window.Screens.payments = {
     async function loadClientData() {
       clientView.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const [orderSummaries, payments, earmarks, creditBalance, rollup] = await Promise.all([
-          callServer('getOrdersForClientAdmin', currentClient.telegramId),
+        // Волна 4 (03.10.2026) — заказы вместе с details одним вызовом: раньше
+        // здесь шёл getOrderDetails на каждый заказ, у клиента со ~180
+        // заказами экран грузился 30+ с.
+        const [orders, payments, earmarks, creditBalance, rollup] = await Promise.all([
+          callServer('getPaymentsScreenOrders', currentClient.telegramId),
           callServer('getPaymentsForClient', currentClient.telegramId),
           callServer('getEarmarksForClient', currentClient.telegramId),
           callServer('getClientCreditBalance', currentClient.telegramId),
           callServer('getClientPaymentsRollup', currentClient.telegramId)
         ]);
-        const details = await Promise.all(orderSummaries.map((o) => callServer('getOrderDetails', o.orderId)));
-        currentOrders = orderSummaries.map((o, i) => Object.assign({}, o, { details: details[i] }));
+        currentOrders = orders;
         currentPayments = payments;
         currentEarmarks = earmarks;
         currentCreditBalance = creditBalance;
