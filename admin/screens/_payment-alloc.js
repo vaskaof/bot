@@ -37,8 +37,11 @@ function stageOptions(orders, earmarks) {
       .sort((a, b) => PAYMENT_STAGE_ORDER.indexOf(a.stage) - PAYMENT_STAGE_ORDER.indexOf(b.stage));
     for (const s of stages) {
       if (!(s.target > 0)) continue;
-      const earmarked = earmarks.filter((m) => m.orderId === o.orderId && m.stage === s.stage).reduce((sum, m) => sum + m.amount, 0);
-      const free = round2(Math.max(0, s.remaining - earmarked));
+      // Метки не вычитаются (04.10.2026, заказ 5C59F9): покрытая уже сидит в
+      // paid (вычитать второй раз — этап казался оплаченным), непокрытая — это
+      // и есть деньги, которые сейчас заносят; сервер не пишет вторую метку
+      // поверх неё (ordersService.reduceByUnfundedEarmarks).
+      const free = round2(Math.max(0, s.remaining));
       if (free <= 0.01) continue;
       options.push({ orderId: o.orderId, stage: s.stage, productDisplay: o.productDisplay || '', free, eligible: s.eligible !== false });
     }

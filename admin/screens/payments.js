@@ -195,24 +195,31 @@ window.Screens.payments = {
       <div id="earmark-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-semibold text-gray-900">Закрепить сумму</h2>
+            <h2 class="text-base font-semibold text-gray-900">Взять из остатка клиента</h2>
             <button id="em-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
           </div>
           <div class="p-4 space-y-3">
             <p id="em-target" class="text-sm text-gray-600"></p>
+            <!-- 04.10.2026 (заказ 5C59F9): это перенос уже лежащих у клиента денег,
+                 не новая оплата — свободный остаток виден, превышение предупреждает. -->
+            <p class="text-xs text-gray-500">Свободный остаток клиента: <b id="em-pool">0</b> ₽. Новые деньги от клиента — через «Оплата».</p>
             <div>
-              <label class="text-xs font-medium text-gray-500">Сумма, ₽ (не больше остатка стадии)</label>
+              <label class="text-xs font-medium text-gray-500">Сумма, ₽</label>
               <input type="number" id="em-amount" step="0.01" min="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="0.00">
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Заметка (необязательно)</label>
               <input type="text" id="em-note" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Например: по просьбе клиента">
             </div>
+            <div id="em-over-pool" class="hidden text-xs rounded-lg px-2.5 py-2 bg-amber-50 border border-amber-200 text-amber-800">
+              <span id="em-over-pool-text"></span>
+              <button type="button" id="em-to-payment" class="block mt-1.5 text-indigo-700 font-medium underline">Клиент заплатил — занести оплату</button>
+            </div>
             <p id="em-error" class="text-xs text-red-500 hidden"></p>
           </div>
           <div class="p-4 border-t border-gray-100 flex gap-2">
             <button id="em-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
-            <button id="em-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Закрепить</button>
+            <button id="em-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Взять из остатка</button>
           </div>
         </div>
       </div>
@@ -269,6 +276,7 @@ window.Screens.payments = {
     let currentEarmarks = []; // getEarmarksForClient — {id,orderId,stage,amount,note,createdBy,createdAt}
     let currentCreditBalance = 0;
     let currentRollup = { totalRemaining: 0, priorityAmount: 0, priorityStage: null }; // getClientPaymentsRollup (12.08.2026, по запросу VASY)
+    let currentPoolLeftover = 0; // свободный остаток клиента — для «Из остатка» (04.10.2026)
     let earmarkContext = null; // {clientTelegramId, orderId, stage, remaining} — контекст открытой earmark-модалки
 
     const clientSearch = document.getElementById('payments-client-search');
@@ -481,6 +489,7 @@ window.Screens.payments = {
       const totalAllocated = newModelOrders.reduce((sum, o) =>
         sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
       const poolLeftover = Math.max(0, totalPoolPayments - currentCreditBalance - totalAllocated);
+      currentPoolLeftover = poolLeftover;
 
       // "Долг по закрытым заказам" (22.09.2026, продолжение задачи «Напоминания
       // 2.0» — VASY: "напоминания не должны копиться лишний раз") — автосбор
@@ -503,8 +512,7 @@ window.Screens.payments = {
         .sort((a, b) => new Date(a.details.dateOrder || 0) - new Date(b.details.dateOrder || 0));
       for (const o of closedOrdersOldestFirst) {
         for (const s of (o.details.stagesBalance || [])) {
-          const earmarked = earmarksForStage(o.orderId, s.stage).reduce((sum, m) => sum + m.amount, 0);
-          const debt = Math.round(Math.max(0, s.remaining - earmarked) * 100) / 100;
+          const debt = Math.round(Math.max(0, s.remaining) * 100) / 100;
           if (debt <= 0.01) continue;
           const suggested = Math.round(Math.min(debt, Math.max(0, freePoolForSuggestions)) * 100) / 100;
           freePoolForSuggestions -= suggested;
@@ -608,7 +616,9 @@ window.Screens.payments = {
                     <div class="text-sm text-gray-800 truncate">№ ${escapeHtmlClient(item.orderId)} · ${escapeHtmlClient(stageLabel(item.stage))}</div>
                     <div class="text-[11px] text-gray-500">Долг: ${money(item.debt)} ₽${item.suggested > 0.01 ? ` · предложено закрыть: ${money(item.suggested)} ₽` : ''}</div>
                   </div>
-                  <button data-action="open-earmark" data-order-id="${item.orderId}" data-stage="${item.stage}" data-remaining="${item.debt}" ${item.suggested > 0.01 ? `data-suggested="${item.suggested}"` : ''} class="shrink-0 text-[11px] font-medium text-red-700 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white">${item.suggested > 0.01 ? 'Закрыть' : 'Закрыть вручную'}</button>
+                  ${item.suggested > 0.01
+                    ? `<button data-action="open-earmark" data-order-id="${item.orderId}" data-stage="${item.stage}" data-remaining="${item.debt}" data-suggested="${item.suggested}" class="shrink-0 text-[11px] font-medium text-red-700 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white">Закрыть из остатка</button>`
+                    : `<button data-action="record-for-stage" data-order-id="${item.orderId}" data-stage="${item.stage}" data-amount="${item.debt}" class="shrink-0 text-[11px] font-medium text-red-700 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white">Занести оплату</button>`}
                 </div>
               `).join('')}
             </div>
@@ -632,7 +642,7 @@ window.Screens.payments = {
           </div>
           ${poolLeftover > 0 ? `
             <p class="text-[11px] text-gray-400 mt-2 pt-2 border-t border-gray-50">
-              Стадии финансируются ЦЕЛИКОМ по очереди (Основная → Вес → СДЭК → Доставка) — пока пула не хватает на всю стадию сразу по ВСЕМ открытым заказам клиента, она показывает 0% покрытия, даже если деньги уже есть. Обойти очередь можно кнопкой «Закрепить» на конкретной стадии.
+              Стадии финансируются ЦЕЛИКОМ по очереди (Основная → Вес → СДЭК → Доставка) — пока пула не хватает на всю стадию сразу по ВСЕМ открытым заказам клиента, она показывает 0% покрытия, даже если деньги уже есть. Обойти очередь можно кнопкой «Из остатка» на конкретной стадии.
             </p>
           ` : ''}
         </div>
@@ -809,8 +819,11 @@ window.Screens.payments = {
     function renderStageRow(orderId, s) {
       const marks = earmarksForStage(orderId, s.stage);
       const earmarked = marks.reduce((sum, m) => sum + m.amount, 0);
-      const byPriority = Math.max(0, s.paid - earmarked);
       const remaining = Math.max(0, s.remaining);
+      // Метка без денег (04.10.2026, заказ 5C59F9) — «Закрепить» при пустом
+      // пуле только резервирует будущие деньги; показываем это отдельно,
+      // а не общей суммой меток.
+      const unfunded = Math.round(Math.max(0, earmarked - s.paid) * 100) / 100;
       // Найдено 13.08.2026 (клиент 6741261992, заказ 3E7473, память
       // project_bot_knopka_staged_payments_refactor) — `s.remaining` с бэка
       // это target МИНУС уже РЕАЛЬНО распределённое (paid), оно НЕ падает
@@ -822,7 +835,8 @@ window.Screens.payments = {
       // создать дублирующую метку (ровно это и произошло: две метки по
       // 4407.71 ₽ на одну и ту же стадию). Кнопка/предзаполнение теперь
       // учитывают уже АКТИВНЫЕ метки, не только фактически распределённое.
-      const earmarkable = Math.max(0, remaining - earmarked);
+      // «Из остатка» — только из реально свободных денег клиента.
+      const earmarkable = Math.round(Math.min(Math.max(0, remaining - unfunded), currentPoolLeftover) * 100) / 100;
       // target=0 в stagesBalance неотличимо на бэке от "стадия ещё не участвует
       // в приоритетном списке" (§8a — цель ещё не известна, а не буквально
       // бесплатно) — реальных нулевых стадий в этом бизнесе не бывает, поэтому
@@ -835,12 +849,13 @@ window.Screens.payments = {
             ${targetUnknown ? '' : `
               <div class="text-[11px] text-gray-400">
                 ${money(s.paid)} / ${money(s.target)} ₽
-                ${earmarked > 0 ? ` · 🔒 ${money(earmarked)} ₽ вручную` : ''}
-                ${byPriority > 0 ? ` · ${money(byPriority)} ₽ по приоритету` : ''}
+                ${remaining > 0.01 && !targetUnknown ? ` · осталось ${money(remaining)} ₽` : ''}
+                ${unfunded > 0.01 ? `<span class="text-amber-600"> · 🔒 ${money(unfunded)} ₽ закреплено, но денег нет — нажмите «Занести оплату», когда клиент заплатит</span>` : ''}
               </div>
             `}
           </div>
-          ${earmarkable > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${earmarkable}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100">Закрепить</button>` : ''}
+          ${earmarkable > 0.01 ? `<button data-action="open-earmark" data-order-id="${orderId}" data-stage="${s.stage}" data-remaining="${earmarkable}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100" title="Взять из свободного остатка клиента">Из остатка</button>` : ''}
+          ${remaining > 0.01 && !targetUnknown ? `<button data-action="record-for-stage" data-order-id="${orderId}" data-stage="${s.stage}" data-amount="${remaining}" class="shrink-0 text-[11px] font-medium text-emerald-700 px-2 py-1 rounded-lg border border-emerald-100">Оплата</button>` : ''}
         </div>
       `;
     }
@@ -917,6 +932,8 @@ window.Screens.payments = {
         openReceiptModal(btn.dataset.paymentId);
       } else if (action === 'record-for-order') {
         openRecordPaymentModal(btn.dataset.orderId);
+      } else if (action === 'record-for-stage') {
+        openRecordPaymentModal(btn.dataset.orderId, { stage: btn.dataset.stage, amount: parseFloat(btn.dataset.amount) });
       } else if (action === 'edit-order') {
         navigateTo(`orders/${encodeURIComponent(btn.dataset.orderId)}/edit`);
       } else if (action === 'apply-credit-to-order') {
@@ -1338,14 +1355,18 @@ window.Screens.payments = {
 
     // orderId — пришли с карточки заказа в «Оплатах» (кнопка «Занести»):
     // подставляются этапы этого заказа; без него — один этап самого старого заказа.
-    function openRecordPaymentModal(orderId) {
+    function openRecordPaymentModal(orderId, preset) {
       rpError.classList.add('hidden');
       rpAmount.value = '';
       rpNote.value = '';
       rpRequestId = generateRequestId();
       setRpReceipt(null);
       rpOptions = PaymentAlloc.stageOptions(currentOrders, currentEarmarks);
-      const defaults = PaymentAlloc.defaultTargets(rpOptions, orderId || null);
+      let defaults = PaymentAlloc.defaultTargets(rpOptions, orderId || null);
+      if (preset && preset.stage) {
+        const only = rpOptions.filter((o) => o.orderId === orderId && o.stage === preset.stage);
+        if (only.length > 0) defaults = only;
+      }
       rpAllocs = defaults.map((o) => ({ key: optionKey(o), amount: 0, manual: false }));
       const due = PaymentAlloc.totalFree(defaults);
       rpFillDue.classList.toggle('hidden', due <= 0.01);
@@ -1364,6 +1385,11 @@ window.Screens.payments = {
       document.getElementById('rp-target-row').classList.toggle('hidden', oldModelOrders.length === 0);
       onTargetChange();
       renderAllocRows();
+      if (preset && preset.amount > 0) {
+        rpAmount.value = preset.amount.toFixed(2);
+        redistributeAuto();
+        renderAllocRows();
+      }
       rpModal.classList.remove('hidden');
       rpModal.classList.add('flex');
       rpAmount.focus();
@@ -1451,6 +1477,8 @@ window.Screens.payments = {
       emAmount.max = remaining;
       emNote.value = '';
       emTargetText.textContent = `Заказ ${orderId} — ${stageLabel(stage)}`;
+      document.getElementById('em-pool').textContent = money(currentPoolLeftover);
+      renderOverPool();
       emModal.classList.remove('hidden');
       emModal.classList.add('flex');
     }
@@ -1458,6 +1486,25 @@ window.Screens.payments = {
       emModal.classList.add('hidden');
       emModal.classList.remove('flex');
     }
+    // Сумма больше свободного остатка — предупреждение (не запрет): этап не
+    // закроется, лишнее повиснет «закреплено, но денег нет».
+    function renderOverPool() {
+      const amount = parseFloat(emAmount.value) || 0;
+      const over = Math.round((amount - currentPoolLeftover) * 100) / 100;
+      const box = document.getElementById('em-over-pool');
+      box.classList.toggle('hidden', over <= 0.01);
+      if (over > 0.01) {
+        document.getElementById('em-over-pool-text').textContent =
+          `Свободных денег у клиента ${money(currentPoolLeftover)} ₽ — ещё ${money(over)} ₽ просто зарезервируются, этап не закроется, пока клиент не заплатит.`;
+      }
+    }
+    emAmount.addEventListener('input', renderOverPool);
+    document.getElementById('em-to-payment').addEventListener('click', () => {
+      const ctx = earmarkContext;
+      const amount = parseFloat(emAmount.value) || 0;
+      closeEarmarkModal();
+      openRecordPaymentModal(ctx.orderId, { stage: ctx.stage, amount: Math.max(0, Math.round((amount - currentPoolLeftover) * 100) / 100) });
+    });
     document.getElementById('em-close').addEventListener('click', closeEarmarkModal);
     document.getElementById('em-cancel').addEventListener('click', closeEarmarkModal);
 
@@ -1634,7 +1681,7 @@ window.Screens.payments = {
           // приоритетной стадией заказа не удалось — менеджеру нужно
           // закрепить вручную кнопкой «Закрепить» на нужной стадии.
           if (result && result.earmarkFailed) {
-            showSaveToast(false, 'Платёж записан, но авто-закрепление за стадией не удалось — закрепите вручную кнопкой «Закрепить»');
+            showSaveToast(false, 'Платёж записан, но авто-закрепление за стадией не удалось — закрепите вручную кнопкой «Из остатка»');
           } else {
             showSaveToast(true, 'Заявка одобрена, платёж записан');
           }
