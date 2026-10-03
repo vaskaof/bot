@@ -58,17 +58,59 @@ function _getTelegramWebAppContext() {
 const TELEGRAM_CONTEXT_MISSING_MESSAGE =
     "Приложение открыто не через Telegram. Откройте его через кнопку «Кнопка» в чате с ботом, не по прямой ссылке и не в обычном браузере.";
 
+// Таймауты лёгких вызовов старта (см. callServer) — мс.
+const _API_BOOT_TIMEOUTS = { getUserContext: 12000, reportClientBootIssue: 12000 };
+const _PREFERRED_API_KEY = 'knopkaPreferredApiUrl';
+
+/** Адрес, который уже сработал в этой сессии (после сбоя основного), — первым. */
+function _orderedApiUrls() {
+    let preferred = null;
+    try { preferred = sessionStorage.getItem(_PREFERRED_API_KEY); } catch (e) { /* нет sessionStorage */ }
+    if (!preferred || API_URLS.indexOf(preferred) === -1) return API_URLS.slice();
+    return [preferred].concat(API_URLS.filter((u) => u !== preferred));
+}
+
+let _failoverReported = false;
+function _rememberWorkingApiUrl(url, firstTried) {
+    try {
+        if (url === API_URLS[0]) sessionStorage.removeItem(_PREFERRED_API_KEY);
+        else sessionStorage.setItem(_PREFERRED_API_KEY, url);
+    } catch (e) { /* нет sessionStorage — просто не запоминаем */ }
+    // Один раз за сессию сообщаем серверу, что основной адрес у клиента не работает.
+    if (url !== firstTried && !_failoverReported) {
+        _failoverReported = true;
+        callServer('reportClientBootIssue', { page: 'failover', from: firstTried, to: url, ua: navigator.userAgent }).catch(() => {});
+    }
+}
+
 function callServer(methodName, ...args) {
     const { tg, initData } = _getTelegramWebAppContext();
     if (!tg || !initData) {
         return Promise.reject(new Error(TELEGRAM_CONTEXT_MISSING_MESSAGE));
     }
 
-    const doFetch = (url) => fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ method: methodName, args: args, initData: initData })
-    }).then(response => response.json());
+    // 03.10.2026 (@kssarna) — запрос к основному адресу может не упасть, а
+    // ПОВИСНУТЬ (сеть режет соединение с Cloudflare молча). Тогда до резервного
+    // адреса дело не доходило никогда. Для лёгких вызовов старта ставим
+    // таймаут: повис — сразу пробуем следующий адрес, без повторов по тому же.
+    // Только для них: повтор записи по таймауту мог бы её задвоить.
+    const timeoutMs = _API_BOOT_TIMEOUTS[methodName] || 0;
+
+    const doFetch = (url) => {
+        const controller = timeoutMs && typeof AbortController === 'function' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ method: methodName, args: args, initData: initData }),
+            signal: controller ? controller.signal : undefined
+        }).then((response) => response.json())
+            .then((data) => { if (timer) clearTimeout(timer); return data; }, (error) => {
+                if (timer) clearTimeout(timer);
+                if (error && error.name === 'AbortError') error.isTimeout = true;
+                throw error;
+            });
+    };
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -85,6 +127,7 @@ function callServer(methodName, ...args) {
                 return await doFetch(url);
             } catch (networkError) {
                 lastError = networkError;
+                if (networkError && networkError.isTimeout) break; // повис — этот адрес не трогаем повторно
             }
         }
         throw lastError;
@@ -92,9 +135,12 @@ function callServer(methodName, ...args) {
 
     async function withRetries() {
         let lastError;
-        for (const url of API_URLS) {
+        const urls = _orderedApiUrls();
+        for (const url of urls) {
             try {
-                return await withRetriesOnUrl(url);
+                const result = await withRetriesOnUrl(url);
+                _rememberWorkingApiUrl(url, urls[0]);
+                return result;
             } catch (networkError) {
                 lastError = networkError; // исчерпали ретраи на этом адресе — пробуем следующий
             }
