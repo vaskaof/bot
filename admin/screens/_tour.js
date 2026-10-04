@@ -62,7 +62,9 @@
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && el.getClientRects().length > 0;
+    // По горизонтали — в окне: на телефоне колонки доски «Задачи» лежат
+    // лентой, соседние колонки за краем экрана (05.10.2026).
+    return r.width > 0 && r.height > 0 && el.getClientRects().length > 0 && r.right > 0 && r.left < window.innerWidth;
   }
 
   function findTarget(step) {

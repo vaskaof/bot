@@ -40,14 +40,16 @@ const INLINE_FILL_FIELDS = {
 // Волна 3 «Задачи» (29.09.2026) — колонки доски = укрупнённые стадии
 // (`server/src/orders/orderStage.js`, общего JS-модуля нет — копия ключей
 // и подписей). Пустые колонки не показываются.
+// color — цвет верхней полоски колонки на широком экране (05.10.2026, как в
+// демо кабинета).
 const TASK_STAGES = [
-  { key: 'e2', label: 'Просчёт' },
-  { key: 'e3', label: 'Выкуп' },
-  { key: 'e4', label: 'Логистика до КЗ' },
-  { key: 'e5', label: 'Консолидация в КЗ' },
-  { key: 'e6', label: 'Доставка в РФ' },
-  { key: 'e7', label: 'Выдача' },
-  { key: '', label: 'Без статуса' }
+  { key: 'e2', label: 'Просчёт', color: '#0ea5e9' },
+  { key: 'e3', label: 'Выкуп', color: '#6366f1' },
+  { key: 'e4', label: 'Логистика до КЗ', color: '#06b6d4' },
+  { key: 'e5', label: 'Консолидация в КЗ', color: '#f97316' },
+  { key: 'e6', label: 'Доставка в РФ', color: '#8b5cf6' },
+  { key: 'e7', label: 'Выдача', color: '#10b981' },
+  { key: '', label: 'Без статуса', color: '#9ca3af' }
 ];
 
 // Состояние доски переживает уход в заказ и «Назад» (30.09.2026, репорт
@@ -74,11 +76,13 @@ window.Screens.reminders = {
     `;
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
-    // Доска: телефон — вкладки стадий и одна колонка; широкий экран (lg) —
-    // все непустые колонки рядом. Фильтры — те же, что были у списка.
+    // Доска: телефон — колонки лентой со свайпом (по одной на экран, лента
+    // идёт за пальцем и доводится до колонки), вкладки стадий сверху; широкий
+    // экран (md+) — все колонки рядом, лента тянется мышью и ползунком снизу,
+    // колонки прокручиваются сами (05.10.2026, отзыв VASY). Стили — app.html.
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 max-w-2xl lg:max-w-none mx-auto">
-        <div class="lg:max-w-2xl">
+      <main class="pt-16 pb-6 px-4 max-w-2xl md:max-w-none mx-auto">
+        <div class="md:max-w-3xl">
           <div id="recommendations-block" class="hidden mb-4"></div>
 
           <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3" id="reminders-tabs">
@@ -103,9 +107,9 @@ window.Screens.reminders = {
           </select>
 
           <div class="text-[11px] text-gray-400 px-1 mb-2" id="reminders-count"></div>
-          <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-2 mb-2 lg:hidden"></div>
+          <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-2 mb-2 md:hidden" style="scrollbar-width: none"></div>
         </div>
-        <div id="reminders-list" class="lg:flex lg:gap-4 lg:items-start lg:overflow-x-auto lg:pb-4"></div>
+        <div id="reminders-list" class="tasks-board"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Задач нет 🎉</div>
       </main>
       ${DeliveryStatusModal.html()}
@@ -201,7 +205,8 @@ window.Screens.reminders = {
       const btn = e.target.closest('[data-stage-key]');
       if (!btn) return;
       activeStageKey = btn.dataset.stageKey;
-      render();
+      paintStageTabs();
+      jumpToStage(activeStageKey, true);
     });
     setActiveTab(activeTab);
 
@@ -362,30 +367,134 @@ window.Screens.reminders = {
       }
 
       for (const col of columns) {
-        const isActive = col.stage.key === activeStageKey;
         const tab = document.createElement('button');
         tab.type = 'button';
         tab.dataset.stageKey = col.stage.key;
-        tab.className = `shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`;
         tab.textContent = `${col.stage.label} · ${col.active.length}`;
         stageTabsContainer.appendChild(tab);
 
-        listContainer.appendChild(buildColumn(col, isActive));
+        listContainer.appendChild(buildColumn(col));
       }
+      paintStageTabs();
+      // Телефон: лента сразу на активной колонке (без анимации — это не жест).
+      if (!isWide()) jumpToStage(activeStageKey, false);
+      fitBoard();
     }
 
-    function buildColumn(col, isActive) {
+    const isWide = () => window.innerWidth >= 768;
+
+    function paintStageTabs() {
+      stageTabsContainer.querySelectorAll('[data-stage-key]').forEach((tab) => {
+        const isActive = tab.dataset.stageKey === activeStageKey;
+        tab.className = `shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`;
+      });
+    }
+
+    function columnEls() {
+      return [...listContainer.querySelectorAll(':scope > [data-stage-column]')];
+    }
+
+    function jumpToStage(key, smooth) {
+      const col = columnEls().find((el) => el.dataset.stageColumn === key);
+      if (!col) return;
+      listContainer.scrollTo({ left: col.offsetLeft - listContainer.firstElementChild.offsetLeft, behavior: smooth ? 'smooth' : 'auto' });
+    }
+
+    // Широкий экран: доска — на всю оставшуюся высоту окна, колонки
+    // прокручиваются внутри, ползунок ленты всегда виден внизу.
+    function fitBoard() {
+      if (!isWide()) { listContainer.style.height = ''; return; }
+      const top = listContainer.getBoundingClientRect().top + window.scrollY;
+      listContainer.style.height = Math.max(360, window.innerHeight - top - 12) + 'px';
+    }
+    window.addEventListener('resize', () => { fitBoard(); if (!isWide()) jumpToStage(activeStageKey, false); }, signal ? { signal } : undefined);
+
+    // Телефон: какая колонка сейчас в ленте — та и активная вкладка. Если
+    // новая колонка короче места, где стоит страница, — подняться к её началу.
+    let syncFrame = 0;
+    listContainer.addEventListener('scroll', () => {
+      if (isWide()) return;
+      cancelAnimationFrame(syncFrame);
+      syncFrame = requestAnimationFrame(() => {
+        const cols = columnEls();
+        if (!cols.length) return;
+        const idx = Math.max(0, Math.min(cols.length - 1, Math.round(listContainer.scrollLeft / listContainer.clientWidth)));
+        const key = cols[idx].dataset.stageColumn;
+        if (key === activeStageKey) return;
+        activeStageKey = key;
+        paintStageTabs();
+        const tab = stageTabsContainer.querySelector(`[data-stage-key="${key}"]`);
+        if (tab) tab.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+        const colRect = cols[idx].getBoundingClientRect();
+        if (colRect.bottom < 160) window.scrollTo({ top: Math.max(0, listContainer.getBoundingClientRect().top + window.scrollY - 120), behavior: 'smooth' });
+      });
+    }, { passive: true });
+
+    // Широкий экран, мышь: ленту можно тянуть за пустое место (с инерцией),
+    // колесо над заголовками/промежутками листает ленту вбок.
+    let pan = null;
+    let inertiaFrame = 0;
+    let suppressBoardClick = false;
+    listContainer.addEventListener('pointerdown', (e) => {
+      if (!isWide() || e.pointerType !== 'mouse' || e.button !== 0) return;
+      if (e.target.closest('button, a, input, select, textarea, summary, label, [data-open]')) return;
+      cancelAnimationFrame(inertiaFrame);
+      pan = { startX: e.clientX, left: listContainer.scrollLeft, lastX: e.clientX, lastT: performance.now(), v: 0, moved: false };
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!pan) return;
+      const dx = e.clientX - pan.startX;
+      if (!pan.moved && Math.abs(dx) < 4) return;
+      if (!pan.moved) { pan.moved = true; listContainer.classList.add('is-panning'); }
+      const now = performance.now();
+      pan.v = (e.clientX - pan.lastX) / Math.max(1, now - pan.lastT);
+      pan.lastX = e.clientX; pan.lastT = now;
+      listContainer.scrollLeft = pan.left - dx;
+      e.preventDefault();
+    }, signal ? { signal } : undefined);
+    window.addEventListener('pointerup', () => {
+      if (!pan) return;
+      const { moved } = pan;
+      // Отпустили после паузы — без инерции.
+      let v = performance.now() - pan.lastT > 80 ? 0 : pan.v * 16; // px за кадр
+      pan = null;
+      listContainer.classList.remove('is-panning');
+      if (!moved) return;
+      suppressBoardClick = true;
+      setTimeout(() => { suppressBoardClick = false; }, 0);
+      const step = () => {
+        if (Math.abs(v) < 0.5) return;
+        listContainer.scrollLeft -= v;
+        v *= 0.92;
+        inertiaFrame = requestAnimationFrame(step);
+      };
+      inertiaFrame = requestAnimationFrame(step);
+    }, signal ? { signal } : undefined);
+    listContainer.addEventListener('click', (e) => {
+      if (suppressBoardClick) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+    listContainer.addEventListener('wheel', (e) => {
+      if (!isWide() || e.target.closest('.board-col-body')) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (listContainer.scrollWidth <= listContainer.clientWidth) return;
+      e.preventDefault();
+      listContainer.scrollBy({ left: e.deltaY, behavior: 'smooth' });
+    }, { passive: false });
+
+    function buildColumn(col) {
       const el = document.createElement('section');
       el.dataset.stageColumn = col.stage.key;
-      // На телефоне видна только активная вкладка; на lg — все колонки.
-      el.className = `${isActive ? '' : 'hidden'} lg:block lg:w-[340px] lg:shrink-0`;
+      el.className = 'board-col';
+      el.style.setProperty('--col-color', col.stage.color);
       const total = stageTotals[col.stage.key];
+      const n = col.active.length;
       el.innerHTML = `
-        <div class="flex items-baseline justify-between px-1 mb-2">
-          <span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">${escapeHtmlClient(col.stage.label)} · ${col.active.length}</span>
-          ${total ? `<span class="text-[11px] text-gray-400">всего заказов: ${total}</span>` : ''}
+        <div class="board-col-head flex items-center gap-2 px-1 mb-2">
+          <span class="text-xs md:text-[15px] font-semibold md:font-bold text-gray-600 md:text-gray-900 uppercase md:normal-case tracking-wide md:tracking-tight">${escapeHtmlClient(col.stage.label)}<span class="md:hidden"> · ${n}</span></span>
+          <span class="hidden md:inline-block min-w-[22px] h-[22px] px-1.5 rounded-full text-[12px] font-bold leading-[22px] text-center ${n ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'}">${n}</span>
+          ${total ? `<span class="ml-auto text-[11px] text-gray-400">всего заказов: ${total}</span>` : ''}
         </div>
-        <div data-cards></div>
+        <div class="board-col-body" data-cards></div>
       `;
       const cardsEl = el.querySelector('[data-cards]');
 
@@ -394,7 +503,7 @@ window.Screens.reminders = {
       }
 
       if (col.active.length === 0) {
-        cardsEl.innerHTML = '<div class="text-xs text-gray-400 px-1 pb-3">Задач нет</div>';
+        cardsEl.innerHTML = '<div class="text-xs text-gray-400 px-1 py-6 mb-3 text-center rounded-xl border border-dashed border-slate-300">Задач нет</div>';
       }
 
       // Решение VASY 29.09.2026: «дольше нормы» — пока справочно, свёрнуто.
