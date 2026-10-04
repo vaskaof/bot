@@ -27,7 +27,7 @@ window.Screens.purchases = {
     document.getElementById('purchases-new-btn').addEventListener('click', () => navigateTo('carts/new'));
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="purchases-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Товар, клиент, канал, ID..." autocomplete="off">
@@ -37,7 +37,7 @@ window.Screens.purchases = {
           <button type="button" data-filter="lots" class="purchases-filter-btn px-3 py-1.5 rounded-full text-xs font-medium border inline-flex items-center gap-1"><i data-lucide="boxes" class="w-3.5 h-3.5"></i>Только лоты</button>
         </div>
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="purchases-count"></div>
-        <div id="purchases-list"><div class="p-6 text-center text-sm text-gray-400">Загрузка…</div></div>
+        <div id="purchases-list" class="wide-grid"><div class="p-6 text-center text-sm text-gray-400">Загрузка…</div></div>
         <div id="purchases-empty" class="hidden text-center text-sm text-gray-400 py-10">Покупок не найдено</div>
       </main>
     `;

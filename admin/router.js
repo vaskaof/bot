@@ -28,7 +28,9 @@
  * MORE_GROUP ниже — единственное место, которое обе стороны (view app.html
  * и подсветка активного пункта здесь) обязаны знать одинаково.
  */
-const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff'];
+// 04.10.2026: + 'training'/'year-summaries' — на широком экране у них свои
+// кнопки в колонке навигации (там нет «Ещё»), на узком подсвечивают «Ещё».
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff', 'training', 'year-summaries'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -84,9 +86,9 @@ const ROUTES = [
   { path: 'clients', screen: 'clients', navKey: 'clients', showNav: true },
   // «Итоги года» — модерация рассылки (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.2),
   // admin-only, вход из «Ещё» и кнопкой из сообщения бота 18.12.
-  { path: 'year-summaries', screen: 'yearSummaries', navKey: 'more', showNav: true },
+  { path: 'year-summaries', screen: 'yearSummaries', navKey: 'year-summaries', showNav: true },
   // Обучение менеджеров (04.10.2026) — вход из «Ещё», «Помощи» и баннера «Главной».
-  { path: 'training', screen: 'training', navKey: 'more', showNav: true },
+  { path: 'training', screen: 'training', navKey: 'training', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 
@@ -284,7 +286,9 @@ function _setNavBadge(navKey, count) {
 }
 
 window.updateHomeBadge = (count) => _setNavBadge('home', count);
-window.updateMoreBadge = (count) => _setNavBadge('more', count);
+// Заявки конкурсов: на узком — бейдж «Ещё», на широком «Ещё» нет — тот же
+// счётчик на кнопке «Конкурсы» в колонке навигации (04.10.2026).
+window.updateMoreBadge = (count) => { _setNavBadge('more', count); _setNavBadge('contests', count); };
 // Бейдж "Оплаты" за самоотчёты об оплате (20.08.2026, репорт VASY — клиент
 // прислал self-report об оплате, на нижней навигации не было никакого
 // сигнала, только внутриэкранный счётчик на вкладке "Заявки клиентов",
@@ -302,7 +306,7 @@ async function refreshNavBadges() {
   } catch (error) { /* бейдж необязателен — не мешать навигации ошибкой фонового запроса */ }
   try {
     const pending = await callServer('getPendingTaskSubmissions');
-    _setNavBadge('more', pending.length);
+    window.updateMoreBadge(pending.length);
   } catch (error) { /* см. выше */ }
   try {
     const claims = await callServer('getPendingPaymentClaims');
@@ -345,7 +349,9 @@ function renderRoute(dictionaries) {
   screenModule.render(root, dictionaries, params, _currentScreenController.signal);
 
   if (nav) {
-    nav.classList.toggle('hidden', !showNav);
+    // nav-off прячет панель только на узком экране (app.html): на широком
+    // навигация — колонка слева, ничему внизу не мешает и видна всегда.
+    nav.classList.toggle('nav-off', !showNav);
     nav.querySelectorAll('[data-nav-key]').forEach((link) => {
       // Настройки/Конкурсы/Аналитика подсвечивают и себя (inline-кнопка на
       // широком экране), и кнопку "Ещё" (единственная видимая на узком) —
@@ -359,9 +365,34 @@ function renderRoute(dictionaries) {
   }
 
   refreshNavBadges();
+  // Tailwind (play-сборка) дописывает стили новых классов асинхронно, а часть
+  // экранов ставит <main> позже — пересчитываем ширину ещё пару раз.
+  syncContentWidth();
+  requestAnimationFrame(syncContentWidth);
+  setTimeout(syncContentWidth, 300);
+  setTimeout(syncContentWidth, 1200);
 
   if (window.lucide) window.lucide.createIcons();
   window.scrollTo(0, 0);
+}
+
+/**
+ * Широкий экран (04.10.2026): шапка шелла фиксированная и общая на все
+ * экраны, а ширина содержимого у каждого экрана своя (max-width его <main>).
+ * Передаём её в CSS-переменную --content-max — app.html выравнивает по ней
+ * заголовок и кнопки шапки с краями содержимого. На телефоне не используется.
+ */
+function syncContentWidth() {
+  const main = document.querySelector('#screen-root > main');
+  const mw = main ? getComputedStyle(main).maxWidth : 'none';
+  document.documentElement.style.setProperty('--content-max', mw && mw !== 'none' ? mw : '100vw');
+}
+let _syncWidthTimer = null;
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('resize', () => {
+    clearTimeout(_syncWidthTimer);
+    _syncWidthTimer = setTimeout(syncContentWidth, 100);
+  });
 }
 
 /**
@@ -423,6 +454,8 @@ function startAdminRouter() {
     if (window.CURRENT_ACCESS_ROLE !== 'admin') {
       const staffNavBtn = document.getElementById('staff-nav-btn');
       if (staffNavBtn) staffNavBtn.style.display = 'none';
+      const yearNavBtn = document.getElementById('year-summaries-nav-btn');
+      if (yearNavBtn) yearNavBtn.style.display = 'none';
     }
     // Волна 6, находка 1 (пачка теста 08.09.2026) — `dictionaries` грузится
     // РОВНО один раз за открытие приложения и этот же объект передаётся во

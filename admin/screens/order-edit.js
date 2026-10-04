@@ -77,9 +77,16 @@ window.Screens.orderEdit = {
         </div>
       </div>
 
-      <main class="pt-16 pb-24 sm:pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-24 sm:pb-6 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        <!-- Широкий экран (04.10.2026, демо кабинета): справа колонка
+             «Следующий шаг» + деньги, прилипает при прокрутке; слева блоки
+             заказа. На телефоне порядок прежний — сетка только с lg. -->
+        <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-x-5">
+        <div class="lg:col-start-1 min-w-0">
         <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+        </div>
+        <aside class="wide-aside lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:self-start min-w-0">
         <!-- «Следующий шаг» (волна 3, сессия 2, 30.09.2026) — _order-card.js. -->
         <div id="order-next-step" class="hidden mb-3"></div>
         <div id="wishlist-link-box"></div>
@@ -100,6 +107,8 @@ window.Screens.orderEdit = {
           </div>
           <div id="ps-hint" class="hidden text-[11px] text-gray-400 mt-2 text-center"></div>
         </div>
+        </aside>
+        <div class="lg:col-start-1 min-w-0">
         <div id="order-top-banners">
           <!-- "Пропустить с причиной" (22.09.2026) — пункты напоминаний,
                явно признанные неразрешимыми (см. reminderService.js
@@ -703,6 +712,8 @@ window.Screens.orderEdit = {
           </details>
           </div>
         </section>
+        </div>
+        </div>
       </main>
 
       <!-- Телефон (30.09.2026): «Сохранить» всегда под рукой внизу — та же кнопка шапки. -->

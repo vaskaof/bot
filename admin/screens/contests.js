@@ -25,7 +25,7 @@ window.Screens.contests = {
     `;
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div id="tab-switcher" class="flex gap-1.5 mb-3">
           <button type="button" data-tab="tasks" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Задания</button>
           <button type="button" data-tab="moderation" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
@@ -35,21 +35,21 @@ window.Screens.contests = {
         </div>
 
         <div id="tasks-tab">
-          <div id="tasks-list"></div>
+          <div id="tasks-list" class="wide-grid"></div>
           <div id="tasks-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заданий пока нет.</div>
         </div>
 
         <div id="moderation-tab" class="hidden">
-          <div id="moderation-list"></div>
+          <div id="moderation-list" class="wide-grid"></div>
           <div id="moderation-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
 
           <div class="mt-6 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Одобренные (последние)</div>
-          <div id="approved-list"></div>
+          <div id="approved-list" class="wide-grid"></div>
           <div id="approved-empty-message" class="hidden text-center text-sm text-gray-400 py-6">Одобренных заявок по ручным заданиям пока нет.</div>
         </div>
 
         <div id="lotteries-tab" class="hidden">
-          <div id="lotteries-list"></div>
+          <div id="lotteries-list" class="wide-grid"></div>
           <div id="lotteries-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Лотерей пока нет.</div>
         </div>
       </main>

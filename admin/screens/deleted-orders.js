@@ -37,14 +37,14 @@ window.Screens.deletedOrders = {
     document.getElementById('back-btn').addEventListener('click', () => navigateTo('orders'));
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs text-amber-700">
           Восстановление возвращает заказ в список, но НЕ отменяет решения по оплатам, принятые при удалении — отменённые платежи заново не появятся, а оставленные "в пул" могли уже уйти на другие заказы клиента.
         </div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="deleted-orders-count"></div>
 
-        <div id="deleted-orders-list"></div>
+        <div id="deleted-orders-list" class="wide-grid"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Удалённых заказов нет</div>
       </main>
     `;

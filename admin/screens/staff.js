@@ -55,7 +55,7 @@ window.Screens.staff = {
     `;
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div id="staff-add-form" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 space-y-2">
           <div class="text-sm font-medium text-gray-900 mb-1">Добавить сотрудника</div>
           <!-- Поиск по уже известным клиентам (04.09.2026, репорт VASY — "добавлять
@@ -110,7 +110,7 @@ window.Screens.staff = {
           </div>
         </div>
 
-        <div id="staff-list" class="space-y-2"></div>
+        <div id="staff-list" class="space-y-2 wide-grid"></div>
         <div id="staff-empty" class="hidden text-center text-sm text-gray-400 py-10">Пока нет ни одного сотрудника.</div>
       </main>
     `;

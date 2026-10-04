@@ -80,13 +80,15 @@ window.Screens.catalogTools = {
     document.getElementById('header-actions').innerHTML = '';
     document.getElementById('back-btn').addEventListener('click', () => history.back());
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         ${CatalogTabs.html('tools')}
         <div class="text-[12px] text-gray-500 px-1 mb-2">Проверки и исправления каталога. Ничего не меняется само — только по вашему выбору.</div>
-        ${CatalogTabs.hubCard({ id: 'tools-check', icon: 'scan-search', title: 'Проверка по справочнику', badgeId: 'tools-check-badge', text: 'Сверка позиций с внешним справочником кукол: ссылка не совпадает с названием, несколько вариантов, одинаковый код модели, не нашлось.' })}
-        ${CatalogTabs.hubCard({ id: 'tools-duplicates', icon: 'copy-check', title: 'Похожие названия и пробелы', text: 'Позиции с похожими названиями (объединить), заказы без позиции в каталоге, позиции без ссылки или фото.' })}
-        ${CatalogTabs.hubCard({ id: 'tools-tags', icon: 'tags', title: 'Теги от ИИ', text: 'Бренд/персонаж/серия, которые ИИ предлагает для позиций с пустыми тегами. Применяете вы.' })}
-        ${CatalogTabs.hubCard({ id: 'tools-names', icon: 'wand-2', title: 'Короткие имена', text: 'Короткие русские названия по тегам — как позицию видят клиенты.' })}
+        <div class="wide-grid">
+          ${CatalogTabs.hubCard({ id: 'tools-check', icon: 'scan-search', title: 'Проверка по справочнику', badgeId: 'tools-check-badge', text: 'Сверка позиций с внешним справочником кукол: ссылка не совпадает с названием, несколько вариантов, одинаковый код модели, не нашлось.' })}
+          ${CatalogTabs.hubCard({ id: 'tools-duplicates', icon: 'copy-check', title: 'Похожие названия и пробелы', text: 'Позиции с похожими названиями (объединить), заказы без позиции в каталоге, позиции без ссылки или фото.' })}
+          ${CatalogTabs.hubCard({ id: 'tools-tags', icon: 'tags', title: 'Теги от ИИ', text: 'Бренд/персонаж/серия, которые ИИ предлагает для позиций с пустыми тегами. Применяете вы.' })}
+          ${CatalogTabs.hubCard({ id: 'tools-names', icon: 'wand-2', title: 'Короткие имена', text: 'Короткие русские названия по тегам — как позицию видят клиенты.' })}
+        </div>
       </main>
     `;
     CatalogTabs.wire();
@@ -116,11 +118,13 @@ window.Screens.catalogRefs = {
     document.getElementById('header-actions').innerHTML = '';
     document.getElementById('back-btn').addEventListener('click', () => history.back());
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         ${CatalogTabs.html('refs')}
         <div class="text-[12px] text-gray-500 px-1 mb-2">Справочники, по которым раскладываются позиции каталога.</div>
-        ${CatalogTabs.hubCard({ id: 'refs-lines', icon: 'git-branch', title: 'Линейки', text: 'Дерево брендов, поколений и линеек, разметка серий, словарь персонажей — по ним раскладываются позиции каталога.' })}
-        ${CatalogTabs.hubCard({ id: 'refs-collections', icon: 'layers', title: 'Коллекции', text: 'Именованные наборы позиций каталога, собранные вручную.' })}
+        <div class="wide-grid">
+          ${CatalogTabs.hubCard({ id: 'refs-lines', icon: 'git-branch', title: 'Линейки', text: 'Дерево брендов, поколений и линеек, разметка серий, словарь персонажей — по ним раскладываются позиции каталога.' })}
+          ${CatalogTabs.hubCard({ id: 'refs-collections', icon: 'layers', title: 'Коллекции', text: 'Именованные наборы позиций каталога, собранные вручную.' })}
+        </div>
       </main>
     `;
     CatalogTabs.wire();

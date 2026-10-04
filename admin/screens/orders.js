@@ -49,14 +49,14 @@ window.Screens.orders = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <!-- Целевое ревью Фазы F (07.09.2026) нашло реальный риск: 7-я
              кнопка ("Корзины") в прежнем flex-row без переноса сжимала бы
              все 7 иконок в один нескроллящийся ряд на узких экранах
              Telegram Mini App (~360-400px) — grid-cols-4 переносит 7-ю
              кнопку на вторую строку (4+3), каждая кнопка сохраняет размер
              вместо сжатия. -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 gap-1">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 grid grid-cols-4 md:grid-cols-6 gap-1">
           <!-- Слияние «Новый заказ»→«Корзина» (05.09.2026, IMPLEMENTATION-
                PLAN-CART-MERGE.md §4) — "+ Новый заказ" убран, "+ Корзина"
                теперь единственная точка входа в создание заказа (и
@@ -99,12 +99,14 @@ window.Screens.orders = {
           </button>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
+        <!-- Широкий экран (04.10.2026): поиск, сортировка и фильтр менеджера — одной строкой. -->
+        <div class="md:flex md:gap-3 md:items-start">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 md:flex-1 md:min-w-0">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="order-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по заказам..." autocomplete="off">
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 md:w-80 md:shrink-0">
           <select id="sort-field" class="flex-1 bg-transparent border-none outline-none text-[14px] cursor-pointer">
             <option value="dateOrderSort">Дата выкупа</option>
             <option value="productDisplay">Выпуск</option>
@@ -121,14 +123,15 @@ window.Screens.orders = {
 
         <!-- Фаза 2 (roles/RBAC, M2.6) — только для admin, менеджер видит
              только свои заказы жёстко, без выбора (см. render()). -->
-        <select id="manager-filter-select" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 text-[14px] outline-none focus:border-indigo-400">
+        <select id="manager-filter-select" class="hidden w-full md:w-56 md:shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 text-[14px] outline-none focus:border-indigo-400">
           <option value="">Все менеджеры</option>
         </select>
+        </div>
         <div id="mine-only-badge" class="hidden text-[11px] text-gray-400 px-1 mb-2">Показаны только ваши заказы</div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="orders-count"></div>
 
-        <div id="orders-list"></div>
+        <div id="orders-list" class="wide-grid"></div>
 
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заказы не найдены</div>
 

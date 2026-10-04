@@ -448,7 +448,7 @@ window.Screens.analytics = {
     });
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="flex items-center justify-between mb-3">
           <div id="analytics-subtitle" class="text-[11px] text-gray-400">Кто и как пользуется приложением</div>
           <select id="days-select" class="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:border-indigo-400">
@@ -547,13 +547,16 @@ window.Screens.analytics = {
       const prevSuccessRate = prevTotals.total > 0 ? Math.round((prevTotals.success / prevTotals.total) * 100) : 0;
 
       body.innerHTML = `
-        <div class="grid grid-cols-2 gap-2 mb-4">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
           ${kpiTile('activity', 'Вызовов всего', totals.total, deltaBadge(totals.total, prevTotals.total, 'neutral'))}
           ${kpiTile('check-circle', 'Успешно', `${successRate}%`, deltaBadge(successRate, prevSuccessRate, 'up'))}
           ${kpiTile('alert-triangle', 'Ошибок', totals.failed, deltaBadge(totals.failed, prevTotals.failed, 'down'))}
           ${kpiTile('user', 'Активных админов', totals.uniqueAdmins)}
           ${kpiTile('users', 'Активных клиентов', totals.uniqueClients)}
         </div>
+
+        <!-- Широкий экран (04.10.2026): панели — в две колонки. -->
+        <div class="wide-grid" style="--card-min: 30rem">
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Вызовов по дням</div>
@@ -604,6 +607,7 @@ window.Screens.analytics = {
           <div class="text-sm font-semibold text-gray-900 mb-3">Последние ошибки</div>
           ${recentErrors.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Ошибок нет 🎉</div>' : errorsList(recentErrors)}
         </div>
+        </div>
       `;
       if (window.lucide) window.lucide.createIcons();
       body.querySelectorAll('[data-user-telegram-id]').forEach((el) => {
@@ -626,6 +630,7 @@ window.Screens.analytics = {
           ${kpiTile('alert-triangle', 'Ошибок', totals.failed)}
         </div>
 
+        <div class="wide-grid" style="--card-min: 30rem">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Вызовов по дням</div>
           ${byDay.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : dayChart(byDay)}
@@ -634,6 +639,7 @@ window.Screens.analytics = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div class="text-sm font-semibold text-gray-900 mb-3">Топ методов</div>
           ${byMethod.length === 0 ? '<div class="text-center text-sm text-gray-400 py-4">Данных пока нет.</div>' : methodTable(byMethod)}
+        </div>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();

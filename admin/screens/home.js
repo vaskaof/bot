@@ -68,7 +68,7 @@ window.Screens.home = {
     renderHeaderActions();
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <!-- Обучение менеджеров (04.10.2026) — «пройди сценарии», пока доступные не пройдены. -->
         <div id="training-banner" class="hidden mb-3"></div>
         <div id="tab-switcher" class="flex gap-1.5 mb-3">
@@ -86,13 +86,13 @@ window.Screens.home = {
             <button type="button" data-filter="Все" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Только «Всем»</button>
           </div>
           <div class="text-[11px] text-gray-400 px-1 mb-2" id="news-count"></div>
-          <div id="news-list"></div>
+          <div id="news-list" class="wide-grid"></div>
           <div id="news-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Новостей пока нет.</div>
         </div>
 
         <div id="questions-tab" class="hidden">
           <div class="text-[11px] text-gray-400 px-1 mb-2" id="questions-count"></div>
-          <div id="questions-list"></div>
+          <div id="questions-list" class="wide-grid"></div>
           <div id="questions-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Вопросов нет 🎉</div>
         </div>
       </main>

@@ -25,20 +25,20 @@ window.Screens.wishlistDemand = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         ${CatalogTabs.html('demand')}
         <!-- «Уже заказано — связать?» (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.5): у клиента есть
              позиция вишлиста под его заказ в пути, а связи нет — клиент не видит охоту. -->
         <div id="link-suggest"></div>
         <div class="text-[11px] text-gray-400 px-1 mb-2">По каталогу</div>
-        <div id="demand-list"></div>
+        <div id="demand-list" class="wide-grid"></div>
         <div id="demand-empty" class="hidden text-center text-sm text-gray-400 py-6">Активных желаний пока нет.</div>
 
         <!-- Очередь «Недобавленные из вишлиста» (IMPLEMENTATION-PLAN-GAMIFICATION.md §11.16.1, Р2/А5)
              вместо «Не найдено в каталоге»: позиции, которые не определились по каталогу и не
              подтверждены клиентом, одинаковые у разных клиентов — одной группой. -->
         <div class="text-[11px] text-gray-400 px-1 mb-2 mt-6">Недобавленные из вишлиста</div>
-        <div id="unknown-list"></div>
+        <div id="unknown-list" class="wide-grid"></div>
         <div id="unknown-empty" class="hidden text-center text-sm text-gray-400 py-6">Таких позиций нет.</div>
       </main>
       ${SkuModal.html()}

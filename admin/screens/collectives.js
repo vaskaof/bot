@@ -73,7 +73,7 @@ window.Screens.collectives = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="collective-list-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по ID/треку/названию..." autocomplete="off">
@@ -127,7 +127,7 @@ window.Screens.collectives = {
           </button>
         </div>
 
-        <div id="collective-list"></div>
+        <div id="collective-list" class="wide-grid"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Коллективок не найдено</div>
       </main>
 

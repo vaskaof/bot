@@ -79,7 +79,7 @@ window.Screens.wallet = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl mx-auto space-y-5">
+      <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto space-y-5 wide-columns">
         <section class="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4 text-xs text-gray-600 leading-relaxed">
           <div class="font-semibold text-indigo-700 mb-1.5">Как читать этот экран за 30 секунд</div>
           <ul class="list-disc pl-4 space-y-1">

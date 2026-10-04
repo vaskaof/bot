@@ -25,7 +25,7 @@ window.Screens.catalog = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <!-- Волна 5 аудита менеджера (03.10.2026): список + 7 иконок-инструментов
              заменены 4 разделами (CatalogTabs, _catalog-tabs.js): «Каталог» |
              «Спрос» | «Порядок» (Проверка, Похожие названия, Теги ИИ, Имена) |
@@ -43,7 +43,7 @@ window.Screens.catalog = {
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="catalog-count"></div>
 
-        <div id="catalog-list"></div>
+        <div id="catalog-list" class="wide-grid"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Позиции не найдены</div>
       </main>
 

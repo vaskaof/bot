@@ -96,7 +96,13 @@ window.Screens.cartNew = {
            реальных устройствах. НЕ использовать обратные кавычки внутри
            этого HTML-комментария — он живёт внутри JS template literal
            (см. JSDoc файла, наступали на это уже много раз). -->
-      <main class="pt-16 pb-40 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-40 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        <!-- Широкий экран (04.10.2026, демо кабинета): слева шапка и заявки,
+             справа «Итог и оплаты» (прилипает), панель итогов — карточкой
+             под ней (app.html). На телефоне порядок прежний. НЕ использовать
+             обратные кавычки в этом комментарии. -->
+        <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-x-5 lg:items-start">
+        <div class="min-w-0">
 
         <!-- Волна 7, §7 п.2 — восстановление черновика «Размножить на
              клиентов» после сбоя/убийства Telegram WebView (по прямому
@@ -262,6 +268,8 @@ window.Screens.cartNew = {
              сколько каждый клиент уже оплатил. Выбор по клиенту обязателен,
              без значения по умолчанию (решение VASY). НЕ использовать обратные
              кавычки в этом комментарии. -->
+        </div>
+        <aside id="cart-aside" class="wide-aside min-w-0">
         <div id="cart-totals-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mb-3">
           <div class="px-4 pt-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Итог и оплаты</div>
           <!-- Волна 2 аудита менеджера, сессия 2 (28.09.2026): «Итог по чеку»
@@ -329,6 +337,8 @@ window.Screens.cartNew = {
             <div class="text-[11px] text-gray-400 mb-2">Выберите для каждого клиента — обязательно.</div>
             <div id="cart-payments-list"></div>
           </div>
+        </div>
+        </aside>
         </div>
 
         ${ManualClientModal.html()}

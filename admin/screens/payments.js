@@ -69,7 +69,7 @@ window.Screens.payments = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
         <div id="tab-switcher" class="flex gap-1.5 mb-3">
           <button type="button" data-tab="client" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Клиент</button>
           <button type="button" data-tab="claims" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
@@ -98,7 +98,7 @@ window.Screens.payments = {
               <span class="text-[11px] font-medium">По возрастанию</span>
             </button>
           </div>
-          <div id="claims-list"></div>
+          <div id="claims-list" class="wide-grid"></div>
           <div id="claims-empty-message" class="hidden text-center text-sm text-gray-400 py-10">Заявок на проверку нет.</div>
         </div>
       </main>
@@ -564,7 +564,11 @@ window.Screens.payments = {
         sum + (o.details.stagesBalance || []).reduce((s2, st) => s2 + st.paid, 0), 0);
       const grandRemaining = Math.max(0, grandTarget - grandPaid);
 
+      // Широкий экран (04.10.2026): слева сводка клиента и «Занести оплату»
+      // (прилипает), справа заказы, метки и платежи. На телефоне — как было.
       clientView.innerHTML = `
+        <div class="lg:grid lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-x-5 lg:items-start">
+        <div class="wide-aside min-w-0">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="font-semibold text-gray-900 text-[15px] truncate flex items-center gap-1.5">
@@ -663,6 +667,8 @@ window.Screens.payments = {
         <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-4 flex items-center justify-center gap-2">
           <i data-lucide="plus" class="w-4 h-4"></i> Занести оплату
         </button>
+        </div>
+        <div class="min-w-0">
 
         ${newModelOrders.length > 0 ? `
           <div class="flex items-center justify-between gap-2 mb-2 px-1">
@@ -712,6 +718,8 @@ window.Screens.payments = {
         ` : ''}
 
         ${currentOrders.length === 0 ? '<div class="text-center text-sm text-gray-400 py-6">У клиента пока нет заказов.</div>' : ''}
+        </div>
+        </div>
       `;
 
       document.getElementById('change-client-btn').addEventListener('click', () => {

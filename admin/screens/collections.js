@@ -32,8 +32,8 @@ window.Screens.catalogCollections = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="collections-list"></div>
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
+        <div id="collections-list" class="wide-grid"></div>
         <div id="collections-empty-message" class="hidden text-center text-sm text-gray-400 py-10">
           Коллекций пока нет — соберите первую из позиций каталога.
         </div>

@@ -214,8 +214,9 @@ window.Screens.settings = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="settings-body" class="text-center text-sm text-gray-400 py-10">Загрузка...</div>
+      <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        <!-- Широкий экран (04.10.2026): разделы — в две колонки (app.html, .wide-columns). -->
+        <div id="settings-body" class="wide-columns text-center text-sm text-gray-400 py-10">Загрузка...</div>
       </main>
     `;
 
@@ -275,6 +276,9 @@ window.Screens.settings = {
       const economyRows = settings.filter(s => s.category === 'economy');
       const currencyMarginRows = settings.filter(s => s.category === 'currency_margin');
 
+      // Классы «Загрузка...» (по центру, py-10) снимаем — раньше они
+      // оставались и центровали весь экран настроек (04.10.2026).
+      body.className = 'wide-columns';
       body.innerHTML = CATEGORY_ORDER.map(cat => {
         if (cat === 'payout_share') return sharesSectionHtml();
         if (cat === 'forecast') return forecastSectionHtml(forecastRows);

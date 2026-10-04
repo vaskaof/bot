@@ -59,7 +59,7 @@ window.Screens.clients = {
     renderHeaderActions();
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div id="clients-list-view">
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
             <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
@@ -86,10 +86,10 @@ window.Screens.clients = {
             <div id="hunt-invite-list"></div>
           </details>
           <div id="clients-count" class="text-[11px] text-gray-400 mb-2"></div>
-          <div id="clients-list"></div>
+          <div id="clients-list" class="wide-grid"></div>
         </div>
 
-        <div id="client-detail-view" class="hidden"></div>
+        <div id="client-detail-view" class="hidden md:max-w-3xl md:mx-auto"></div>
       </main>
 
       <div id="bulk-block-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">

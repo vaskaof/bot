@@ -42,14 +42,14 @@ window.Screens.lots = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="lot-list-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по ID/карго..." autocomplete="off">
         </div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="lot-count"></div>
-        <div id="lot-list"></div>
+        <div id="lot-list" class="wide-grid"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Лотов не найдено</div>
       </main>
     `;

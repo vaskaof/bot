@@ -27,8 +27,8 @@ window.Screens.more = {
     document.getElementById('header-actions').innerHTML = '';
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="more-list" class="space-y-2"></div>
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
+        <div id="more-list" class="space-y-2 wide-grid"></div>
       </main>
     `;
 

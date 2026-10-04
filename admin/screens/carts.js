@@ -22,7 +22,7 @@ window.Screens.carts = {
     document.getElementById('back-btn').addEventListener('click', () => history.back());
 
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
+      <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 mb-3 flex items-center gap-1">
           <button type="button" id="add-cart-btn" class="flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl text-indigo-600 active:bg-indigo-50 transition-colors">
             <i data-lucide="shopping-cart" class="w-5 h-5"></i>
@@ -36,7 +36,7 @@ window.Screens.carts = {
         </div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="cart-count"></div>
-        <div id="cart-list"></div>
+        <div id="cart-list" class="wide-grid"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Корзин не найдено</div>
       </main>
     `;
