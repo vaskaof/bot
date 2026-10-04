@@ -20,6 +20,12 @@
  *   пропускает и остальные её шаги, не дожидаясь их целей.
  * - `block` (у сценария или шага) — клики, которые в учебном режиме
  *   запрещены (например, «Сохранить» корзины: учимся без записи данных).
+ * - `place: 'away'` — подсказка у дальнего от цели края экрана (поле поиска
+ *   с выпадающим списком: иначе подсказка ложится на список).
+ * - Шаг без `target` (этап 4) — объяснение по центру поверх затемнения; с
+ *   `quiz: { options: [{ label, correct?, explain }] }` — вопрос-проверка:
+ *   «Далее» появляется после верного ответа, неверный объясняется и даёт
+ *   попробовать ещё (не экзамен — закрепление).
  * - Состояние в sessionStorage: перезагрузка WebView продолжает с того же шага.
  * - События (start/step/complete/abandon) — на сервер без ожидания: по ним
  *   VASY видит, на каком шаге бросают.
@@ -160,7 +166,10 @@
     const bh = bubble.offsetHeight;
     const bw = bubble.offsetWidth;
     let bTop;
-    if (vh - bottom >= bh + 12) bTop = bottom + 10;
+    // place: 'away' — у поля поиска с выпадающим списком: подсказка у дальнего
+    // края экрана, иначе она закрывает список (e2e «Занести оплату», 04.10).
+    if (step.place === 'away') bTop = (r.top + r.height / 2) < vh / 2 ? vh - bh - 12 : 12;
+    else if (vh - bottom >= bh + 12) bTop = bottom + 10;
     else if (top >= bh + 12) bTop = top - bh - 10;
     else bTop = Math.max(12, vh - bh - 12);
     const bLeft = Math.min(Math.max(12, r.left + r.width / 2 - bw / 2), vw - bw - 12);
@@ -199,10 +208,12 @@
       </div>
       ${opts.title ? `<div class="text-[15px] font-semibold text-gray-900 mb-1">${opts.title}</div>` : ''}
       <div class="text-sm text-gray-700 leading-snug">${opts.text}</div>
+      ${opts.quiz ? `<div class="space-y-1.5 mt-3">${opts.quiz.options.map((o, i) => `<button type="button" data-quiz="${i}" class="w-full text-left px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800">${o.label}</button>`).join('')}</div>
+        <div data-quiz-explain class="hidden text-[13px] leading-snug mt-2 rounded-xl px-3 py-2"></div>` : ''}
       ${opts.hint ? `<div class="text-[12px] text-amber-700 mt-2">${opts.hint}</div>` : ''}
       <div class="flex flex-wrap gap-2 mt-3" data-tour-actions>
         ${(opts.actions || []).map((a, i) => `<button type="button" data-tour-action="${i}" class="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium">${escapeHtmlClient(a.label)}</button>`).join('')}
-        ${showNext ? `<button type="button" data-tour="next" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">${active.index + 1 === total ? 'Готово' : 'Далее'}</button>` : ''}
+        ${showNext ? `<button type="button" data-tour="next" class="${opts.quiz ? 'hidden ' : ''}flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">${active.index + 1 === total ? 'Готово' : 'Далее'}</button>` : ''}
       </div>
     `;
     bubble.querySelector('[data-tour="exit"]').addEventListener('click', () => exit());
@@ -210,6 +221,19 @@
     if (backBtn) backBtn.addEventListener('click', () => goBack());
     const nextBtn = bubble.querySelector('[data-tour="next"]');
     if (nextBtn) nextBtn.addEventListener('click', () => goNext());
+    if (opts.quiz) {
+      const explain = bubble.querySelector('[data-quiz-explain]');
+      bubble.querySelectorAll('[data-quiz]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const option = opts.quiz.options[Number(btn.dataset.quiz)];
+          bubble.querySelectorAll('[data-quiz]').forEach((b) => b.classList.remove('border-emerald-500', 'bg-emerald-50', 'border-red-400', 'bg-red-50'));
+          btn.classList.add(...(option.correct ? ['border-emerald-500', 'bg-emerald-50'] : ['border-red-400', 'bg-red-50']));
+          explain.className = `text-[13px] leading-snug mt-2 rounded-xl px-3 py-2 ${option.correct ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`;
+          explain.innerHTML = `${option.correct ? '✅ Верно. ' : '❌ Не совсем. '}${option.explain || ''}${option.correct ? '' : ' Попробуй ещё раз.'}`;
+          if (option.correct && nextBtn) nextBtn.classList.remove('hidden');
+        });
+      });
+    }
     (opts.actions || []).forEach((a, i) => {
       const btn = bubble.querySelector(`[data-tour-action="${i}"]`);
       btn.addEventListener('click', async () => {
@@ -258,6 +282,12 @@
     if (step.onEnter) { try { step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
 
     ensureLayer();
+    // Шаг без цели — объяснение или вопрос-проверка по центру экрана.
+    if (!step.target) {
+      renderBubble(step, { title: step.title, text: step.text, quiz: step.quiz, actions: step.actions, showNext: true });
+      startLoop({}, () => null);
+      return;
+    }
     // Пока ищем цель — подсказка по центру, без затемнения кликов по экрану.
     // Необязательный шаг может не найтись — его текст не показываем заранее.
     renderBubble(step, step.optional
@@ -324,12 +354,27 @@
     showStep();
   }
 
+  function isBlocked(el) {
+    if (!active || !el || !el.closest) return false;
+    const step = active.scenario.steps[active.index];
+    const blocked = [...(active.scenario.block || []), ...((step && step.block) || [])];
+    return blocked.some((sel) => el.closest(sel));
+  }
+
+  // Ползунки (доля в коллективке) пишут без клика — запрещаем само касание.
+  ['pointerdown', 'touchstart'].forEach((type) => document.addEventListener(type, (e) => {
+    if (isBlocked(e.target) && e.target.matches && e.target.matches('input[type="range"]')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showSaveToast(true, 'Учебный режим: здесь не меняем — ничего не запишется.');
+    }
+  }, { capture: true, passive: false }));
+
   // Нажатие на подсвеченное (advance: 'click') и запреты учебного режима.
   document.addEventListener('click', (e) => {
     if (!active) return;
     const step = active.scenario.steps[active.index];
-    const blocked = [...(active.scenario.block || []), ...((step && step.block) || [])];
-    if (blocked.some((sel) => e.target.closest && e.target.closest(sel))) {
+    if (isBlocked(e.target)) {
       e.preventDefault();
       e.stopImmediatePropagation();
       showSaveToast(true, 'Учебный режим: здесь не сохраняем — ничего не запишется.');

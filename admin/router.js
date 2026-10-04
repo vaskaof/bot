@@ -367,6 +367,8 @@ function renderRoute(dictionaries) {
 
   root.innerHTML = '';
   screenModule.render(root, dictionaries, params, _currentScreenController.signal);
+  // Обучение, этап 4: «здесь есть урок» — один раз на сценарий (см. _training-ui.js).
+  if (window.TrainingUI && window.TrainingUI.offerMoment) window.TrainingUI.offerMoment();
 
   if (nav) {
     // nav-off прячет панель только на узком экране (app.html): на широком

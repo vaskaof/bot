@@ -14,6 +14,10 @@
  * ИИ-помощником (что спросили, что собрал код, что ответил ИИ, помогло ли);
  * категорию предлагает ИИ, утверждает VASY; «Ответить» — VASY продолжает
  * разговор сам (сообщение автору в Telegram). Сервер — assistantService.js.
+ * Этап 4 (04.10.2026): полка «Проверено делом» (то же, что в уроке, но
+ * по-настоящему); в «Команде» — память по человеку (что видит помощник) и
+ * заметки VASY; заметку, предложенную ИИ, VASY утверждает/правит/отклоняет
+ * (в «Команде» и под разговором во вкладке «Помощник»).
  * Сервер — `server/src/training/trainingService.js`.
  */
 window.Screens = window.Screens || {};
@@ -75,17 +79,72 @@ window.Screens = window.Screens || {};
       </div>`;
   }
 
-  function badgesGrid(t) {
+  function badgeTiles(list) {
     return `
-      <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Достижения</div>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
-        ${t.badges.map((b) => `
+        ${list.map((b) => `
           <div class="bg-white rounded-2xl border border-gray-100 p-2 text-center ${b.earned ? '' : 'opacity-40 grayscale'}" title="${esc(b.description)}" data-badge="${esc(b.code)}">
             <div class="text-3xl">${b.emoji}</div>
             <div class="text-[11px] font-medium text-gray-800 leading-tight mt-1">${esc(b.title)}</div>
             ${b.earned ? `<div class="text-[10px] text-gray-400">${day(b.earnedAt)}</div>` : `<div class="text-[10px] text-gray-400 leading-tight">${esc(b.description)}</div>`}
           </div>`).join('')}
       </div>`;
+  }
+
+  function badgesGrid(t) {
+    const practice = t.badges.filter((b) => b.shelf === 'practice' && b.available);
+    return `
+      <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Достижения</div>
+      ${badgeTiles(t.badges.filter((b) => b.shelf !== 'practice'))}
+      ${practice.length ? `
+        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1">Проверено делом</div>
+        <div class="text-[12px] text-gray-500 px-1 mb-2">То же, что в уроке, но по-настоящему. Засчитывается только после урока.</div>
+        <div data-shelf="practice">${badgeTiles(practice)}</div>` : ''}`;
+  }
+
+  const NOTE_STATUS = { pending: ['ждёт тебя', 'bg-amber-50 text-amber-800'], active: ['в памяти', 'bg-emerald-50 text-emerald-700'], rejected: ['отклонена', 'bg-gray-100 text-gray-500'], archived: ['убрана', 'bg-gray-100 text-gray-500'] };
+
+  /** Заметка памяти: предложенную ИИ — утвердить/поправить/отклонить, активную — убрать. */
+  function noteRow(n) {
+    const [label, chip] = NOTE_STATUS[n.status] || NOTE_STATUS.active;
+    return `
+      <div class="rounded-lg bg-gray-50 px-2 py-1.5" data-note="${n.id}">
+        <div class="flex items-center justify-between gap-2 text-[11px] text-gray-400">
+          <span>${n.source === 'ai' ? '🤖 предложил ИИ' : '✍️ VASY'} · ${day(n.createdAt)}</span>
+          <span class="px-1.5 py-0.5 rounded-full ${chip}">${label}</span>
+        </div>
+        <div class="text-[13px] text-gray-800 mt-0.5 whitespace-pre-wrap break-words" data-note-text>${esc(n.text)}</div>
+        ${n.status === 'pending' ? `<div class="flex gap-1.5 mt-1.5">
+          <button type="button" data-note-set="active" class="flex-1 py-1 rounded-lg border border-gray-200 text-[12px] text-emerald-700">Утвердить</button>
+          <button type="button" data-note-set="edit" class="flex-1 py-1 rounded-lg border border-gray-200 text-[12px] text-indigo-700">Поправить</button>
+          <button type="button" data-note-set="rejected" class="flex-1 py-1 rounded-lg border border-gray-200 text-[12px] text-red-600">Отклонить</button>
+        </div>` : n.status === 'active' ? '<button type="button" data-note-set="archived" class="mt-1 text-[11px] text-gray-500 underline">Убрать из памяти</button>' : ''}
+      </div>`;
+  }
+
+  /** Кнопки заметок внутри root; после решения — onDone(). */
+  function wireNotes(root, onDone) {
+    root.querySelectorAll('[data-note]').forEach((row) => {
+      row.querySelectorAll('[data-note-set]').forEach((btn) => btn.addEventListener('click', async () => {
+        let status = btn.dataset.noteSet;
+        let text = null;
+        if (status === 'edit') {
+          const current = row.querySelector('[data-note-text]').textContent;
+          text = await showPromptModal('Заметка в память (видит помощник, менеджер — нет)', { confirmLabel: 'Утвердить', defaultValue: current });
+          if (!text || !text.trim()) return;
+          status = 'active';
+        }
+        row.querySelectorAll('[data-note-set]').forEach((b) => { b.disabled = true; });
+        try {
+          await callServer('setStaffNoteStatus', Number(row.dataset.note), status, text);
+          showSaveToast(true, status === 'active' ? 'Заметка в памяти — помощник будет её учитывать.' : 'Сохранено.');
+          onDone();
+        } catch (error) {
+          row.querySelectorAll('[data-note-set]').forEach((b) => { b.disabled = false; });
+          showSaveToast(false, error.message);
+        }
+      }));
+    });
   }
 
   function ideasBlock(t) {
@@ -113,6 +172,19 @@ window.Screens = window.Screens || {};
       <div class="space-y-2 mb-4">${entries.map(TrainingUI.whatsNewEntryHtml).join('')}</div>`;
   }
 
+  /** Память по человеку (то, что видит помощник) + заметки. */
+  function memoryBlock(p) {
+    const pending = p.memory.notes.some((n) => n.status === 'pending');
+    return `
+      <details class="mt-2" data-person-memory ${pending ? 'open' : ''}>
+        <summary class="text-[12px] text-indigo-700 cursor-pointer">🧠 Память${pending ? ' · есть заметка на утверждение' : ''}</summary>
+        <div class="text-[11px] text-gray-500 mt-1">Это помощник знает о человеке перед каждым вопросом. Собирает код; заметки — твои или утверждённые тобой.</div>
+        <pre class="mt-1 text-[11px] text-gray-700 bg-gray-50 rounded-lg p-2 whitespace-pre-wrap break-words">${esc(p.memory.text || '—')}</pre>
+        <div class="space-y-1 mt-1.5">${p.memory.notes.map(noteRow).join('')}</div>
+        <button type="button" data-add-note="${esc(p.telegramIds[0])}" class="mt-1.5 w-full py-1.5 rounded-lg border border-dashed border-gray-300 text-[12px] text-gray-600">✍️ Добавить заметку</button>
+      </details>`;
+  }
+
   function teamBlock(o) {
     const titleOf = new Map(o.scenarios.map((s) => [s.id, s.title]));
     const chip = (s) => s.status === 'done' ? '✅' : s.status === 'started' ? `⏸ шаг ${s.lastStep}` : '—';
@@ -129,6 +201,8 @@ window.Screens = window.Screens || {};
               ${p.scenarios.map((s) => `<div class="text-[12px] text-gray-600 flex justify-between gap-2"><span class="truncate">${esc(titleOf.get(s.id))}</span><span class="shrink-0">${chip(s)}</span></div>`).join('')}
             </div>
             <div class="text-[11px] text-gray-400 mt-1">${p.lastActivityAt ? `последний шаг ${day(p.lastActivityAt)}` : 'ещё не начинал(а)'}</div>
+            ${(p.practice || []).length ? `<div class="mt-1.5 flex flex-wrap gap-1" data-person-practice>${p.practice.map((x) => `<span class="text-[11px] px-1.5 py-0.5 rounded-full ${x.earnedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-400'}" title="Проверено делом">${x.emoji} ${esc(x.title)}${x.earnedAt ? ` · ${day(x.earnedAt)}` : ''}</span>`).join('')}</div>` : ''}
+            ${p.memory ? memoryBlock(p) : ''}
           </div>`).join('')}
       </div>
       <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Сценарии</div>
@@ -219,6 +293,7 @@ window.Screens = window.Screens || {};
           </div>
           ${s.handoff ? `<div class="mt-1 text-[11px] inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-800">передано тебе: ${esc(log.handoffLabels[s.handoff] || s.handoff)}</div>` : ''}
           ${s.summary ? `<div class="text-[12px] text-gray-500 mt-1">Итог ИИ: ${esc(s.summary)}</div>` : ''}
+          ${s.memoryNote ? `<div class="mt-1.5" data-as-memory><div class="text-[11px] text-gray-500 mb-0.5">🧠 Заметка в память о менеджере</div>${noteRow(s.memoryNote)}</div>` : ''}
           <div class="mt-2 space-y-1">${s.messages.map(assistantBubble).join('')}</div>
           <div class="flex flex-wrap items-center gap-2 mt-2 text-[12px]">
             <select data-as-category class="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-[12px]">
@@ -325,12 +400,26 @@ window.Screens = window.Screens || {};
       async function loadOverview(force) {
         try {
           if (!overview || force) overview = await callServer('getTrainingOverview');
-          if (tab === 'team') body.innerHTML = teamBlock(overview);
+          if (tab === 'team') paintTeam();
           if (tab === 'feedback') paintFeedback();
           if (tab === 'errors') body.innerHTML = errorsBlock(overview);
         } catch (error) {
           body.innerHTML = `<div class="text-center text-sm text-red-500 py-10">${esc(error.message)}</div>`;
         }
+      }
+
+      function paintTeam() {
+        body.innerHTML = teamBlock(overview);
+        wireNotes(body, () => loadOverview(true));
+        body.querySelectorAll('[data-add-note]').forEach((b) => b.addEventListener('click', async () => {
+          const text = await showPromptModal('Заметка о человеке — помощник будет её учитывать (менеджер не видит)', { confirmLabel: 'Сохранить' });
+          if (!text || !text.trim()) return;
+          try {
+            await callServer('addStaffNote', b.dataset.addNote, text.trim());
+            showSaveToast(true, 'Заметка в памяти.');
+            loadOverview(true);
+          } catch (error) { showSaveToast(false, error.message); }
+        }));
       }
 
       function paintFeedback() {
@@ -373,6 +462,7 @@ window.Screens = window.Screens || {};
       function paintAssistant() {
         body.innerHTML = assistantBlock(assistantLog, asFilter);
         body.querySelectorAll('[data-as-filter]').forEach((b) => b.addEventListener('click', () => { asFilter = b.dataset.asFilter; paintAssistant(); }));
+        wireNotes(body, () => { overview = null; loadAssistant(true); });
         body.querySelectorAll('[data-open-order]').forEach((b) => b.addEventListener('click', () => navigateTo(`orders/${encodeURIComponent(b.dataset.openOrder)}/edit`)));
         body.querySelectorAll('[data-assist]').forEach((card) => {
           const id = Number(card.dataset.assist);

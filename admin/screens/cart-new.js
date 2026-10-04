@@ -2080,6 +2080,8 @@ window.Screens.cartNew = {
     // повторное открытие "Новой корзины" с нуля позже в той же вкладке).
     let dupPrefill = null;
     const dupPrefillRaw = sessionStorage.getItem('knopka_cart_duplicate_prefill');
+    // Обучение, этап 4: корзина из «Повторить покупку» — сигнал «Проверено делом».
+    const cameFromRepeat = !!dupPrefillRaw;
     if (dupPrefillRaw) {
       sessionStorage.removeItem('knopka_cart_duplicate_prefill');
       try { dupPrefill = JSON.parse(dupPrefillRaw); } catch (e) { dupPrefill = null; }
@@ -2550,6 +2552,16 @@ window.Screens.cartNew = {
           catch (shotError) { showSaveToast(false, `Корзина создана, но скриншот не сохранился: ${shotError.message}`); }
         }
         clearOrderDraft(CART_DRAFT_KEY);
+        // Обучение, этап 4 — «Проверено делом»: по createCart не отличить
+        // корзину по скриншоту / с лотом / из «Повторить», поэтому говорим
+        // сами; сервер примет, только если корзина только что создана.
+        if (response && response.cartId) {
+          const practice = [];
+          if (shot) practice.push('quick-purchase');
+          if (Array.isArray(payload.lots) && payload.lots.length) practice.push('lot');
+          if (cameFromRepeat) practice.push('repeat');
+          practice.forEach((id) => callServer('recordPracticeSignal', id, response.cartId).catch(() => {}));
+        }
         // Волна 7, §7 п.2 — черновик «Размножить на клиентов» (см. JSDoc
         // scheduleMultiplyDraftSave в _cart-position.js) чистится только
         // на подтверждённом успехе, тем же принципом, что и CART_DRAFT_KEY

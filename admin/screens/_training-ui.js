@@ -9,7 +9,10 @@
  *   переделал(а)?» — каждый отзыв сразу уходит VASY в Telegram;
  * - праздник новых достижений;
  * - «🆘 Сообщить о проблеме» (этап 2) — из «Помощи» и с тоста ошибки (_error-hints.js);
- * - «🤖 Спросить помощника» (этап 3) — _assistant.js.
+ * - «🤖 Спросить помощника» (этап 3) — _assistant.js;
+ * - подсказка «здесь есть урок» (этап 4) — один раз на сценарий, когда
+ *   менеджер впервые приходит на экран, где это делается по-настоящему
+ *   (`momentScreens` сценария), а сценарий ещё не пройден.
  * Сервер — `server/src/training/trainingService.js`.
  */
 (function () {
@@ -221,6 +224,7 @@
       });
     });
     const done = () => { close(); checkNewBadges(); };
+    momentCache = null; // пройден — подсказку «здесь есть урок» по нему больше не показываем
     el.querySelector('[data-skip]').onclick = done;
     const sendBtn = el.querySelector('[data-send]');
     sendBtn.onclick = async () => {
@@ -258,10 +262,11 @@
   function celebrate(badges, level) {
     const { el, close } = overlay('training-badge-modal', `
       <div class="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 text-center">
-        <div class="text-sm font-semibold text-indigo-600 uppercase tracking-wide">${badges.length > 1 ? 'Новые достижения' : 'Новое достижение'}!</div>
+        <div class="text-sm font-semibold text-indigo-600 uppercase tracking-wide">${badges.every((b) => b.shelf === 'practice') ? 'Проверено делом' : badges.length > 1 ? 'Новые достижения' : 'Новое достижение'}!</div>
         <div class="flex justify-center flex-wrap gap-4 my-4">
           ${badges.map((b) => `<div class="w-24"><div class="text-5xl">${b.emoji}</div><div class="text-sm font-medium text-gray-900 mt-1">${escapeHtmlClient(b.title)}</div></div>`).join('')}
         </div>
+        ${badges.some((b) => b.shelf === 'practice') ? '<div class="text-sm text-gray-600 mb-2">Выучено — и уже сделано по-настоящему. 💪</div>' : ''}
         <div class="text-sm text-gray-600">Уровень: <b>${escapeHtmlClient(level.name)}</b> · пройдено ${level.done} из ${level.total}</div>
         <button type="button" data-ok class="mt-4 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отлично</button>
       </div>`);
@@ -379,6 +384,76 @@
     wireWhatsNewShow(el, fresh, done);
   }
 
+  // --- «Здесь есть урок» (этап 4, 04.10.2026) ---
+
+  const MOMENT_DELAY_MS = 1500;
+  const MOMENT_CACHE_MS = 5 * 60 * 1000;
+  let momentCache = null; // { at, scenarios } — getMyTraining не дёргаем на каждый экран
+  let momentBusy = false;
+
+  function removeMomentHint() {
+    const old = document.getElementById('training-moment-hint');
+    if (old) old.remove();
+  }
+
+  /**
+   * Вызывается после каждой отрисовки экрана (router.renderRoute). Если на
+   * этом экране делают то, чему учит непройденный сценарий, и подсказку по
+   * нему ещё не показывали — одна строка сверху «Есть урок — показать?».
+   * «Показано» хранится на сервере (событие offer): больше по этому
+   * сценарию не всплывёт, даже если отмахнулись.
+   */
+  async function offerMoment() {
+    removeMomentHint();
+    if (window.__E2E_SKIP_MOMENT_HINT || momentBusy || !window.Tour || Tour.isActive()) return;
+    const screen = Tour.currentScreen();
+    const here = Object.values(window.TourScenarios || {}).filter((s) => (s.momentScreens || []).includes(screen));
+    if (!here.length) return;
+    momentBusy = true;
+    try {
+      if (!momentCache || Date.now() - momentCache.at > MOMENT_CACHE_MS) {
+        momentCache = { at: Date.now(), scenarios: (await callServer('getMyTraining')).scenarios };
+      }
+      const byId = new Map(momentCache.scenarios.map((s) => [s.id, s]));
+      const scenario = here.find((s) => {
+        const st = byId.get(s.id);
+        return st && st.available && st.status !== 'done' && !st.offered;
+      });
+      if (!scenario) return;
+      await new Promise((r) => setTimeout(r, MOMENT_DELAY_MS));
+      if (Tour.currentScreen() !== screen || Tour.isActive() || document.querySelector('[id^="training-"].flex')) return;
+      const st = byId.get(scenario.id);
+      st.offered = true;
+      callServer('recordTrainingEvent', scenario.id, 'offer', 0, scenario.steps.length).catch(() => {});
+
+      const el = document.createElement('div');
+      el.id = 'training-moment-hint';
+      el.className = 'fixed left-3 right-3 top-16 z-[85] sm:left-auto sm:w-96';
+      el.innerHTML = `
+        <div class="bg-indigo-600 text-white rounded-2xl shadow-lg p-3 flex items-start gap-2">
+          <span class="text-xl leading-none">🎓</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium">Здесь есть урок: «${escapeHtmlClient(scenario.title)}»</div>
+            <div class="text-[12px] text-indigo-100 mt-0.5">~${st.minutes} мин, по шагам на этом экране. Ничего не запишется.</div>
+            <div class="flex gap-2 mt-2">
+              <button type="button" data-moment-go class="px-3 py-1.5 rounded-lg bg-white text-indigo-700 text-[13px] font-medium">Показать</button>
+              <button type="button" data-moment-later class="px-3 py-1.5 rounded-lg bg-white/15 text-white text-[13px]">Не сейчас</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+      el.querySelector('[data-moment-go]').onclick = () => { removeMomentHint(); Tour.start(scenario.id); };
+      el.querySelector('[data-moment-later]').onclick = () => {
+        removeMomentHint();
+        showSaveToast(true, 'Урок всегда есть в «Помощи» (кнопка «?» сверху) и в «Обучении».');
+      };
+    } catch (e) {
+      /* подсказка необязательна */
+    } finally {
+      momentBusy = false;
+    }
+  }
+
   /** Вешается один раз при старте шелла (router.startAdminRouter). */
   function wireHelpButton() {
     const btn = document.getElementById('header-help-btn');
@@ -388,5 +463,5 @@
     }
   }
 
-  window.TrainingUI = { openHelp, openIdea, openProblem, problemContext, checkWhatsNew, whatsNewEntryHtml, wireWhatsNewShow, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
+  window.TrainingUI = { openHelp, openIdea, openProblem, problemContext, checkWhatsNew, whatsNewEntryHtml, wireWhatsNewShow, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner, offerMoment };
 })();

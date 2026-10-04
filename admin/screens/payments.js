@@ -719,7 +719,7 @@ window.Screens.payments = {
           const inWork = currentOrders.filter((o) => o.details.statusDelivery !== STATUS_RECEIVED_ && !o.isCompleted).length;
           const closedDebtSum = closedDebtItems.reduce((a, i) => a + i.debt, 0);
           return `
-          <div class="rounded-2xl p-4 mb-3 ${toPay > 0.01 ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-100'}">
+          <div data-tour="pay-due" class="rounded-2xl p-4 mb-3 ${toPay > 0.01 ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-100'}">
             ${toPay > 0.01 ? `
               <div class="text-[12px] text-amber-800">Сейчас к оплате</div>
               <div class="text-2xl font-bold text-amber-900 tabular-nums">${money(toPay)} ₽</div>
@@ -727,7 +727,7 @@ window.Screens.payments = {
               ${leftoverUsed > 0.01 ? `<div class="text-[11px] text-amber-700 mt-1">Уже учтён свободный остаток клиента ${money(leftoverUsed)} ₽.</div>` : ''}
             ` : `<div class="text-sm text-emerald-800">Сейчас платить нечего — этапы, которые пора оплачивать, покрыты.</div>`}
           </div>
-          <div class="grid grid-cols-2 gap-2 mb-3 text-center">
+          <div data-tour="pay-tiles" class="grid grid-cols-2 gap-2 mb-3 text-center">
             <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Оплачено всего</div><div class="text-sm font-semibold text-gray-900 tabular-nums">${money(grandPaid)} ₽</div></div>
             <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Осталось по всем заказам</div><div class="text-sm font-semibold text-gray-900 tabular-nums">${money(grandRemaining)} ₽</div></div>
             <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Заказов в работе</div><div class="text-sm font-semibold text-gray-900">${inWork}</div></div>
@@ -762,7 +762,7 @@ window.Screens.payments = {
           </div>
         ` : ''}
 
-        <details class="mb-3 rounded-2xl" ${poolLeftover > 0.01 || currentCreditBalance > 0.01 ? 'open' : ''}>
+        <details data-tour="pay-balance" class="mb-3 rounded-2xl" ${poolLeftover > 0.01 || currentCreditBalance > 0.01 ? 'open' : ''}>
           <summary class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 py-2 cursor-pointer select-none">Баланс и кредит${poolLeftover > 0.01 ? ` · остаток ${money(poolLeftover)} ₽` : ''}${currentCreditBalance > 0.01 ? ` · кредит ${money(currentCreditBalance)} ₽` : ''}</summary>
         ${currentRollup.priorityAmount > 0.01 ? `
           <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-3 text-[12px] text-gray-600">

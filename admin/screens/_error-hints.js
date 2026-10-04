@@ -11,7 +11,8 @@
  * - на каждой ошибке «Сообщить» — TrainingUI.openProblem: код сам прикладывает
  *   экран, метод, текст ошибки, открытый заказ, сервер — последние действия;
  * - та же ошибка второй раз за 10 минут — «показать по шагам?», если для
- *   экрана есть сценарий;
+ *   экрана есть сценарий; у известной ошибки свой сценарий (`scenario`,
+ *   этап 4) — предлагается сразу, с первого раза;
  * - ошибку проверки формы (до сервера не дошла) тихо пишем на сервер
  *   (reportUiError): иначе не видно, где менеджеры спотыкаются. Ошибки
  *   ответов сервера не пишем — они уже в analytics_events.
@@ -56,7 +57,7 @@
     {
       id: 'sku-duplicate', match: (t) => /уже есть в каталоге/i.test(t),
       hint: 'Вторую такую же позицию создавать не нужно — найдите существующую поиском в каталоге (хватит части названия) и выберите её.',
-      action: { label: 'Открыть каталог', route: 'catalog' }
+      action: { label: 'Открыть каталог', route: 'catalog' }, scenario: 'catalog'
     },
     {
       id: 'access-denied', match: (t) => /Доступ запрещён|Access denied/i.test(t),
@@ -64,7 +65,8 @@
     },
     {
       id: 'no-client-telegram', match: (t) => /не привязан Telegram клиента/i.test(t),
-      hint: 'Клиент в заказе вписан без Telegram. Откройте заказ, выберите клиента поиском по @нику — после этого оплату можно записать.'
+      hint: 'Клиент в заказе вписан без Telegram. Откройте заказ, выберите клиента поиском по @нику — после этого оплату можно записать.',
+      scenario: 'pay-in'
     },
     {
       id: 'image-too-big', match: (t) => /слишком больш(ое|ая)/i.test(t),
@@ -105,7 +107,7 @@
     if (!found) return { id: null, text: raw, hint: '', action: null, technical: false, raw };
     return {
       id: found.id, text: found.text || raw, hint: found.hint || '', action: found.action || null,
-      technical: !!found.text, raw
+      technical: !!found.text, raw, scenario: found.scenario || null
     };
   }
 
@@ -161,7 +163,8 @@
     const d = describe(raw, method);
     const repeat = noteRepeat(raw);
     if (!fromServer) reportFormError(raw);
-    const scenario = repeat && window.Tour && !Tour.isActive() ? scenarioForScreen() : null;
+    const own = d.scenario && window.TourScenarios && window.TourScenarios[d.scenario];
+    const scenario = !window.Tour || Tour.isActive() ? null : own || (repeat ? scenarioForScreen() : null);
 
     const btn = (attr, label, cls) => `<button type="button" ${attr} class="px-2.5 py-1 rounded-lg text-[12px] font-medium ${cls}">${escapeHtmlClient(label)}</button>`;
     inner.className = 'rounded-xl px-3 py-2.5 text-sm shadow-md bg-red-50 text-red-700 border border-red-200 text-left';
@@ -170,7 +173,7 @@
         <div class="min-w-0 flex-1">
           <div class="font-medium break-words">${escapeHtmlClient(d.text)}</div>
           ${d.hint ? `<div class="text-[12px] text-red-900/80 mt-1">${escapeHtmlClient(d.hint)}</div>` : ''}
-          ${scenario ? `<div class="text-[12px] text-red-900/80 mt-1">Похоже, тут что-то непонятно — показать по шагам «${escapeHtmlClient(scenario.title)}»?</div>` : ''}
+          ${scenario ? `<div class="text-[12px] text-red-900/80 mt-1">${own ? 'Про это есть урок' : 'Похоже, тут что-то непонятно'} — показать по шагам «${escapeHtmlClient(scenario.title)}»?</div>` : ''}
           ${d.technical ? `<details class="mt-1 text-[11px] text-red-900/70"><summary class="cursor-pointer">Подробнее</summary><div class="break-words mt-0.5">${escapeHtmlClient(d.raw)}</div></details>` : ''}
           <div class="flex flex-wrap gap-1.5 mt-2">
             ${d.action ? btn('data-hint-action', d.action.label, 'bg-white border border-red-200 text-red-700') : ''}
