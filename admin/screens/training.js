@@ -6,6 +6,10 @@
  * «скоро»), достижения, свои идеи со статусами. Админ дополнительно: «Команда»
  * (прогресс каждого, где бросают сценарии, средние оценки) и «Отзывы»
  * (решение по каждому: в работу / внедрено / не будем).
+ * Этап 2 (04.10.2026): «🆘 Проблемы» — в «Моих идеях» и в «Отзывах» (с тем,
+ * что собрал код: ошибка, заказ, последние действия), вкладка «Ошибки» —
+ * что менеджеры видели за 14 дней (ответы сервера и проверки форм) и есть ли
+ * на это подсказка (_error-hints.js).
  * Сервер — `server/src/training/trainingService.js`.
  */
 window.Screens = window.Screens || {};
@@ -19,6 +23,14 @@ window.Screens = window.Screens || {};
   const esc = (s) => escapeHtmlClient(s == null ? '' : String(s));
   const day = (d) => (d ? new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '');
   const avgEmoji = (v) => (v == null ? '—' : `${SCORE_EMOJI[Math.round(v)] || ''} ${v}`);
+  const time = (d) => (d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '');
+  // Названия методов — словарь экрана «Аналитика» (analytics.js), если загружен.
+  const actionLabel = (m) => (typeof METHOD_LABELS !== 'undefined' && METHOD_LABELS[m]) || m;
+  const KIND_TITLE = { idea: '💡 Идея', problem: '🆘 Проблема', scenario: '📝 Отзыв' };
+  const STATUS_BUTTONS = {
+    idea: [['accepted', 'В работу', 'text-sky-700'], ['done', 'Внедрено', 'text-emerald-700'], ['rejected', 'Не будем', 'text-red-600']],
+    problem: [['accepted', 'В работу', 'text-sky-700'], ['done', 'Исправлено', 'text-emerald-700'], ['rejected', 'Не баг', 'text-red-600']]
+  };
 
   function levelCard(t) {
     const pct = Math.round((t.level.done / t.level.total) * 100);
@@ -75,13 +87,13 @@ window.Screens = window.Screens || {};
   function ideasBlock(t) {
     return `
       <div class="flex items-center justify-between px-1 mb-2">
-        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Мои идеи</div>
+        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Мои идеи и проблемы</div>
         <button type="button" id="training-new-idea" class="text-[13px] font-medium text-amber-700">💡 Предложить</button>
       </div>
       ${t.ideas.length ? `<div class="space-y-2 mb-4">${t.ideas.map((i) => `
         <div class="bg-white rounded-2xl border border-gray-100 p-3">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-[11px] text-gray-400">${day(i.createdAt)}${i.screen ? ` · ${esc(i.screen)}` : ''}</span>
+            <span class="text-[11px] text-gray-400">${i.kind === 'problem' ? '🆘 ' : '💡 '}${day(i.createdAt)}${i.screen ? ` · ${esc(i.screen)}` : ''}</span>
             <span class="text-[11px] px-2 py-0.5 rounded-full ${STATUS_CHIP[i.status]}">${esc(i.statusLabel)}</span>
           </div>
           <div class="text-sm text-gray-800 mt-1 whitespace-pre-wrap">${esc(i.text)}</div>
@@ -121,6 +133,45 @@ window.Screens = window.Screens || {};
       </div>`;
   }
 
+  /** Что собрал код вместе с «Сообщить о проблеме». */
+  function problemDetails(f) {
+    const c = f.context || {};
+    const actions = c.recentActions || [];
+    return `
+      <div class="mt-1.5 rounded-lg bg-gray-50 p-2 text-[12px] text-gray-600 space-y-0.5">
+        ${c.error ? `<div class="text-red-700 break-words">Ошибка: ${esc(c.error)}</div>` : ''}
+        ${c.method ? `<div>Действие: ${esc(actionLabel(c.method))}${c.origin === 'form' ? ' (проверка формы)' : ''}</div>` : ''}
+        ${c.orderId ? `<div>Заказ: <button type="button" data-open-order="${esc(c.orderId)}" class="text-indigo-600 underline">${esc(c.orderId)}</button></div>` : ''}
+        ${c.cartId ? `<div>Корзина: ${esc(c.cartId)}</div>` : ''}
+        ${actions.length ? `<div class="pt-0.5 text-gray-500">Перед этим:</div>${actions.map((a) => `<div class="pl-2">${a.ok ? '·' : '✗'} ${time(a.at)} ${esc(actionLabel(a.method))}${a.error ? ` — <span class="text-red-600">${esc(a.error)}</span>` : ''}</div>`).join('')}` : ''}
+        <div class="text-[10px] text-gray-400">${esc([c.route, c.viewport, c.appVersion ? 'v' + c.appVersion : ''].filter(Boolean).join(' · '))}</div>
+      </div>`;
+  }
+
+  /** Вкладка «Ошибки»: по человеку, свежие сверху; есть ли подсказка в _error-hints.js. */
+  function errorsBlock(o) {
+    if (!o.errors.length) return `<div class="text-center text-sm text-gray-400 py-8">За ${o.errorsWindowDays} дней у менеджеров ошибок нет</div>`;
+    const byPerson = new Map();
+    for (const e of o.errors) {
+      if (!byPerson.has(e.authorName)) byPerson.set(e.authorName, []);
+      byPerson.get(e.authorName).push(e);
+    }
+    const hinted = (e) => window.ErrorHints && ErrorHints.describe(e.message, e.method).hint;
+    return `
+      <div class="text-[12px] text-gray-500 px-1 mb-2">Что менеджеры видели за ${o.errorsWindowDays} дней. «Сервер» — ответ сервера, «форма» — проверка на экране. 💬 — на ошибку есть подсказка.</div>
+      ${[...byPerson.entries()].map(([name, list]) => `
+        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2 mt-3">${esc(name)} · ${list.reduce((n, e) => n + e.count, 0)}</div>
+        <div class="space-y-2">${list.map((e) => `
+          <div class="bg-white rounded-2xl border border-gray-100 p-3" data-error-row>
+            <div class="flex items-center justify-between gap-2 text-[11px] text-gray-400">
+              <span><span class="px-1.5 py-0.5 rounded ${e.source === 'server' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}">${e.source === 'server' ? 'сервер' : 'форма'}</span>
+                ${esc(e.source === 'server' ? actionLabel(e.method) : (e.screen || '—'))}</span>
+              <span class="shrink-0">${e.count > 1 ? `×${e.count} · ` : ''}${day(e.lastAt)}</span>
+            </div>
+            <div class="text-sm text-gray-800 mt-1 break-words">${hinted(e) ? '💬 ' : ''}${esc(e.message)}</div>
+          </div>`).join('')}</div>`).join('')}`;
+  }
+
   function feedbackBlock(o, filter) {
     const list = filter === 'new' ? o.feedback.filter((f) => f.status === 'new') : o.feedback;
     const newCount = o.feedback.filter((f) => f.status === 'new').length;
@@ -132,16 +183,15 @@ window.Screens = window.Screens || {};
       ${list.length ? `<div class="space-y-2">${list.map((f) => `
         <div class="bg-white rounded-2xl border border-gray-100 p-3" data-feedback="${f.id}">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-[12px] text-gray-500">${f.kind === 'idea' ? '💡 Идея' : '📝 Отзыв'} · ${esc(f.authorName)} · ${day(f.createdAt)}</span>
+            <span class="text-[12px] text-gray-500">${KIND_TITLE[f.kind] || '📝 Отзыв'} · ${esc(f.authorName)} · ${day(f.createdAt)}</span>
             <span class="text-[11px] px-2 py-0.5 rounded-full ${STATUS_CHIP[f.status]}">${esc(f.statusLabel)}</span>
           </div>
-          <div class="text-[12px] text-gray-500 mt-0.5">${f.kind === 'idea' ? `Экран: ${esc(f.screen || '—')}` : `«${esc(f.scenarioTitle)}»${f.clarity ? ` · понятно ${SCORE_EMOJI[f.clarity]}` : ''}${f.ease ? ` · легко ${SCORE_EMOJI[f.ease]}` : ''}`}</div>
+          <div class="text-[12px] text-gray-500 mt-0.5">${f.kind !== 'scenario' ? `Экран: ${esc(f.screen || '—')}` : `«${esc(f.scenarioTitle)}»${f.clarity ? ` · понятно ${SCORE_EMOJI[f.clarity]}` : ''}${f.ease ? ` · легко ${SCORE_EMOJI[f.ease]}` : ''}`}</div>
           ${f.text ? `<div class="text-sm text-gray-800 mt-1 whitespace-pre-wrap">${esc(f.text)}</div>` : ''}
+          ${f.kind === 'problem' ? problemDetails(f) : ''}
           ${f.adminNote ? `<div class="text-[12px] text-gray-500 mt-1">Ответ: ${esc(f.adminNote)}</div>` : ''}
           <div class="flex gap-1.5 mt-2">
-            <button type="button" data-set-status="accepted" class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-sky-700">В работу</button>
-            <button type="button" data-set-status="done" class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-emerald-700">Внедрено</button>
-            <button type="button" data-set-status="rejected" class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-red-600">Не будем</button>
+            ${(STATUS_BUTTONS[f.kind] || STATUS_BUTTONS.idea).map(([st, label, cls]) => `<button type="button" data-set-status="${st}" class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] ${cls}">${label}</button>`).join('')}
           </div>
         </div>`).join('')}</div>`
         : '<div class="text-center text-sm text-gray-400 py-8">Нет отзывов</div>'}`;
@@ -158,7 +208,7 @@ window.Screens = window.Screens || {};
       document.getElementById('back-btn').addEventListener('click', () => navigateBack('more'));
 
       const isAdmin = window.CURRENT_ACCESS_ROLE === 'admin';
-      let tab = isAdmin && params && (params.tab === 'feedback' || params.tab === 'team') ? params.tab : 'me';
+      let tab = isAdmin && params && ['feedback', 'team', 'errors'].includes(params.tab) ? params.tab : 'me';
       let fbFilter = 'new';
       let overview = null;
 
@@ -168,6 +218,7 @@ window.Screens = window.Screens || {};
             <button type="button" data-tab="me" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Моё</button>
             <button type="button" data-tab="team" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Команда</button>
             <button type="button" data-tab="feedback" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Отзывы</button>
+            <button type="button" data-tab="errors" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Ошибки</button>
           </div>` : ''}
           <div id="training-body"><div class="text-center text-sm text-gray-400 py-10">Загрузка…</div></div>
         </main>`;
@@ -201,6 +252,7 @@ window.Screens = window.Screens || {};
           if (!overview || force) overview = await callServer('getTrainingOverview');
           if (tab === 'team') body.innerHTML = teamBlock(overview);
           if (tab === 'feedback') paintFeedback();
+          if (tab === 'errors') body.innerHTML = errorsBlock(overview);
         } catch (error) {
           body.innerHTML = `<div class="text-center text-sm text-red-500 py-10">${esc(error.message)}</div>`;
         }
@@ -209,12 +261,14 @@ window.Screens = window.Screens || {};
       function paintFeedback() {
         body.innerHTML = feedbackBlock(overview, fbFilter);
         body.querySelectorAll('[data-fb-filter]').forEach((b) => b.addEventListener('click', () => { fbFilter = b.dataset.fbFilter; paintFeedback(); }));
+        body.querySelectorAll('[data-open-order]').forEach((b) => b.addEventListener('click', () => navigateTo(`orders/${encodeURIComponent(b.dataset.openOrder)}/edit`)));
         body.querySelectorAll('[data-feedback]').forEach((card) => {
           card.querySelectorAll('[data-set-status]').forEach((btn) => btn.addEventListener('click', async () => {
             const status = btn.dataset.setStatus;
             let note = null;
             if (status === 'done' || status === 'rejected') {
-              note = await showPromptModal(status === 'done' ? 'Что сделали? (необязательно — увидит автор)' : 'Почему не будем? (необязательно)', { confirmLabel: 'Сохранить' });
+              const isProblem = (overview.feedback.find((f) => f.id === Number(card.dataset.feedback)) || {}).kind === 'problem';
+              note = await showPromptModal(status === 'done' ? 'Что сделали? (необязательно — увидит автор)' : (isProblem ? 'Почему не баг? (необязательно)' : 'Почему не будем? (необязательно)'), { confirmLabel: 'Сохранить' });
               if (note === null) return;
             }
             card.querySelectorAll('[data-set-status]').forEach((b) => { b.disabled = true; });
@@ -222,7 +276,7 @@ window.Screens = window.Screens || {};
               const updated = await callServer('setStaffFeedbackStatus', Number(card.dataset.feedback), status, note);
               const item = overview.feedback.find((f) => f.id === updated.id);
               Object.assign(item, { status: updated.status, statusLabel: updated.statusLabel, adminNote: updated.adminNote });
-              showSaveToast(true, status === 'done' ? 'Отмечено «внедрено» — автору ушло сообщение.' : 'Сохранено.');
+              showSaveToast(true, status === 'done' ? `Отмечено «${updated.statusLabel}» — автору ушло сообщение.` : 'Сохранено.');
               paintFeedback();
             } catch (error) {
               card.querySelectorAll('[data-set-status]').forEach((b) => { b.disabled = false; });
@@ -244,7 +298,7 @@ window.Screens = window.Screens || {};
       // Свайп между вкладками на телефоне (05.10.2026) — screens/_swipe-tabs.js.
       SwipeTabs.attach({
         area: root.querySelector('main'),
-        keys: () => ['me', 'team', 'feedback'],
+        keys: () => ['me', 'team', 'feedback', 'errors'],
         getActive: () => tab,
         panelFor: (key) => body,
         activate: (key) => { const b = document.querySelector(`#training-tabs [data-tab="${key}"]`); if (b) b.click(); }

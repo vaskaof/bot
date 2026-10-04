@@ -7,7 +7,8 @@
  *   «💡 Неудобно / идея»;
  * - отзыв после сценария: «Понятно?» / «Легко?» (😕🙂😃) + «Как бы ты
  *   переделал(а)?» — каждый отзыв сразу уходит VASY в Telegram;
- * - праздник новых достижений.
+ * - праздник новых достижений;
+ * - «🆘 Сообщить о проблеме» (этап 2) — из «Помощи» и с тоста ошибки (_error-hints.js).
  * Сервер — `server/src/training/trainingService.js`.
  */
 (function () {
@@ -59,6 +60,11 @@
           <span class="min-w-0"><span class="block text-sm font-medium text-amber-900">Неудобно / идея</span>
           <span class="block text-[11px] text-amber-800">Что мешает или как сделать удобнее — уйдёт VASY</span></span>
         </button>
+        <button type="button" data-problem class="w-full flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200 text-left mb-2">
+          <span class="text-xl">🆘</span>
+          <span class="min-w-0"><span class="block text-sm font-medium text-red-900">Что-то не работает</span>
+          <span class="block text-[11px] text-red-800">Ошибка или странное поведение — уйдёт VASY вместе с экраном</span></span>
+        </button>
         <button type="button" data-course class="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 text-left">
           <span class="text-xl">🎓</span>
           <span class="min-w-0"><span class="block text-sm font-medium text-gray-900">Всё обучение</span>
@@ -68,6 +74,7 @@
     el.querySelector('[data-close]').onclick = close;
     el.querySelectorAll('[data-start]').forEach((b) => { b.onclick = () => { close(); Tour.start(b.dataset.start); }; });
     el.querySelector('[data-idea]').onclick = () => { close(); openIdea(); };
+    el.querySelector('[data-problem]').onclick = () => { close(); openProblem({}); };
     el.querySelector('[data-course]').onclick = () => { close(); navigateTo('training'); };
     if (window.lucide) window.lucide.createIcons();
   }
@@ -105,6 +112,66 @@
       }
     };
     setTimeout(() => text.focus(), 50);
+  }
+
+  // --- «Сообщить о проблеме» (этап 2, 04.10.2026) ---
+
+  /**
+   * Что знает код о моменте проблемы: экран, его параметры (заказ/корзина),
+   * версия приложения. Последние действия добавляет сервер.
+   */
+  function problemContext(extra) {
+    const route = typeof matchRoute === 'function' ? matchRoute(window.location.hash) : { screen: '', params: {} };
+    const params = route.params || {};
+    const script = document.querySelector('script[src*="router.js"]');
+    const version = script ? (script.getAttribute('src').match(/[?&]v=(\d+)/) || [])[1] : '';
+    return {
+      route: route.screen, screenTitle: screenTitle(), params,
+      orderId: params.orderId || '', cartId: params.cartId || '', collectiveId: params.collectiveId || '',
+      appVersion: version || '', viewport: `${window.innerWidth}x${window.innerHeight}`,
+      error: extra.error || '', method: extra.method || '', origin: extra.origin || ''
+    };
+  }
+
+  /**
+   * @param {{error?:string, method?:string, origin?:'server'|'form'}} info С тоста ошибки — её текст;
+   *   из «Помощи» — пусто, тогда нужно описать словами.
+   */
+  function openProblem(info) {
+    const context = problemContext(info || {});
+    const screen = context.screenTitle;
+    const { el, close } = overlay('training-problem-modal', `
+      <div class="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-4">
+        <div class="text-base font-semibold text-gray-900">🆘 Сообщить о проблеме</div>
+        <div class="text-[12px] text-gray-500 mt-0.5">Экран: ${escapeHtmlClient(screen)}</div>
+        ${context.error ? `<div class="mt-2 text-[12px] bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 break-words">${escapeHtmlClient(context.error)}</div>` : ''}
+        <textarea id="training-problem-text" rows="4" maxlength="2000" class="mt-3 w-full text-sm bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:border-indigo-400"
+          placeholder="${context.error ? 'Что вы делали? Одной фразой — необязательно.' : 'Что не работает? Одной фразой.'}"></textarea>
+        <div class="text-[11px] text-gray-400 mt-1">Вместе с сообщением уйдут экран, текст ошибки и ваши последние действия в приложении — чтобы не переспрашивать.</div>
+        <div class="flex gap-2 mt-3">
+          <button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">Отмена</button>
+          <button type="button" data-send class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Отправить</button>
+        </div>
+      </div>`);
+    const text = el.querySelector('#training-problem-text');
+    const sendBtn = el.querySelector('[data-send]');
+    el.querySelector('[data-cancel]').onclick = close;
+    sendBtn.onclick = async () => {
+      if (sendBtn.disabled) return;
+      if (!context.error && !text.value.trim()) { text.focus(); return; }
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Отправляю…';
+      try {
+        await callServer('submitStaffFeedback', { kind: 'problem', screen, text: text.value.trim(), context });
+        close();
+        showSaveToast(true, 'Спасибо! Ушло VASY. Что с этим сделали — в «Обучении».');
+      } catch (error) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Отправить';
+        showSaveToast(false, error.message);
+      }
+    };
+    if (!context.error) setTimeout(() => text.focus(), 50);
   }
 
   // --- Отзыв после сценария ---
@@ -248,5 +315,5 @@
     }
   }
 
-  window.TrainingUI = { openHelp, openIdea, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
+  window.TrainingUI = { openHelp, openIdea, openProblem, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
 })();

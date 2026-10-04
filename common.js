@@ -160,10 +160,18 @@ function callServer(methodName, ...args) {
         throw lastError;
     }
 
+    // Последняя ошибка вызова (обучение менеджеров, этап 2, 04.10.2026):
+    // подсказка при ошибке (admin/screens/_error-hints.js) по ней отличает
+    // ответ сервера (уже записан в analytics_events, метод известен) от
+    // проверки формы на фронте.
     return withRetries()
         .then(response => {
             if (response.success) return response.data;
             throw new Error(response.error);
+        })
+        .catch((error) => {
+            window.__lastServerError = { method: methodName, message: String((error && error.message) || ''), at: Date.now() };
+            throw error;
         });
 }
 

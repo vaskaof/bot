@@ -245,8 +245,16 @@ function navigateBack(fallbackPath, fallbackParams) {
   }
 }
 
-/** Общий toast — та же общая функция, что и в клиентском router.js (независимая копия, разные шеллы). */
+/**
+ * Общий toast — та же общая функция, что и в клиентском router.js (независимая копия, разные шеллы).
+ * Ошибки (04.10.2026, обучение менеджеров этап 2) рисует ErrorHints
+ * (screens/_error-hints.js): человеческий текст, подсказка, «Сообщить».
+ */
 function showSaveToast(success, message) {
+  if (!success && window.ErrorHints) {
+    ErrorHints.show(message);
+    return;
+  }
   const toast = document.getElementById('save-toast');
   const inner = document.getElementById('save-toast-inner');
   if (!toast || !inner) return;
@@ -255,7 +263,19 @@ function showSaveToast(success, message) {
     ? 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-green-50 text-green-700 border border-green-200'
     : 'rounded-xl px-4 py-3 text-sm font-medium text-center shadow-md bg-red-50 text-red-700 border border-red-200';
   toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 4000);
+  scheduleToastHide(4000);
+}
+
+/**
+ * Один таймер на тост: новый тост не гасится таймером предыдущего.
+ * @param {number|null} ms null — висит, пока не закроют.
+ */
+let _toastHideTimer = null;
+function scheduleToastHide(ms) {
+  clearTimeout(_toastHideTimer);
+  _toastHideTimer = null;
+  const toast = document.getElementById('save-toast');
+  if (toast && ms) _toastHideTimer = setTimeout(() => toast.classList.add('hidden'), ms);
 }
 
 /**
