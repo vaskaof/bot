@@ -395,6 +395,8 @@ window.Screens.home = {
 
     function buildQuestionCard(q) {
       const isNew = q.status === 'Новый';
+      // «Закрыть без ответа» (04.10.2026) — случайное сообщение боту.
+      const isClosed = q.status === 'Закрыт';
       const card = document.createElement('div');
       card.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 ${isNew ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`;
 
@@ -415,7 +417,9 @@ window.Screens.home = {
     </div>
     <div class="mt-3">
       <textarea class="answer-input w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-none" rows="2" placeholder="Введите ответ клиенту...">${escapeHtmlClient(q.answer)}</textarea>
-      <button type="button" class="save-answer-btn mt-2 w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">${isNew ? 'Отправить ответ' : 'Обновить ответ'}</button>
+      <button type="button" class="save-answer-btn mt-2 w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">${isNew ? 'Отправить ответ' : isClosed ? 'Ответить всё-таки' : 'Обновить ответ'}</button>
+      ${isNew ? '<button type="button" class="close-question-btn mt-1.5 w-full py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium">Закрыть без ответа</button>' : ''}
+      ${isClosed ? '<div class="mt-1.5 text-[11px] text-gray-400 text-center">Закрыт без ответа — клиенту ничего не отправлялось</div>' : ''}
     </div>
   `;
 
@@ -426,6 +430,23 @@ window.Screens.home = {
       }
       const chatLinkEl = card.querySelector('.chat-link');
       if (chatLinkEl) chatLinkEl.addEventListener('click', (e) => e.stopPropagation());
+
+      const closeBtn = card.querySelector('.close-question-btn');
+      if (closeBtn) closeBtn.addEventListener('click', async () => {
+        if (closeBtn.disabled) return;
+        const ok = await showConfirmModal('Закрыть вопрос без ответа? Клиенту ничего не придёт. Для случайных сообщений боту (стикер, «ок», нажал не туда).', { confirmLabel: 'Закрыть' });
+        if (!ok) return;
+        closeBtn.disabled = true;
+        closeBtn.textContent = 'Закрываю...';
+        try {
+          await callServer('closeQuestionWithoutAnswer', q.questionId);
+          loadQuestions();
+        } catch (error) {
+          closeBtn.disabled = false;
+          closeBtn.textContent = 'Закрыть без ответа';
+          showSaveToast(false, error.message);
+        }
+      });
 
       const saveBtn = card.querySelector('.save-answer-btn');
       const textarea = card.querySelector('.answer-input');

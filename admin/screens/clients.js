@@ -526,7 +526,7 @@ window.Screens.clients = {
               <div class="border-t border-gray-100 pt-2 mt-2 first:border-0 first:pt-0 first:mt-0">
                 <div class="text-[11px] text-indigo-600">${escapeHtmlClient(q.productDisplay)}</div>
                 <div class="text-[13px] text-gray-800">${escapeHtmlClient(q.text)}</div>
-                ${q.answer ? `<div class="text-[12px] text-gray-500 mt-1">Ответ: ${escapeHtmlClient(q.answer)}</div>` : '<div class="text-[11px] text-amber-600 mt-1">Без ответа</div>'}
+                ${q.answer ? `<div class="text-[12px] text-gray-500 mt-1">Ответ: ${escapeHtmlClient(q.answer)}</div>` : q.status === 'Закрыт' ? '<div class="text-[11px] text-gray-400 mt-1">Закрыт без ответа</div>' : '<div class="text-[11px] text-amber-600 mt-1">Без ответа</div>'}
               </div>
             `).join('')}
         </div>
