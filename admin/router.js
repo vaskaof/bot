@@ -85,6 +85,8 @@ const ROUTES = [
   // «Итоги года» — модерация рассылки (IMPLEMENTATION-PLAN-GAMIFICATION.md §4.2),
   // admin-only, вход из «Ещё» и кнопкой из сообщения бота 18.12.
   { path: 'year-summaries', screen: 'yearSummaries', navKey: 'more', showNav: true },
+  // Обучение менеджеров (04.10.2026) — вход из «Ещё», «Помощи» и баннера «Главной».
+  { path: 'training', screen: 'training', navKey: 'more', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 
@@ -433,5 +435,9 @@ function startAdminRouter() {
     window.APP_DICTIONARIES = dictionaries;
     renderRoute(dictionaries);
     window.addEventListener('hashchange', () => renderRoute(dictionaries));
+    // Обучение (04.10.2026): «Помощь» в шапке + продолжение сценария после
+    // перезагрузки WebView (состояние — sessionStorage, см. _tour.js).
+    if (window.TrainingUI) window.TrainingUI.wireHelpButton();
+    if (window.Tour) window.Tour.resume();
   });
 }

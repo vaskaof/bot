@@ -57,6 +57,12 @@ window.CheckoutShot = {
       </div>`;
   },
 
+  /** Учебный скриншот (сценарий обучения) — только на открытой «Новой корзине». */
+  async useTrainingSample(url, sampleParsed) {
+    if (!this._useSample) throw new Error('Откройте «Новую корзину».');
+    await this._useSample(url, sampleParsed);
+  },
+
   /** Сжатие в JPEG; не картинка/не влезает — Error с понятным текстом. */
   async compress(file) {
     if (!file || !/^image\//.test(file.type)) throw new Error('Нужна картинка — скриншот страницы оформления заказа.');
@@ -241,6 +247,20 @@ window.CheckoutShot = {
       }
     }, { signal: ctx.signal });
     modal.addEventListener('click', () => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, { signal: ctx.signal });
+
+    // Обучение (04.10.2026, сценарий «Быстрый выкуп») — учебный скриншот с
+    // заранее известным результатом: Gemini не зовётся (токены не тратятся),
+    // дальше всё как в работе — блок результата, «Подставить в форму».
+    self._useSample = async (url, sampleParsed) => {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], 'training-checkout.svg', { type: blob.type || 'image/svg+xml' });
+      image = await self.compress(file);
+      token++;
+      parsed = sampleParsed; applied = null; state = 'done';
+      render();
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    ctx.signal.addEventListener('abort', () => { self._useSample = null; });
 
     return {
       getImage: () => (image ? { mimeType: image.mimeType, data: image.data } : null),
