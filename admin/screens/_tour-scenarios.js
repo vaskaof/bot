@@ -43,6 +43,24 @@
 
   const firstCartCard = '#cart-items-list > div:first-child';
 
+  // Тот же критерий, что Tour.findTarget: на телефоне колонки доски «Задачи»
+  // лежат лентой — карточка соседней колонки за краем экрана не считается.
+  const shown = (el) => {
+    if (!el || !el.isConnected) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.right > 0 && r.left < window.innerWidth;
+  };
+  const firstShown = (sel) => Array.from(document.querySelectorAll(sel)).find(shown) || null;
+  const boardEmpty = () => { const e = document.getElementById('empty-message'); return !!e && !e.classList.contains('hidden'); };
+  const boardReady = () => boardEmpty() || !!firstShown('#reminders-list [data-order-card]');
+
+  // Вопрос для «Вопросов и вишлиста»: лучше новый (у него есть «Закрыть без ответа»).
+  function questionCard() {
+    const fresh = firstShown('#questions-list .close-question-btn');
+    const any = fresh || firstShown('#questions-list .answer-input');
+    return any ? any.closest('#questions-list > div') : null;
+  }
+
   window.TourScenarios = {
     'nav-overview': {
       id: 'nav-overview',
@@ -318,6 +336,171 @@
           ] }
         },
         { target: '#header-help-btn', title: 'Сомневаешься — спроси', text: 'С деньгами лучше спросить, чем угадать: помощник 🤖 и VASY — в «Помощи». Готово!' }
+      ]
+    },
+
+    // Этап 4, С4: что делать с задачей, которую сейчас не сделать. Ничего не
+    // записывается: «Отложить», «Пропустить», «Отменить» пропуск, кнопки
+    // «Следующего шага», галочка «Товар выкупил сам клиент» и «Сохранить»
+    // заказа — заблокированы. Пропуск есть только у «Не заполнено: канал/
+    // аккаунт/карго/валюта» (сервер, DISMISSIBLE_KINDS), отложить — только
+    // пункты про оплату и сроки (SNOOZABLE_KINDS): тексты — ровно про это.
+    'reminders-skip': {
+      id: 'reminders-skip',
+      title: 'Пропустить с причиной или отложить',
+      screens: ['reminders', 'orderEdit'],
+      momentScreens: ['reminders'],
+      block: [
+        '.snooze-btn', '.dismiss-item-btn', '.undismiss-btn', '#order-next-step button',
+        '#client-self-purchased-checkbox', '#save-order-btn', '#save-order-sticky-btn'
+      ],
+      steps: [
+        { target: nav('reminders'), title: 'Открой «Задачи»', text: 'Разберём, что делать с задачей, которую прямо сейчас не сделать.', advance: 'click', skipIf: onScreen('reminders') },
+        {
+          title: 'Три выхода',
+          text: 'У каждой задачи три выхода:<br>1) <b>Сделать</b> — лучший, задача уйдёт сама.<br>2) <b>Отложить</b> — ты ждёшь понятного события: клиент обещал оплатить в пятницу.<br>3) <b>Пропустить с причиной</b> — сделать уже невозможно: старый заказ, данных не восстановить.<br>Листать мимо — не выход: задача краснеет и прячет за собой новые.'
+        },
+        {
+          target: () => firstShown('#reminders-list [data-order-card] .snooze-btn'), title: '«Отложить на 3 дня»', optional: true, wait: 12000,
+          missingIf: () => boardReady() && !firstShown('#reminders-list .snooze-btn'),
+          text: 'Есть только у задач про оплату и сроки. Эти пункты заказа пропадут с доски на 3 дня и вернутся сами. Откладывай, когда <b>знаешь, чего ждёшь</b>. Ждать нечего — «Напомнить» клиенту или «Занести оплату», если деньги уже пришли.',
+          skippedText: 'Сейчас на доске нечего откладывать. Кнопка «Отложить на 3 дня» появляется у задач про оплату и сроки: эти пункты пропадут на 3 дня и вернутся сами. Откладывай, только когда знаешь, чего ждёшь.'
+        },
+        {
+          target: () => { const b = firstShown('#reminders-list .dismiss-item-btn'); return b ? b.closest('[data-items] > div') : null; },
+          title: '«Пропустить (данные утеряны)»', optional: true, wait: 12000,
+          missingIf: () => boardReady() && !firstShown('#reminders-list .dismiss-item-btn'),
+          text: 'Есть только у пункта «Не заполнено: канал, аккаунт, карго, валюта». Сначала попробуй заполнить в заказе. Заказ старый и данных уже не вспомнить — «Пропустить» и напиши <b>причину</b>: её видят VASY и все, кто откроет заказ. Данные нашлись — пропуск отменяется в карточке заказа.',
+          skippedText: 'Сейчас пропускать нечего. Кнопка «Пропустить (данные утеряны)» бывает у пункта «Не заполнено: канал, аккаунт…» — для старых заказов, где этого уже не вспомнить. Причина обязательна, отменить пропуск можно в карточке заказа.'
+        },
+        {
+          title: 'Что пропустить нельзя',
+          text: 'У долга, оплаты, списания, «Отстал от коллективки» и «Клиент отметил получение» кнопки «Пропустить» нет — <b>это деньги и посылки</b>. Их делают: «Занести оплату», «Напомнить», «Перевести». Кажется, что задача неверная, — «?» → «🆘 Что-то не работает», VASY разберётся.'
+        },
+        {
+          target: () => firstShown('#reminders-list [data-order-card] [data-open]'), title: 'Открой любой заказ', advance: 'click',
+          optional: true, group: 'order', groupLeader: true, wait: 12000, missingIf: boardEmpty,
+          text: 'Посмотрим то же самое в карточке заказа. Нажми на карточку.',
+          skippedText: 'Задач нет — карточку заказа посмотрим в другой раз. В заказе «Следующий шаг» показывает те же кнопки, а пропущенное — серой плашкой «Пропущено» с причиной и кнопкой «Отменить».'
+        },
+        {
+          target: '#order-next-step', title: '«Следующий шаг»', optional: true, group: 'order', groupLeader: true, wait: 12000,
+          text: 'Здесь те же решения, что на доске: «Заполнить» или «Пропустить (данные утеряны)». Пропущенное видно сверху серой плашкой «Пропущено: …» с причиной — там же «Отменить», если данные нашлись.'
+        },
+        {
+          target: 'section[data-block="client"] [data-block-toggle]', title: 'Блок «Клиент»', advance: 'click', optional: true, group: 'order',
+          skipIf: () => { const b = document.querySelector('section[data-block="client"] .order-block-body'); return !!b && !b.classList.contains('hidden'); },
+          text: 'Открой блок «Клиент» — там ещё один частый случай.'
+        },
+        {
+          target: () => { const c = document.getElementById('client-self-purchased-checkbox'); return c ? c.closest('label') : null; },
+          title: '«Товар выкупил сам клиент»', optional: true, group: 'order',
+          text: 'Пункт «Курсы и сумма не подтверждены» не пропускается. Но бывает, что клиент <b>сам купил</b> куклу, а мы только везём, — курса выкупа у нас просто нет. Тогда ставь эту галочку и «Сохранить»: пункт уйдёт. Комиссию в таком заказе вводи суммой. Сейчас ничего не меняем.'
+        },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'Клиент написал: «оплачу в пятницу». Сегодня вторник. Что делаешь с задачей «ждёт оплаты»?',
+          quiz: { options: [
+            { label: 'Пропущу с причиной «оплатит в пятницу»', explain: 'У оплаты пропуска нет: долг не исчезает оттого, что его не видно.' },
+            { label: 'Отложу на 3 дня', correct: true, explain: 'Ждёшь понятного события — откладывай. В пятницу задача вернётся сама; оплаты нет — «Напомнить».' },
+            { label: 'Ничего, пусть висит', explain: 'Будет краснеть и прятать новые задачи. Ждёшь — отложи.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Заказ прошлого года: «Не заполнено: аккаунт». С какого аккаунта выкупали, никто не помнит. Что делаешь?',
+          quiz: { options: [
+            { label: 'Выберу любой аккаунт, чтобы задача ушла', explain: 'Неверные данные хуже пустых: испортят отчёты по аккаунтам, и ошибку потом не найти.' },
+            { label: 'Отложу на 3 дня', explain: 'Здесь «Отложить» нет — откладываются только оплата и сроки. И через 3 дня никто не вспомнит.' },
+            { label: '«Пропустить (данные утеряны)» с причиной «старый заказ, аккаунт не восстановить»', correct: true, explain: 'Причина видна всем, а если данные найдутся — пропуск отменяется в заказе.' }
+          ] }
+        },
+        { target: '#header-help-btn', title: 'Сомневаешься — спроси', text: 'Не уверен(а), можно ли пропустить, — спроси помощника 🤖 в «Помощи». Готово!' }
+      ]
+    },
+
+    // Этап 4, С4: вопросы клиентов и вишлист за клиента. Ничего не
+    // записывается: «Отправить ответ», «Закрыть без ответа», «Добавить» в
+    // вишлист, распознавание ссылки (внешний запрос) и «Оформить заказ» из
+    // «Спроса» — заблокированы.
+    'questions-wishlist': {
+      id: 'questions-wishlist',
+      title: 'Вопросы клиентов и вишлист',
+      screens: ['home', 'wishlistDemand', 'clients'],
+      momentScreens: ['home', 'wishlistDemand'],
+      block: [
+        '.save-answer-btn', '.close-question-btn', '#manual-wishlist-save', '#manual-wishlist-resolve-btn',
+        '#manual-wishlist-use-manual-client', '.order-from-demand-btn', '.ordered-chip'
+      ],
+      steps: [
+        { target: nav('home'), title: 'Открой «Главную»', text: 'Вопросы клиентов — здесь.', advance: 'click', skipIf: onScreen('home') },
+        {
+          target: '#tab-switcher [data-tab="questions"]', title: 'Вопросы', advance: 'click',
+          skipIf: () => { const t = document.getElementById('questions-tab'); return !!t && !t.classList.contains('hidden'); },
+          text: 'Вопросы клиентов из бота и приложения. Цифра — новые, без ответа: на них — в первую очередь. Открой.'
+        },
+        {
+          target: questionCard, title: 'Вопрос клиента', optional: true, group: 'question', groupLeader: true, wait: 10000,
+          missingIf: () => { const e = document.getElementById('questions-empty-message'); return !!e && !e.classList.contains('hidden'); },
+          text: 'Сверху — товар и номер заказа (нажатие откроет заказ), имя клиента и «написать» — его чат в Telegram. Жёлтая карточка — новый вопрос, без ответа.',
+          skippedText: 'Сейчас вопросов нет 🎉 Когда клиент спросит в боте или в приложении, здесь появится карточка: товар, заказ, вопрос и поле для ответа. Ответ уходит клиенту в бот. Случайное сообщение («ок», стикер) — «Закрыть без ответа»: клиенту ничего не придёт.'
+        },
+        {
+          target: () => { const c = questionCard(); return c ? c.querySelector('.answer-input') : null; },
+          title: 'Ответ', optional: true, group: 'question', free: true,
+          text: 'Пиши как в чат: что с заказом и когда ждать. «Отправить ответ» — и он уйдёт клиенту в бот. Не знаешь ответа — открой заказ или спроси VASY, но не оставляй вопрос на день. Можешь попробовать написать — сейчас не отправится.'
+        },
+        {
+          target: () => { const c = questionCard(); return c ? c.querySelector('.close-question-btn') : null; },
+          title: '«Закрыть без ответа»', optional: true, group: 'question',
+          text: 'Только для случайных сообщений боту: стикер, «ок», «спасибо», нажал не туда. Клиенту ничего не придёт, вопрос уйдёт из новых. Настоящий вопрос так не закрывай.'
+        },
+        { target: nav('catalog'), title: 'Открой «Каталог»', text: 'Вишлисты клиентов — в каталоге, вкладка «Спрос».', advance: 'click', skipIf: onScreen('catalog', 'wishlistDemand') },
+        { target: '[data-catalog-tab="demand"]', title: '«Спрос»', text: 'Что хотят клиенты по своим вишлистам. Открой.', advance: 'click', skipIf: onScreen('wishlistDemand') },
+        {
+          target: () => { const t = firstShown('#demand-list [data-toggle]'); return t ? t.parentElement : null; },
+          title: 'Кто что хочет', optional: true, wait: 10000,
+          missingIf: () => { const e = document.getElementById('demand-empty'); return !!e && !e.classList.contains('hidden'); },
+          text: 'Кукла и «Хотят: N» — сколько клиентов её ждут. Нажатие на карточку раскроет список клиентов, у каждого — «Оформить заказ»: корзина откроется уже с клиентом и куклой. Нашли куклу — смотри сюда первым делом.',
+          skippedText: 'Сейчас желаний нет. Когда клиенты добавят кукол в вишлист, здесь будет «кто что хочет»: кукла, сколько клиентов её ждут и «Оформить заказ» для каждого.'
+        },
+        {
+          target: '#add-manual-wishlist-btn', title: 'Добавить за клиента', advance: 'click',
+          text: 'Клиент написал в личку «если найдёте Лагуну — хочу»? Не записывай себе — добавь в <b>его вишлист</b>: тогда это видно в «Спросе», а клиент видит куклу у себя в «Моих куклах». Нажми «+».'
+        },
+        {
+          target: '#manual-wishlist-client-search', title: 'Клиент', free: true, place: 'away',
+          text: 'Для тренировки — учебный клиент: начни вводить <b>vaskaofv</b> и выбери из списка. Потом «Далее».'
+        },
+        {
+          target: () => { const i = document.getElementById('manual-wishlist-catalog-search'); return i ? i.closest('div') : null; },
+          title: 'Какая кукла', free: true, place: 'away',
+          text: 'Лучше всего — <b>из каталога</b>: начни вводить название. Тогда у клиента сразу фото, а в «Спросе» желания разных клиентов складываются в одну карточку. Нет в каталоге — вставь ссылку выше («Распознать» подтянет название и фото) или впиши название вручную.'
+        },
+        { target: '#manual-wishlist-save', title: '«Добавить»', text: 'В работе — «Добавить»: кукла появится в вишлисте клиента. Сейчас учебный режим — <b>не сохраняем</b>.' },
+        { target: '#manual-wishlist-cancel', title: 'Закрой окно', text: 'Нажми «Отмена».', advance: 'click' },
+        {
+          title: 'Из карточки клиента',
+          text: 'То же самое — в «Ещё» → «Клиенты» → клиент → «Добавить в вишлист»: клиент подставится сам. Там же все его вопросы и что уже лежит в вишлисте.'
+        },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'Клиент ответил боту «👍» на сообщение о посылке — в «Вопросах» новый вопрос. Что делаешь?',
+          quiz: { options: [
+            { label: 'Отвечу «Хорошо!»', explain: 'Клиенту уйдёт лишнее сообщение. Для таких — «Закрыть без ответа».' },
+            { label: 'Оставлю как есть', explain: 'Он будет висеть новым и прятать настоящие вопросы.' },
+            { label: '«Закрыть без ответа»', correct: true, explain: 'Клиенту ничего не придёт, а в «Вопросах» останутся только настоящие.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Клиентка пишет в личку: «Если появится Дракулаура Skulltimate — возьму». Что делаешь?',
+          quiz: { options: [
+            { label: 'Добавлю куклу в её вишлист', correct: true, explain: 'Желание видно в «Спросе» всем, и клиентка сама видит его в «Моих куклах». Найдётся кукла — о ней не забудут.' },
+            { label: 'Запишу себе в заметки', explain: 'Заметку видишь только ты, в «Спросе» её нет — когда кукла найдётся, о клиентке могут не вспомнить.' },
+            { label: 'Сразу оформлю корзину', explain: 'Корзина — когда куклу нашли и выкупили. Пока клиентка только хочет — вишлист.' }
+          ] }
+        }
       ]
     }
   };
