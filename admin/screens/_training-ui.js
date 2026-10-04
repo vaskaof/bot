@@ -306,6 +306,72 @@
     checkNewBadges(t);
   }
 
+  // --- «Что нового» (этап 2, блок Б, 04.10.2026) ---
+
+  const ddmmyy = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+
+  /** Карточка записи — и в листе при входе, и в истории на экране «Обучение». */
+  function whatsNewEntryHtml(e) {
+    const canShow = (e.scenarioId && window.TourScenarios && window.TourScenarios[e.scenarioId]) || e.route;
+    return `
+      <div class="bg-white rounded-2xl border border-gray-100 p-3" data-whats-new="${escapeHtmlClient(e.id)}">
+        <div class="text-[11px] text-gray-400">${ddmmyy(e.date)}</div>
+        <div class="text-sm font-semibold text-gray-900 mt-0.5">${escapeHtmlClient(e.title)}</div>
+        ${e.lines.map((l) => `<div class="text-[13px] text-gray-600 mt-1">${escapeHtmlClient(l)}</div>`).join('')}
+        ${canShow ? `<button type="button" data-whats-new-show class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[13px] font-medium">${e.scenarioId ? 'Показать по шагам' : 'Открыть'}</button>` : ''}
+      </div>`;
+  }
+
+  /** «Показать» на записи: сценарий обучения или экран. */
+  function wireWhatsNewShow(root, entries, beforeGo) {
+    root.querySelectorAll('[data-whats-new]').forEach((card) => {
+      const btn = card.querySelector('[data-whats-new-show]');
+      const e = entries.find((x) => x.id === card.dataset.whatsNew);
+      if (!btn || !e) return;
+      btn.onclick = () => {
+        if (beforeGo) beforeGo();
+        if (e.scenarioId && window.TourScenarios && window.TourScenarios[e.scenarioId]) Tour.start(e.scenarioId);
+        else if (e.route) navigateTo(e.route);
+      };
+    });
+  }
+
+  let whatsNewChecked = false;
+
+  /**
+   * Лист непросмотренного при входе — один раз за открытие приложения, не
+   * поверх идущего сценария и не поверх другого окна обучения. Закрыли
+   * любым способом — записи помечаются просмотренными.
+   */
+  async function checkWhatsNew() {
+    // e2e/helpers/openApp.js глушит лист во всех спеках, кроме спека «Что нового».
+    if (whatsNewChecked || window.__E2E_SKIP_WHATS_NEW) return;
+    whatsNewChecked = true;
+    let data;
+    try { data = await callServer('getWhatsNew'); } catch (e) { return; }
+    const fresh = data.entries.filter((e) => data.unseen.includes(e.id));
+    if (!fresh.length) return;
+    await new Promise((r) => setTimeout(r, 800));
+    if (Tour.isActive() || document.querySelector('[id^="training-"].flex')) return;
+    const { el, close } = overlay('training-whats-new-sheet', `
+      <div class="bg-gray-50 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-4 max-h-[85vh] overflow-y-auto">
+        <div class="text-base font-semibold text-gray-900 mb-3">🆕 Что нового</div>
+        <div class="space-y-2">${fresh.map(whatsNewEntryHtml).join('')}</div>
+        <button type="button" data-ok class="mt-3 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Понятно</button>
+        <div class="text-[11px] text-gray-400 text-center mt-2">Всё это есть в «Обучении» → «Что нового».</div>
+      </div>`);
+    let marked = false;
+    const done = () => {
+      close();
+      if (marked) return;
+      marked = true;
+      callServer('markWhatsNewSeen', fresh.map((e) => e.id)).catch(() => {});
+    };
+    el.querySelector('[data-ok]').onclick = done;
+    el.onclick = (ev) => { if (ev.target === el) done(); };
+    wireWhatsNewShow(el, fresh, done);
+  }
+
   /** Вешается один раз при старте шелла (router.startAdminRouter). */
   function wireHelpButton() {
     const btn = document.getElementById('header-help-btn');
@@ -315,5 +381,5 @@
     }
   }
 
-  window.TrainingUI = { openHelp, openIdea, openProblem, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
+  window.TrainingUI = { openHelp, openIdea, openProblem, checkWhatsNew, whatsNewEntryHtml, wireWhatsNewShow, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
 })();

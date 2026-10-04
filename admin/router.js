@@ -492,5 +492,7 @@ function startAdminRouter() {
     // перезагрузки WebView (состояние — sessionStorage, см. _tour.js).
     if (window.TrainingUI) window.TrainingUI.wireHelpButton();
     if (window.Tour) window.Tour.resume();
+    // «Что нового» (этап 2, блок Б) — лист непросмотренного при входе.
+    if (window.TrainingUI) window.TrainingUI.checkWhatsNew();
   });
 }

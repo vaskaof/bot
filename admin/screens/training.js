@@ -101,6 +101,14 @@ window.Screens = window.Screens || {};
         : '<div class="text-[12px] text-gray-400 px-1 mb-4">Пока нет. Всё, что мешает в работе, — сюда: за внедрённую идею — достижение 🛠</div>'}`;
   }
 
+  /** История «Что нового» (этап 2, блок Б) — все записи для роли, новые сверху. */
+  function whatsNewBlock(entries) {
+    if (!entries.length) return '';
+    return `
+      <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2" id="training-whats-new">Что нового</div>
+      <div class="space-y-2 mb-4">${entries.map(TrainingUI.whatsNewEntryHtml).join('')}</div>`;
+  }
+
   function teamBlock(o) {
     const titleOf = new Map(o.scenarios.map((s) => [s.id, s.title]));
     const chip = (s) => s.status === 'done' ? '✅' : s.status === 'started' ? `⏸ шаг ${s.lastStep}` : '—';
@@ -236,10 +244,14 @@ window.Screens = window.Screens || {};
 
       async function loadMe() {
         try {
-          const t = await callServer('getMyTraining');
+          const [t, news] = await Promise.all([
+            callServer('getMyTraining'),
+            callServer('getWhatsNew').catch(() => ({ entries: [] }))
+          ]);
           if (tab !== 'me') return;
-          body.innerHTML = levelCard(t) + courseList(t) + badgesGrid(t) + ideasBlock(t);
+          body.innerHTML = levelCard(t) + courseList(t) + badgesGrid(t) + ideasBlock(t) + whatsNewBlock(news.entries);
           body.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => Tour.start(b.dataset.start)));
+          TrainingUI.wireWhatsNewShow(body, news.entries);
           document.getElementById('training-new-idea').addEventListener('click', () => TrainingUI.openIdea('Обучение'));
           TrainingUI.checkNewBadges(t);
         } catch (error) {
