@@ -7,7 +7,8 @@
  * для них — учебный пример, а не настоящие заказы:
  *
  * - чтения из `HANDLERS` отдаются отсюда (доска «Задачи», заказы, карточка
- *   заказа, коллективки, «Оплаты», вопросы, «Спрос», поиск клиента);
+ *   заказа, коллективки, «Оплаты», вопросы, «Спрос», поиск клиента; с С5 —
+ *   каталог и поиск товара, «уже брал(а)», разбор учебного лота);
  *   остальные чтения (справочники, каталог, курсы) идут на сервер как есть;
  * - любая запись отклоняется здесь же, до сервера (вторая линия защиты
  *   после `block` сценария) — кроме самого обучения (события, отзывы);
@@ -68,7 +69,7 @@
    */
   const ORDER_DEFS = [
     {
-      id: 'TRN101', client: 'trn-anya', product: 'Monster High Lagoona Blue Ghouls Rule', short: 'Лагуна Ghouls Rule', hue: 190,
+      id: 'TRN101', client: 'trn-anya', product: 'Monster High Skullector Ghouls Rule Lagoona Blue Doll', short: 'Лагуна Ghouls Rule', hue: 190,
       channel: 'Mattel Creations', account: 'mattel-1@учебный', cargo: 'Карго Алматы', amount: 60, rateKzt: '480', rateRub: '0.19',
       daysAgo: 12, statusDelivery: 'Ожидает отправки с магазина', statusOrder: 'Актуально, в доставке', stage: 'e3',
       stages: [['Основная', 7500, 4500, true, false], ['Вес', 0, 0, false, null], ['СДЭК', 0, 0, false, null], ['Доставка_РФ', 0, 0, false, null]],
@@ -125,13 +126,52 @@
     }
   ];
 
+  /**
+   * Учебный каталог (С5, 05.10.2026): те же куклы, что в заказах и «Спросе»,
+   * плюс две куклы учебного лота. Поиск («Каталог», карточка позиции, поиск
+   * товара в «Корзине») во время урока идёт по нему — урок «Каталог без
+   * дублей» всегда находит ту же Гулию, что лежит в заказе Маши.
+   * [оригинал, коротко, персонаж, серия, ветка, оттенок силуэта]
+   */
+  const SKU_DEFS = [
+    ['Monster High Skullector Ghouls Rule Lagoona Blue Doll', 'Лагуна Ghouls Rule', 'Lagoona Blue', 'Ghouls Rule', 9104, 190],
+    ['Monster High Draculaura Skulltimate Secrets', 'Дракулаура Skulltimate', 'Draculaura', 'Skulltimate Secrets', 9103, 330],
+    ['Monster High Cleo de Nile Boo York', 'Клео Boo York', 'Cleo de Nile', 'Boo York', 9105, 45],
+    ['Monster High Frankie Stein Skulltimate Secrets', 'Фрэнки Skulltimate', 'Frankie Stein', 'Skulltimate Secrets', 9103, 140],
+    ['Monster High Clawdeen Wolf Core', 'Клодин Core', 'Clawdeen Wolf', 'Core', 9102, 25],
+    ['Monster High Abbey Bominable Core', 'Эбби Core', 'Abbey Bominable', 'Core', 9102, 210],
+    ['Monster High Ghoulia Yelps Core', 'Гулия Core', 'Ghoulia Yelps', 'Core', 9102, 260],
+    ['Monster High Toralei Stripe Core', 'Торалей Core', 'Toralei Stripe', 'Core', 9102, 300],
+    ['Monster High Operetta Core', 'Оперетта Core', 'Operetta', 'Core', 9102, 10],
+    ['Monster High Twyla Boogeyman Core', 'Твайла Core', 'Twyla', 'Core', 9102, 230]
+  ];
+  const LINES = [
+    { id: 9101, parentId: null, name: 'Monster High' },
+    { id: 9102, parentId: 9101, name: 'Core' },
+    { id: 9103, parentId: 9101, name: 'Skulltimate Secrets' },
+    { id: 9104, parentId: 9101, name: 'Skullector' },
+    { id: 9105, parentId: 9101, name: 'Boo York' }
+  ];
+
+  /** Учебный лот на eBay: Оперетта, Твайла и две подставки — $70 за всё. */
+  const LOT_URL_MARK = 'uchebnyj-lot';
+  const LOT_PARSE = {
+    positions: [
+      { name: 'Monster High Operetta Core', quantity: 1, itemType: 'product', confidence: 0.93, note: '' },
+      { name: 'Monster High Twyla Boogeyman Core', quantity: 1, itemType: 'product', confidence: 0.88, note: '' },
+      { name: 'Подставка для куклы', quantity: 2, itemType: 'accessory', confidence: 0.81, note: '' }
+    ],
+    sourceTitle: 'Monster High Core lot: Operetta + Twyla + 2 stands (учебный)'
+  };
+
   const COLLECTIVE_DEFS = [
     { id: 'TRNC1', name: 'СДЭК 12.10 (учебная)', stage: 'КЗ→РФ', status: 'Формируется', daysAgo: 3, track: '' },
     { id: 'TRNC2', name: 'Отправка по РФ 28.09 (учебная)', stage: 'По РФ', status: 'Отправлено', daysAgo: 7, track: '10012345678', orderCount: 2 }
   ];
 
   // --- Сборка мира ---
-  function isoDay(d) { return d.toISOString().slice(0, 10); }
+  // Местная дата, не toISOString(): та сдвигает на день назад (UTC) — «было 30 $ (25.09)» при заказе 26.09.
+  function isoDay(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function ruDay(d) { return d.toLocaleDateString('ru-RU'); }
 
   function buildWorld() {
@@ -354,6 +394,56 @@
     }];
   }
 
+  // --- Каталог ---
+  function sku([original, shortName, character, series, lineId, hue]) {
+    return {
+      original, shortName, brand: 'Monster High', character, series, imageUrl: doll(hue), lineId,
+      description: 'Учебная позиция каталога.', orderCount: world.orders.filter((o) => o.def.product === original).length
+    };
+  }
+  const catalog = () => SKU_DEFS.map(sku);
+  const findSku = (original) => SKU_DEFS.find((d) => d[0].toLowerCase() === String(original || '').trim().toLowerCase());
+
+  /** Тот же порядок, что у сервера (catalogService.searchRelevanceScore). */
+  function searchCatalog(query) {
+    const text = String(query || '').trim().toLowerCase();
+    if (!text) return [];
+    const score = (s) => {
+      const o = s.original.toLowerCase();
+      if (o === text) return 100;
+      if (o.startsWith(text)) return 80;
+      if (o.includes(text)) return 40;
+      return s.shortName.toLowerCase().includes(text) ? 30 : 20;
+    };
+    return catalog()
+      .filter((s) => `${s.original} ${s.shortName} ${s.brand} ${s.character} ${s.series}`.toLowerCase().includes(text))
+      .sort((a, b) => score(b) - score(a))
+      .map((s) => ({ value: s.original, label: s.shortName, imageUrl: s.imageUrl }));
+  }
+
+  /** «Уже брал(а) N раз» по заказам учебной клиентки. */
+  function skuCounts(tid) {
+    const result = {};
+    clientOrders(tid).forEach((o) => {
+      const e = result[o.def.product] || { count: 0, lastDate: '', lastSort: 0 };
+      e.count += 1;
+      if (o.date.getTime() >= e.lastSort) { e.lastSort = o.date.getTime(); e.lastDate = ruDay(o.date); }
+      result[o.def.product] = e;
+    });
+    Object.values(result).forEach((e) => { delete e.lastSort; });
+    return result;
+  }
+
+  /** «спрос: N» у строк разбора лота — по учебному «Спросу». */
+  function demandForNames(names) {
+    const entries = demand().demand;
+    return (names || []).map((name) => {
+      const key = String(name || '').trim().toLowerCase();
+      const hit = key && entries.find((e) => e.skuOriginal.toLowerCase() === key || e.productDisplay.toLowerCase() === key);
+      return hit ? { name, count: hit.clients.length, clients: hit.clients.map((c) => ({ display: c.display })) } : { name, count: 0, clients: [] };
+    });
+  }
+
   const trnOrder = (id) => world.byId.get(String(id || ''));
   const isTrnClient = (tid) => !!CLIENTS[String(tid || '')];
 
@@ -377,7 +467,28 @@
     getOrderWriteoffs: (id) => (trnOrder(id) ? [] : undefined),
     getOrderPurchaseSummary: (id) => (trnOrder(id) ? { orderId: id, count: 1, totalAmountInCurrency: trnOrder(id).def.amount, totalCostActualRub: 0, lastOccurredAt: null, orderCurrency: 'Доллар', orderAmountInCurrency: trnOrder(id).def.amount } : undefined),
     findClientWishlistMatch: (tid) => (isTrnClient(tid) ? null : undefined),
-    getClientSkuPurchaseCounts: (tid) => (isTrnClient(tid) ? {} : undefined),
+    getClientSkuPurchaseCounts: (tid) => (isTrnClient(tid) ? skuCounts(tid) : undefined),
+    // «Итог и оплаты» в «Корзине»: свободного остатка и кредита у учебных клиенток нет.
+    getClientsMoneyContext: (ids) => {
+      const list = (Array.isArray(ids) ? ids : []).map(String);
+      if (!list.some(isTrnClient)) return undefined;
+      return list.filter(isTrnClient).map((telegramId) => ({ telegramId, creditRub: 0, poolLeftoverRub: 0 }));
+    },
+    getCatalogList: () => catalog(),
+    refreshCatalogList: () => catalog(),
+    searchSku: (query) => searchCatalog(query),
+    getSkuDetails: (original) => {
+      const def = findSku(original);
+      if (!def) return undefined;
+      const { orderCount, ...rest } = sku(def);
+      return { ...rest, extraLineIds: [] };
+    },
+    getCatalogLinksForSku: (original) => (findSku(original) ? [] : undefined),
+    getCatalogLinesTree: () => ({ lines: LINES.map((l) => ({ ...l, directSkus: 0, totalSkus: 0 })) }),
+    parseLotPositions: (url) => (String(url || '').includes(LOT_URL_MARK)
+      ? { ...clone(LOT_PARSE), imageCount: 2, imageUrls: [doll(10), doll(230)] }
+      : undefined),
+    getWishlistDemandForNames: (names) => demandForNames(names),
     getCollectivesList: () => COLLECTIVE_DEFS.map(collectiveHead),
     getCollectiveDetails: (id) => {
       const def = COLLECTIVE_DEFS.find((c) => c.id === id);
@@ -495,6 +606,8 @@
       world = null;
     },
     isActive: () => active,
-    CLIENTS
+    CLIENTS,
+    // Ссылка учебного лота: «Разобрать лот» отвечает по ней из учебного мира.
+    LOT_URL: `https://www.ebay.com/itm/${LOT_URL_MARK}-monster-high-core`
   };
 })();

@@ -40,6 +40,11 @@
  *   «Статус доставки»); нужно нажимать — `allowClick: true`;
  * - после смены экрана следующий шаг ждёт, пока экран отрисуется;
  * - выход из урока и конец урока — в «Обучение».
+ *
+ * 05.10.2026 (VASY: «Секунду, ищу нужное место» в 10-м уроке после ухода из
+ * окна): если Telegram перезапустил окно, урок продолжается с того же шага,
+ * но открытые вкладки и окна пропали — шаг, не найдя цель за 3 с,
+ * откатывается к ближайшему шагу «нажми», который их откроет.
  */
 (function () {
   const STATE_KEY = 'knopkaTourState';
@@ -59,6 +64,7 @@
   const TYPE_CHARS = 2;   // знаков за такт
   const TYPE_TICK_MS = 50; // ≈40 знаков в секунду
   const ROUTE_SETTLE_MS = 400;
+  const RESUME_WAIT_MS = 3000;
 
   window.addEventListener('hashchange', () => { routeChangedAt = Date.now(); });
 
@@ -148,6 +154,14 @@
     el.style.width = `${Math.max(0, width)}px`; el.style.height = `${Math.max(0, height)}px`;
   }
 
+  /** Нижний край видимого тоста #save-toast; 0 — тоста нет. */
+  function toastBottom() {
+    const t = document.getElementById('save-toast');
+    if (!t || t.classList.contains('hidden')) return 0;
+    const r = t.getBoundingClientRect();
+    return r.height > 0 ? Math.round(r.bottom) : 0;
+  }
+
   /** Раскладка затемнения/рамки/подсказки под текущий прямоугольник цели. */
   function layout(target, step) {
     const vw = window.innerWidth;
@@ -192,6 +206,10 @@
     else if (vh - bottom >= bh + 12) bTop = bottom + 10;
     else if (top >= bh + 12) bTop = top - bh - 10;
     else bTop = Math.max(12, vh - bh - 12);
+    // Тост вверху экрана («Учебный режим…», «Добавлено строк…») лежит поверх
+    // всего — подсказку у верхнего края опускаем под него (скриншоты С5).
+    const tb = toastBottom();
+    if (tb && bTop < tb + 8) bTop = Math.min(tb + 8, Math.max(12, vh - bh - 12));
     const bLeft = Math.min(Math.max(12, r.left + r.width / 2 - bw / 2), vw - bw - 12);
     bubble.style.top = `${bTop}px`;
     bubble.style.left = `${bLeft}px`;
@@ -203,7 +221,7 @@
     const tick = () => {
       const target = getTarget();
       const r = target ? target.getBoundingClientRect() : null;
-      const key = r ? `${r.left}|${r.top}|${r.width}|${r.height}|${window.innerWidth}|${window.innerHeight}` : `none|${window.innerWidth}|${window.innerHeight}`;
+      const key = (r ? `${r.left}|${r.top}|${r.width}|${r.height}|${window.innerWidth}|${window.innerHeight}` : `none|${window.innerWidth}|${window.innerHeight}`) + `|${toastBottom()}`;
       if (key !== lastRectKey) { lastRectKey = key; layout(target, step); }
       rafId = requestAnimationFrame(tick);
     };
@@ -345,7 +363,9 @@
 
   /** Ждёт цель шага; null — не дождались (или `missingIf` сказал, что её не будет). */
   async function waitTarget(step, token) {
-    const limit = step.wait || (step.optional ? OPTIONAL_WAIT_MS : WAIT_MS);
+    let limit = step.wait || (step.optional ? OPTIONAL_WAIT_MS : WAIT_MS);
+    // После перезапуска окна долго не ждём: не нашлось — вернёмся назад (showStep).
+    if (active && active.resumed) limit = Math.min(limit, RESUME_WAIT_MS);
     const started = Date.now();
     while (Date.now() - started < limit) {
       if (token !== stepToken) return null;
@@ -381,15 +401,19 @@
     if (!step.target) {
       if (step.onEnter) { try { await step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
       if (token !== stepToken || !active) return;
-      renderBubble(step, { title: step.title, text: step.text, quiz: step.quiz, actions: step.actions, showNext: true, typing: true });
+      const waits = !!(step.advance && typeof step.advance === 'object' && step.advance.until);
+      renderBubble(step, { title: step.title, text: step.text, quiz: step.quiz, actions: step.actions, showNext: !waits, typing: true });
       startLoop({}, () => null);
+      // Объяснение с кнопкой-действием, которое само ведёт дальше (С5: «Показать мою сводку»).
+      if (waits) await waitUntil(step, token);
       return;
     }
     // Пока ищем цель — подсказка по центру, без затемнения кликов по экрану.
     // Необязательный шаг может не найтись — его текст не показываем заранее.
+    const searching = active.resumed ? 'Возвращаю урок на место…' : 'Секунду, ищу нужное место на экране…';
     renderBubble(step, step.optional
-      ? { text: 'Секунду, ищу нужное место на экране…', showNext: false }
-      : { title: step.title, text: step.text, hint: 'Секунду, ищу нужное место на экране…', showNext: false });
+      ? { text: searching, showNext: false }
+      : { title: step.title, text: step.text, hint: searching, showNext: false });
     startLoop({ free: true }, () => null);
 
     // Экран только что сменился — даём ему отрисоваться, иначе шаг цепляется
@@ -403,6 +427,20 @@
 
     const target = await waitTarget(step, token);
     if (token !== stepToken || !active) return;
+
+    if (!target && active.resumed && !step.optional) {
+      // Окно перезапустилось (Telegram выгрузил приложение, пока ты был в
+      // другом окне): открытая вкладка, окно или выбор пропали — шаг их не
+      // находит. Возвращаемся к ближайшему шагу «нажми», который это
+      // открывает (отзыв VASY 05.10: «Секунду, ищу» в 10-м уроке).
+      const back = resumeFallbackIndex();
+      if (back !== null) {
+        active.index = back;
+        return showStep();
+      }
+      active.resumed = false;
+    }
+    if (target) active.resumed = false;
 
     if (!target) {
       if (step.optional) {
@@ -434,14 +472,32 @@
     // Старая цель ушла вместе с экраном — подсказка не висит над пустым местом.
     startLoop(step, () => findTarget(step) || (target.isConnected ? target : null));
 
-    if (advance && typeof advance === 'object' && advance.until) {
-      while (token === stepToken && active) {
-        let done = false;
-        try { done = !!advance.until(); } catch (e) { done = false; }
-        if (done) { await wait(250); if (token === stepToken) goNext(); return; }
-        await wait(300);
-      }
+    if (advance && typeof advance === 'object' && advance.until) await waitUntil(step, token);
+  }
+
+  /** `advance: { until }` — дальше, как только условие выполнилось. */
+  async function waitUntil(step, token) {
+    while (token === stepToken && active) {
+      let done = false;
+      try { done = !!step.advance.until(); } catch (e) { done = false; }
+      if (done) { await wait(250); if (token === stepToken) goNext(); return; }
+      await wait(300);
     }
+  }
+
+  /**
+   * Куда вернуться после перезапуска окна: ближайший раньше шаг «нажми»
+   * (он заново откроет вкладку/окно; уже открытое пропустит skipIf). Каждый
+   * следующий откат — только ниже предыдущего, чтобы не ходить по кругу.
+   */
+  function resumeFallbackIndex() {
+    const steps = active.scenario.steps;
+    const ceil = Math.min(active.index, active.fallbackCeil);
+    for (let k = ceil - 1; k >= 0; k--) {
+      if (steps[k].advance === 'click') { active.fallbackCeil = k; return k; }
+    }
+    if (ceil > 0) { active.fallbackCeil = 0; return 0; }
+    return null;
   }
 
   function goNext() {
@@ -576,7 +632,8 @@
     const scenario = scenarios()[state.scenarioId];
     if (!scenario) { writeState(null); return; }
     skippedGroups = new Set();
-    active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1), history: [], seen: new Set() };
+    const index = Math.min(state.index || 0, scenario.steps.length - 1);
+    active = { scenario, index, history: [], seen: new Set(), resumed: true, fallbackCeil: index };
     enterSandbox(scenario);
     showStep();
   }

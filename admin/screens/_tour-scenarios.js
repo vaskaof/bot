@@ -80,6 +80,25 @@
     '#order-next-step button', '#client-self-purchased-checkbox', '#save-order-btn', '#save-order-sticky-btn'
   ];
 
+  // --- Лот в «Корзине» (_cart-lot.js): карточка лота и её строки ---
+  const LOT = '#cart-items-list > div.border-l-indigo-400';
+  const lotPart = (sel) => `${LOT} ${sel}`;
+  /** Поле лота вместе с подписью. */
+  const lotField = (sel) => () => { const i = document.querySelector(`${LOT} ${sel}`); return i ? i.closest('.mb-2') : null; };
+  const lotRowPart = (n, sel) => `${LOT} .lot-positions-list > div:nth-child(${n}) ${sel}`;
+  const lotRowClient = (n) => { const i = document.querySelector(lotRowPart(n, '.client-search')); return i ? i.value.toLowerCase() : ''; };
+  const lotParseRows = () => {
+    const box = document.querySelector(`${LOT} .lot-parse-confirm`);
+    return box && !box.classList.contains('hidden') ? box.querySelectorAll('.lot-parse-rows > div').length : 0;
+  };
+  async function pasteLotLink() {
+    const input = document.querySelector(`${LOT} .lot-purchase-link-input`);
+    if (!input) throw new Error('Не вижу карточку лота — раскрой её.');
+    input.value = window.TrainingSandbox.LOT_URL;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('change')); // канал корзины подберётся по ссылке (eBay)
+  }
+
   window.TourScenarios = {
     'nav-overview': {
       id: 'nav-overview',
@@ -524,6 +543,363 @@
           ] }
         }
       ]
+    },
+
+    // Лот (С5, 05.10.2026). Учебный пример: на eBay лот «Оперетта + Твайла +
+    // 2 подставки» за $70. Оперетту ждут Катя и Аня («Спрос»), Твайлу — Маша.
+    // Разбор ссылки отвечает песочница (учебная ссылка), ИИ не зовётся.
+    'lot': {
+      id: 'lot',
+      title: 'Лот: несколько кукол одной покупкой',
+      screens: ['orders', 'cartNew'],
+      block: ['#save-cart-btn', '.lot-purchase-link-resolve-btn'],
+      steps: [
+        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Лот оформляется в «Корзине».', advance: 'click', skipIf: onScreen('orders', 'cartNew') },
+        { target: '#new-cart-btn', title: '«Корзина»', text: 'Нажми — откроется новый выкуп.', advance: 'click', skipIf: onScreen('cartNew') },
+        {
+          title: 'Что такое лот',
+          text: 'Лот — <b>несколько кукол одной покупкой</b>: одна ссылка, один продавец, <b>одна цена за всё</b>.<br><br>Сегодня на eBay нашёлся лот: <b>Оперетта, Твайла и 2 подставки за $70</b>. Оперетту давно ждут Катя и Аня, Твайлу — Маша.<br><br>Если у каждой куклы в чеке своя цена — это не лот, а обычные позиции корзины.'
+        },
+        { target: '#add-lot-btn', title: '«+ Добавить лот»', text: 'Пустая «Позиция» сверху — для обычной покупки, сейчас она не нужна. Нажми «+ Добавить лот».', advance: 'click' },
+        {
+          target: lotPart('.lot-summary-row'), title: 'Карточка лота', text: 'Лот свёрнут. Нажми на него — раскроется.', advance: 'click',
+          skipIf: () => { const b = document.querySelector(`${LOT} .lot-body`); return !!b && !b.classList.contains('hidden'); }
+        },
+        {
+          target: lotField('.lot-purchase-link-input'), title: 'Одна ссылка на весь лот', free: true,
+          text: 'Ссылка на объявление — <b>одна на весь лот</b>, не на каждую куклу. В работе вставляешь её из браузера. Сейчас возьмём учебную.',
+          actions: [{ label: 'Вставить учебную ссылку', run: pasteLotLink }],
+          advance: { until: () => { const i = document.querySelector(LOT + ' .lot-purchase-link-input'); return !!i && i.value.includes('uchebnyj-lot'); } }
+        },
+        {
+          target: lotPart('.lot-parse-btn'), title: 'Разобрать лот', advance: { until: () => lotParseRows() > 0 },
+          text: 'ИИ прочитает объявление и фото и предложит, какие куклы внутри. Нажми <b>«Разобрать лот по ссылке»</b>.'
+        },
+        {
+          target: lotPart('.lot-parse-confirm'), title: 'Что нашёл ИИ', wait: 10000,
+          text: 'Две куклы и подставки. Проценты — уверенность ИИ, это подсказка, не факт: <b>сверь с фото и описанием</b>. «спрос: 2» — Оперетту ждут двое (это «Спрос» из каталога). Подставки — «Аксессуар», галочки нет: заказами они не станут.'
+        },
+        { target: lotPart('.lot-parse-apply-btn'), title: '«Применить»', text: 'Отмеченные куклы станут строками лота. Нажми «Применить».', advance: 'click' },
+        {
+          target: lotRowPart(1, '.client-row'), title: 'Оперетта — Кате', free: true, place: 'away',
+          text: 'Первой Оперетту попросила Катя. В строке Оперетты начни вводить <b>Катя</b> и выбери её из списка.',
+          advance: { until: () => lotRowClient(1).includes('katya') }
+        },
+        {
+          target: lotRowPart(2, '.client-row'), title: 'Твайла — Маше', free: true, place: 'away',
+          text: 'Во второй строке — <b>Маша</b>: начни вводить и выбери её.',
+          advance: { until: () => lotRowClient(2).includes('masha') }
+        },
+        {
+          target: lotField('.lot-amount-input'), title: 'Цена всего лота', free: true,
+          text: 'Впиши <b>70</b> — сколько заплатили за весь лот, как в чеке (с доставкой и налогом магазина).',
+          advance: { until: () => { const i = document.querySelector(LOT + ' .lot-amount-input'); return !!i && Number(i.value) === 70; } }
+        },
+        {
+          target: lotRowPart(1, '.cost-slider'), title: 'Кто сколько платит', free: true,
+          text: 'Сейчас $70 делятся поровну. Но Оперетта редкая и стоит дороже. Сдвинь у неё бегунок <b>«Доля в общих тратах»</b> на <b>×2</b> — она возьмёт вдвое больше, чем Твайла.',
+          advance: { until: () => { const s = document.querySelector(`${LOT} .lot-positions-list > div:nth-child(1) .cost-slider`); return !!s && Number(s.value) === 2; } }
+        },
+        {
+          target: lotRowPart(1, '.lot-row-breakdown'), title: 'Сколько платит Катя',
+          text: '<b>База позиции</b> — её часть от $70 в рублях: теперь 2/3 лота. Ниже комиссия и <b>«Клиент платит»</b> — эту сумму Катя заплатит за Оперетту. Комиссию вписываешь, как в обычной позиции.'
+        },
+        {
+          target: lotRowPart(2, '.known-price-input'), title: 'Если цена известна',
+          text: 'Бывает, продавец пишет цену каждой куклы. Тогда впиши её в <b>«Цена товара»</b>: кукла возьмёт ровно эту сумму, а остаток лота поделят остальные по своим долям. Не знаешь — оставь пустым.'
+        },
+        {
+          target: lotField('.lot-weight-total-input'), title: 'Вес на весь лот', free: true,
+          text: 'Карго считает вес за всю посылку. Пришёл счёт: <b>2 400 ₽</b> за этот лот — впиши. Не знаешь сейчас — оставь пустым: возьмётся прогноз, сумму зададут позже на карточке лота.',
+          advance: { until: () => { const i = document.querySelector(LOT + ' .lot-weight-total-input'); return !!i && Number(i.value) === 2400; } }
+        },
+        {
+          target: lotPart('.lot-weight-split-hint'), title: 'Вес по куклам',
+          text: 'Вес делится по <b>«Доле веса»</b> в строках: обе куклы ×1 — по 1 200 ₽. Большая коробка — ×2, кукла без коробки — меньше.'
+        },
+        { target: '#save-cart-btn', title: 'Сохранить', text: 'В работе — «Сохранить»: из лота получится по заказу на каждую куклу, у Кати и Маши они появятся в «Моих заказах». Сейчас учебный режим — <b>не сохраняем</b>.' },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'На сайте Mattel купили 3 куклы одним заказом. В чеке у каждой своя цена. Как оформить?',
+          quiz: { options: [
+            { label: 'Лот на всю покупку', explain: 'Лот — когда цена одна на всё. Здесь цены по строкам чека известны.' },
+            { label: 'Три позиции в одной корзине, у каждой своя сумма', correct: true, explain: 'Каждая кукла — своя позиция со своей суммой по чеку. Общую доставку и налог корзина поделит сама.' },
+            { label: 'Три отдельные корзины', explain: 'Покупка одна — и корзина одна: так видно, что выкупали вместе.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Лот из 3 кукол за <b>$100</b>. Продавец написал, что одна из них стоит <b>$60</b>. Что делаешь?',
+          quiz: { options: [
+            { label: 'Делю поровну — так проще', explain: 'Тогда две клиентки переплатят за чужую дорогую куклу.' },
+            { label: 'Впишу $60 в «Цена товара» у этой куклы', correct: true, explain: 'Она возьмёт ровно $60, а оставшиеся $40 поделят две другие по своим долям.' },
+            { label: 'Сделаю отдельную корзину на эту куклу', explain: 'Покупка одна — это один лот. Известную цену вписывают в строку лота.' }
+          ] }
+        }
+      ]
+    },
+
+    // Повторить покупку (С5). Учебный пример: Маша просит ещё одну Гулию —
+    // в подарок сестре. Повторяем её заказ № TRN107 через «Выбрать».
+    'repeat': {
+      id: 'repeat',
+      title: 'Повторить покупку',
+      screens: ['orders', 'orderEdit'],
+      block: ['#save-cart-btn', '#bulk-assign-btn', '#bulk-create-collective-btn', '#bulk-status-btn', '#bulk-status-order-btn', '#bulk-delete-btn'],
+      steps: [
+        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Повтор начинается со старого заказа.', advance: 'click', skipIf: onScreen('orders') },
+        {
+          title: 'Ещё одну такую же',
+          text: 'Маша пишет: <b>«Возьмите мне ещё одну Гулию — в подарок сестре»</b>. Набирать корзину с нуля не нужно: повторим её прошлый заказ — товар и клиентка подставятся сами.'
+        },
+        { target: '#select-mode-btn', title: '«Выбрать»', text: 'Нажми «Выбрать». Быстрее — <b>долгое нажатие на заказ</b>: выбор включится сам.', advance: 'click' },
+        {
+          target: orderListCard('TRN107'), title: 'Гулия Маши', free: true,
+          text: 'Отметь <b>Гулию</b> (№ TRN107) нажатием на карточку. Можно отметить несколько заказов — повторятся все.',
+          advance: { until: () => bulkCount() > 0 }
+        },
+        { target: '#bulk-repeat-btn', title: '«Повторить»', text: 'Нажми «Повторить».', advance: 'click' },
+        {
+          target: '#dup-positions-modal .bg-white', title: 'Повторить покупку',
+          text: '<b>− / +</b> — сколько штук: каждая штука — отдельный заказ (×2 — два заказа). <b>Цена не переносится</b>: у редких и б/у кукол она каждый раз другая — старая будет только подсказкой.'
+        },
+        {
+          target: () => { const c = document.querySelector('#dup-positions-list .dup-same-client'); return c ? c.closest('label') : null; },
+          title: '«тот же клиент»', free: true,
+          text: 'По умолчанию клиент <b>не</b> переносится — чаще повторяют для другой клиентки. Сейчас Гулия снова для Маши: поставь галочку <b>«тот же клиент»</b>.',
+          advance: { until: () => { const c = document.querySelector('#dup-positions-list .dup-same-client'); return !!c && c.checked; } }
+        },
+        { target: '#dup-positions-modal-confirm', title: '«Повторить (1)»', text: 'Нажми — откроется новая корзина.', advance: 'click' },
+        {
+          target: () => { const c = document.querySelector(`${firstCartCard} .client-search`); return c ? c.closest('.relative') : null; }, title: 'Корзина готова', wait: 10000,
+          text: 'Гулия уже в корзине: клиентка — Маша, ниже товар из каталога. Канал, валюта и процент комиссии — как в прошлый раз (аккаунт и карго проверь), статусы — заново.'
+        },
+        {
+          target: `${firstCartCard} .product-repeat-hint`, title: '«Уже брала»', optional: true,
+          text: 'Подсказка: Маша <b>уже брала</b> эту куклу — сколько раз и когда последний. Видно и при обычном выборе товара: так замечаешь постоянных клиентов.'
+        },
+        {
+          target: `${firstCartCard} .amount-input`, title: 'Новая цена', free: true,
+          text: 'В поле суммы — серая подсказка <b>«было 30 Доллар»</b>: это прошлая цена, она не подставилась. Впиши сумму из нового чека — например, <b>35</b>.',
+          advance: { until: () => { const i = document.querySelector(`${firstCartCard} .amount-input`); return !!i && Number(i.value) > 0; } }
+        },
+        {
+          title: 'Из карточки заказа — тоже',
+          text: 'Повторить можно и из заказа: кнопка <b>«Повторить покупку»</b> в шапке. Если заказ был в корзине с другими куклами — откроется тот же выбор «сколько каждой».'
+        },
+        { target: '#save-cart-btn', title: 'Сохранить', text: 'Дальше всё как в обычной корзине: аккаунт, «Итог и оплаты», «Сохранить». Сейчас учебный режим — <b>не сохраняем</b>.' },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'Клиентка: «Хочу ещё две такие же Клодин, как в прошлый раз». Что делаешь?',
+          quiz: { options: [
+            { label: '«Повторить» её заказ: ×2 и «тот же клиент»', correct: true, explain: 'Два заказа с той же куклой и той же клиенткой — за пару нажатий. Цены — из нового чека.' },
+            { label: 'Новая корзина, ищу куклу и клиентку заново', explain: 'Можно, но дольше — и легко выбрать не ту позицию каталога.' },
+            { label: 'Один заказ с пометкой «2 шт.»', explain: 'Один заказ — одна кукла: так считаются статусы и «Мои куклы» клиентки. ×2 — два заказа.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Повторяешь заказ, в прошлый раз кукла стоила <b>$30</b>. Какая цена будет в новой корзине?',
+          quiz: { options: [
+            { label: '$30 — подставится сама', explain: 'Не подставится: старая цена — только серая подсказка. Иначе клиентке ушёл бы неверный долг.' },
+            { label: 'Та, что я впишу по новому чеку', correct: true, explain: 'Да. Подсказка «было $30» — чтобы сравнить, а сумма всегда из нового чека.' }
+          ] }
+        }
+      ]
+    },
+
+    // Каталог без дублей (С5). Учебный каталог из песочницы: Маша просит
+    // Гулию — она уже есть, создавать вторую нельзя.
+    'catalog': {
+      id: 'catalog',
+      title: 'Каталог без дублей',
+      screens: ['catalog'],
+      momentScreens: ['catalog'],
+      block: ['#create-sku-save', '#sku-delete-btn', '#duplicate-force-btn', '#sku-link-add-btn', '#sku-exists-use', '.duplicate-choice-btn'],
+      steps: [
+        { target: nav('catalog'), title: 'Открой «Каталог»', text: 'Все куклы, которые мы возим, — здесь.', advance: 'click', skipIf: onScreen('catalog') },
+        {
+          title: 'Одна кукла — одна позиция',
+          text: 'Из каталога берётся товар для корзины, вишлиста и «Спроса». Если завести одну куклу <b>дважды</b>, её заказы, спрос и «Мои куклы» клиенток разъедутся по двум карточкам — и уже не видно, кто её ждёт.<br><br>Главное правило: <b>сначала найди, потом создавай</b>.'
+        },
+        {
+          target: byText('#catalog-list > div', 'Гулия Core'), title: 'Карточка позиции', wait: 10000,
+          text: 'Сверху — <b>короткое название</b> по-русски (его видят клиентки), под ним — полное, как в магазине. Теги: бренд, персонаж, серия. Ниже — ветка и сколько заказов.'
+        },
+        {
+          target: () => { const i = document.getElementById('catalog-search'); return i ? i.closest('div') : null; }, title: 'Сначала — поиск', free: true, place: 'away',
+          text: 'Маша прислала ссылку: «Monster High Ghoulia Yelps Core Doll 2022 NEW». Ищи по <b>одному слову</b>, а не всей строкой из магазина: впиши <b>Ghoulia</b> (или по-русски «Гулия»).',
+          advance: { until: () => { const i = document.getElementById('catalog-search'); return !!i && i.value.trim().length >= 3 && document.querySelectorAll('#catalog-list > div').length === 1; } }
+        },
+        {
+          target: byText('#catalog-list > div', 'Гулия Core'), title: 'Нашлась',
+          text: 'Гулия <b>уже есть</b> — создавать не нужно: в корзину берёшь эту. Вся строка из магазина («…Doll 2022 NEW») ничего бы не нашла — поэтому ищи по слову.'
+        },
+        { target: '#add-sku-btn', title: 'А если не нашлось', text: '«+» — новая позиция. Нажми: посмотрим, как каталог сам ловит дубли.', advance: 'click' },
+        {
+          target: () => { const i = document.getElementById('sku-original-input'); return i ? i.parentElement : null; }, title: '«Выпуск»', free: true, place: 'away',
+          text: 'Полное название, как в магазине. Начни вводить <b>Ghoulia</b> — ниже сразу появятся похожие позиции. Нажми на найденную <b>«Гулия Core»</b>: откроется существующая, новая не создастся.',
+          advance: { until: () => { const t = document.getElementById('sku-modal-title'); return !!t && t.textContent.includes('Редактирование'); } }
+        },
+        {
+          target: () => { const i = document.getElementById('sku-original-input'); return i ? i.closest('.relative').parentElement : null; }, title: 'Та же Гулия', wait: 8000,
+          text: 'Это та самая позиция из заказа Маши. Здесь её можно <b>дополнить</b> — фото, ссылка, теги, — но не заводить вторую. В работе — «Сохранить изменения»; сейчас не сохраняем.'
+        },
+        { target: '#create-sku-close', title: 'Закрой окно', text: 'Нажми крестик.', advance: 'click' },
+        {
+          title: 'Новая кукла',
+          text: 'Поиск правда пустой — тогда «+»:<br>• <b>Выпуск</b> — полное название из магазина;<br>• <b>Короткое название RU</b> — как зовёшь куклу, его видят клиентки;<br>• фото и ссылка.<br>При «Сохранить» каталог проверит ещё раз. «Похоже, такая уже есть» — <b>выбери найденную</b>, а не «Всё равно сохранить».'
+        },
+        {
+          target: '.catalog-tabs', title: 'Нашлись две одинаковые',
+          text: 'Видишь двойника — не удаляй сам: у обеих могут быть заказы. Дубли собраны во вкладке <b>«Порядок» → «Проверка»</b>; не уверен(а) — напиши в «💡 Неудобно / идея».'
+        },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'Клиентка прислала ссылку «Monster High Clawdeen Wolf Core Doll 2022 NEW!!!». Поиск по всей строке ничего не нашёл. Что делаешь?',
+          quiz: { options: [
+            { label: 'Создаю новую позицию — раз не нашлось', explain: 'Сначала поищи по слову: длинная строка из магазина почти никогда не совпадает целиком.' },
+            { label: 'Ищу по слову «Clawdeen» или «Клодин»', correct: true, explain: 'Так находится и «Клодин Core». Не нашлось и по слову — тогда «+».' },
+            { label: 'Беру любую похожую Клодин', explain: 'Другой выпуск — другая кукла: клиентке приедет не то. Ищи именно этот выпуск.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Сохраняешь новую позицию, а каталог пишет: <b>«Похоже, такая позиция уже есть: Клодин Core»</b>. Это та же кукла. Что нажимаешь?',
+          quiz: { options: [
+            { label: 'Найденную «Клодин Core»', correct: true, explain: 'Новая не создастся — возьмётся существующая, со всеми её заказами и спросом.' },
+            { label: '«Всё равно сохранить как отдельную позицию»', explain: 'Получится дубль. Эта кнопка — только когда это правда другая кукла (другой выпуск или серия).' }
+          ] }
+        }
+      ]
+    },
+
+    // Субботняя сводка (С5). Сводка приходит в Telegram — экрана у неё нет,
+    // поэтому учебный пример рисуется поверх «Обучения» (summaryMock), а
+    // кнопка «Кто должен» ведёт в «Оплаты» учебного мира. В конце — своя
+    // настоящая сводка (getMyWeeklySummaryPreview только читает).
+    'weekly-summary': {
+      id: 'weekly-summary',
+      title: 'Субботняя сводка',
+      screens: ['home'],
+      block: ['#rp-save', '#rm-send', '.approve-claim-btn', '.reject-claim-btn'],
+      onComplete: () => SummaryMock.hide(),
+      onExit: () => SummaryMock.hide(),
+      steps: [
+        {
+          target: '#training-summary-mock > div', title: 'Сводка недели', onEnter: () => SummaryMock.showSample(),
+          text: 'Каждую <b>субботу в 11:00 МСК</b> бот присылает в Telegram итоги твоей недели и <b>до 3 главных дел</b> на следующую. Вот как она выглядит на учебном примере.'
+        },
+        { target: '#training-summary-mock [data-part="week"]', title: 'Что сделано', onEnter: () => SummaryMock.showSample(), text: 'Твои заказы, оплаты и сколько заказов поехало дальше. Считается только твоё.' },
+        { target: '#training-summary-mock [data-part="praise"]', title: '🌟 Похвала', onEnter: () => SummaryMock.showSample(), text: 'Только за качество: заказы дошли до клиентов, неделя без срочных задач, пройденные уроки. За количество не хвалим.' },
+        {
+          target: '#training-summary-mock [data-part="tasks"]', title: 'Главное на неделю', onEnter: () => SummaryMock.showSample(),
+          text: 'До 3 дел, <b>самое важное первым</b>. Здесь: Аня должна 5 000 ₽ и ждёт дольше всех — 4 дня; и 2 заказа, где не хватает цены или данных.'
+        },
+        { target: '#training-summary-mock [data-part="training"]', title: '🎓 Обучение', onEnter: () => SummaryMock.showSample(), text: 'Сколько уроков пройдено и какой следующий.' },
+        {
+          target: '#training-summary-mock [data-route="payments"]', title: 'Кнопки', onEnter: () => SummaryMock.showSample(), advance: 'click',
+          text: 'Кнопки под сводкой ведут прямо в приложение. Нажми <b>«💰 Кто должен»</b>.'
+        },
+        {
+          target: '[data-due-client="trn-anya"]', title: 'Дело №1', wait: 10000,
+          text: 'Вот дело из сводки: <b>Аня, 5 000 ₽</b>. Иди сверху вниз: деньги пришли — «Занести оплату», нет — «Напомнить».'
+        },
+        {
+          title: 'Что делать с очередью',
+          text: 'В понедельник открой сводку и пройди дела <b>по порядку</b>. Сделанное само исчезнет из следующей сводки.<br><br>Дело не сделать — клиентка обещала оплатить позже или данных уже не найти — «Отложить» или «Пропустить с причиной» (урок «Пропустить или отложить»). Висящее дело будет приходить каждую субботу.'
+        },
+        {
+          title: 'Твоя сводка', onEnter: () => SummaryMock.hide(),
+          text: 'А теперь — <b>твоя</b> сводка, какой она была бы, если бы суббота была сегодня: на твоих настоящих заказах.',
+          actions: [{ label: 'Показать мою сводку', run: () => SummaryMock.showMine() }],
+          advance: { until: () => SummaryMock.kind() === 'mine' }
+        },
+        {
+          target: '#training-summary-mock > div', title: 'Твоя сводка',
+          text: 'В субботу она придёт в Telegram. Пусто в «Главное» — значит, срочных дел нет. Непонятна строка — спроси помощника 🤖.'
+        },
+        {
+          title: 'Проверка 1 из 2', onEnter: () => SummaryMock.hide(),
+          text: 'В сводке: <b>«💰 Собрать оплату: 3 клиента должны 12 000 ₽»</b>. Что делаешь?',
+          quiz: { options: [
+            { label: '«Кто должен» → по каждому: пришли деньги — «Занести оплату», нет — «Напомнить»', correct: true, explain: 'Сводка показывает, что важно; разбираешь сверху вниз в «Оплатах».' },
+            { label: 'Пишу всем трём одно сообщение «оплатите, пожалуйста»', explain: 'Сначала проверь банк: кто-то мог уже заплатить. И у каждой своя сумма — «Напомнить» готовит её текст.' },
+            { label: 'Жду: в следующую субботу посмотрю снова', explain: 'Долг сам не исчезнет, а неделя пройдёт. Сводка — чтобы начать с главного.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'В сводке: <b>«✏️ Дозаполнить 2 заказа: не хватает цены или данных»</b>. Что делаешь?',
+          quiz: { options: [
+            { label: 'Впишу примерные данные, чтобы пункт ушёл', explain: 'Неверные данные хуже пустых: испортят отчёты и деньги.' },
+            { label: '«Задачи» → открыть заказ → «Следующий шаг»; данных не найти — «Пропустить с причиной»', correct: true, explain: 'Доска покажет оба заказа, «Следующий шаг» — какое поле заполнить.' },
+            { label: 'Ничего — это не про деньги', explain: 'Без цены и курса не посчитать, сколько клиентка должна. Это тоже деньги.' }
+          ] }
+        }
+      ]
     }
   };
+
+  /**
+   * Сводка недели поверх экрана (урок «Субботняя сводка»): учебный пример —
+   * те же клиентки и цифры, что в учебных «Задачах» и «Оплатах»; формат —
+   * как у weeklySummaryService.buildManagerText на сервере.
+   */
+  const SummaryMock = (() => {
+    const ID = 'training-summary-mock';
+    const ddmm = (d) => d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    function sample() {
+      const until = new Date();
+      const since = new Date(until.getTime() - 7 * 86400000);
+      const name = String(window.CURRENT_STAFF_NAME || '').replace(/\s*\d+\s*$/, '').trim();
+      return {
+        parts: [
+          ['head', `👋 ${name ? `${escapeHtmlClient(name)}, привет! ` : ''}<b>Итоги недели</b> · ${ddmm(since)}–${ddmm(until)}`],
+          ['week', 'За неделю: 3 новых заказа, 2 оплаты на 8 900 ₽, 4 заказа поехали дальше.'],
+          ['praise', '🌟 1 заказ дошёл до клиента — отлично!<br>🌟 Пройдено обучение: «Занести оплату».'],
+          ['tasks', '<b>Главное на следующую неделю:</b><br>1. 💰 Собрать оплату: 1 клиент должен 5 000 ₽. Дольше всех — @anya_uchebnaya: 4 дня.<br>2. ✏️ Дозаполнить 2 заказа: не хватает цены или данных.'],
+          ['training', '🎓 Обучение: пройдено 5 из 11 — дальше «Лот: несколько кукол одной покупкой» (~4 мин).']
+        ],
+        buttons: [{ text: '💰 Кто должен', route: 'payments' }, { text: '📋 Задачи', route: 'reminders' }]
+      };
+    }
+    function render({ parts, buttons, caption, kind }) {
+      hide();
+      const el = document.createElement('div');
+      el.id = ID;
+      el.dataset.kind = kind;
+      el.className = 'fixed inset-x-0 top-0 z-[80] flex justify-center px-3 pointer-events-none';
+      el.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 64px)';
+      // Фон «чата Telegram» — сводка не сливается с экраном под ней.
+      el.innerHTML = `
+        <div class="w-full max-w-sm bg-sky-100 rounded-3xl p-2.5 shadow-2xl pointer-events-auto">
+          <div class="text-center mb-1.5"><span class="inline-block px-2.5 py-0.5 rounded-full bg-sky-900/70 text-white text-[11px]">${caption}</span></div>
+          <div class="bg-white rounded-2xl rounded-bl-md shadow p-3 text-[13px] leading-snug text-gray-800 space-y-2 max-h-[46vh] overflow-y-auto">
+            ${parts.map(([key, html]) => `<div data-part="${key}">${html}</div>`).join('')}
+          </div>
+          <div data-part="buttons" class="grid grid-cols-2 gap-1.5 mt-1.5">
+            ${buttons.map((b) => `<button type="button" data-route="${escapeHtmlClient(b.route)}" class="py-2 rounded-xl bg-white/95 text-indigo-700 text-[13px] font-medium shadow">${escapeHtmlClient(b.text)}</button>`).join('')}
+          </div>
+        </div>`;
+      el.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => { hide(); navigateTo(b.dataset.route); }));
+      document.body.appendChild(el);
+    }
+    function hide() { const el = document.getElementById(ID); if (el) el.remove(); }
+    return {
+      showSample() { if (!document.getElementById(ID)) render({ ...sample(), kind: 'sample', caption: '📱 Так сводка приходит в Telegram (учебный пример)' }); },
+      hide,
+      kind() { const el = document.getElementById(ID); return el ? el.dataset.kind : ''; },
+      async showMine() {
+        let r;
+        try {
+          r = await callServer('getMyWeeklySummaryPreview');
+        } catch (error) {
+          r = { text: `Не получилось собрать сводку: ${escapeHtmlClient(error.message || 'ошибка')}. В субботу она всё равно придёт.`, buttons: [] };
+        }
+        const parts = String(r.text || '').split('\n\n').map((block, i) => [`mine-${i}`, block.split('\n').join('<br>')]);
+        render({ parts, buttons: r.buttons || [], kind: 'mine', caption: '📱 Твоя сводка, если бы суббота была сегодня' });
+      }
+    };
+  })();
 })();
