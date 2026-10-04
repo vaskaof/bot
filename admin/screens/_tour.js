@@ -509,9 +509,22 @@
     }
   }, true);
 
+  /**
+   * Учебный пример (_training-sandbox.js): на время урока экраны показывают
+   * учебных клиенток и заказы вместо настоящих. Экран, открытый в момент
+   * старта, перерисовывается — иначе на нём остались бы настоящие данные.
+   * `sandbox: false` у сценария — урок на настоящих данных.
+   */
+  function enterSandbox(scenario) {
+    if (scenario.sandbox === false || !window.TrainingSandbox) return;
+    window.TrainingSandbox.activate();
+    if (currentScreen() !== 'training') window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }
+
   function teardown() {
     stopLoop();
     stopTyping();
+    if (window.TrainingSandbox) window.TrainingSandbox.deactivate();
     stepToken++;
     if (layer) { layer.remove(); layer = null; }
     writeState(null);
@@ -551,6 +564,7 @@
     if (active) teardown();
     skippedGroups = new Set();
     active = { scenario, index: 0, history: [], seen: new Set() };
+    enterSandbox(scenario);
     track('start', 0);
     showStep();
   }
@@ -563,6 +577,7 @@
     if (!scenario) { writeState(null); return; }
     skippedGroups = new Set();
     active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1), history: [], seen: new Set() };
+    enterSandbox(scenario);
     showStep();
   }
 
