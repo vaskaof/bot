@@ -717,7 +717,7 @@ window.Screens.orderEdit = {
       </main>
 
       <!-- Телефон (30.09.2026): «Сохранить» всегда под рукой внизу — та же кнопка шапки. -->
-      <div class="sm:hidden fixed bottom-0 inset-x-0 z-30 px-4 pb-4 pt-3 bg-gradient-to-t from-[#f3f4f9] via-[#f3f4f9] to-transparent">
+      <div data-bottom-bar class="sm:hidden fixed bottom-0 inset-x-0 z-30 px-4 pb-4 pt-3 bg-gradient-to-t from-[#f3f4f9] via-[#f3f4f9] to-transparent">
         <button type="button" id="save-order-sticky-btn" class="w-full py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold shadow-md">Сохранить</button>
       </div>
 

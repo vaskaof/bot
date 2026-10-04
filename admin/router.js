@@ -494,5 +494,7 @@ function startAdminRouter() {
     if (window.Tour) window.Tour.resume();
     // «Что нового» (этап 2, блок Б) — лист непросмотренного при входе.
     if (window.TrainingUI) window.TrainingUI.checkWhatsNew();
+    // Помощник (этап 3) — круглая кнопка внизу справа.
+    if (window.Assistant) window.Assistant.start();
   });
 }

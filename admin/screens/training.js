@@ -10,6 +10,10 @@
  * что собрал код: ошибка, заказ, последние действия), вкладка «Ошибки» —
  * что менеджеры видели за 14 дней (ответы сервера и проверки форм) и есть ли
  * на это подсказка (_error-hints.js).
+ * Этап 3 (04.10.2026): вкладка «Помощник» — журнал разговоров менеджеров с
+ * ИИ-помощником (что спросили, что собрал код, что ответил ИИ, помогло ли);
+ * категорию предлагает ИИ, утверждает VASY; «Ответить» — VASY продолжает
+ * разговор сам (сообщение автору в Telegram). Сервер — assistantService.js.
  * Сервер — `server/src/training/trainingService.js`.
  */
 window.Screens = window.Screens || {};
@@ -180,6 +184,62 @@ window.Screens = window.Screens || {};
           </div>`).join('')}</div>`).join('')}`;
   }
 
+  const ASSIST_STATUS = { open: ['без оценки', 'bg-gray-100 text-gray-600'], helped: ['помогло', 'bg-emerald-50 text-emerald-700'], not_helped: ['не помогло', 'bg-red-50 text-red-600'] };
+  const needsLook = (s) => !s.adminReviewedAt && (s.status === 'not_helped' || !!s.handoff);
+
+  function assistantBubble(m) {
+    const who = { manager: 'Менеджер', assistant: '🤖 ИИ', admin: 'VASY', system: 'Система' }[m.role] || m.role;
+    const a = m.role === 'assistant' && m.data && m.data.answer;
+    const body = a
+      ? `${a.answer ? esc(a.answer) : ''}${a.clarify ? `<div class="text-indigo-700">❓ ${esc(a.clarify)}</div>` : ''}${a.steps && a.steps.length ? `<ol class="list-decimal pl-5 text-[12px]">${a.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}${a.scenarioId ? `<div class="text-[11px] text-gray-400">сценарий: ${esc(a.scenarioId)}</div>` : ''}`
+      : esc(m.text);
+    const cls = m.role === 'manager' ? 'bg-indigo-50' : m.role === 'admin' ? 'bg-emerald-50' : m.role === 'system' ? 'bg-amber-50' : 'bg-gray-50';
+    return `<div class="rounded-lg ${cls} px-2 py-1.5 text-[13px] text-gray-800 whitespace-pre-wrap break-words"><span class="text-[11px] font-semibold text-gray-500">${who}${m.tokens ? ` · ${m.tokens} ток.` : ''}</span><br>${body}</div>`;
+  }
+
+  function assistantBlock(log, filter) {
+    const list = filter === 'look' ? log.sessions.filter(needsLook) : log.sessions;
+    const lookCount = log.sessions.filter(needsLook).length;
+    const t = log.totals;
+    const money = (v) => `$${(v || 0).toFixed(3)}`;
+    return `
+      <div class="text-[12px] text-gray-500 px-1 mb-2">Сегодня: ${t.today.count} · ${money(t.today.costUsd)} · за 7 дней: ${t.week.count} · ${money(t.week.costUsd)} (${Math.round(t.week.tokens / 1000)} тыс. токенов)</div>
+      <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-3">
+        <button type="button" data-as-filter="look" class="flex-1 py-1.5 rounded-lg text-sm font-medium ${filter === 'look' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}">Требуют внимания (${lookCount})</button>
+        <button type="button" data-as-filter="all" class="flex-1 py-1.5 rounded-lg text-sm font-medium ${filter === 'all' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}">Все (${log.sessions.length})</button>
+      </div>
+      ${list.length ? `<div class="space-y-2">${list.map((s) => {
+        const [label, chip] = ASSIST_STATUS[s.status] || ASSIST_STATUS.open;
+        const order = s.snapshot && s.snapshot['открытый заказ'] && s.snapshot['открытый заказ'].orderId;
+        return `
+        <div class="bg-white rounded-2xl border border-gray-100 p-3" data-assist="${s.id}">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[12px] text-gray-500">${esc(s.authorName)} · ${day(s.createdAt)} ${time(s.createdAt)}${s.screen ? ` · ${esc(s.screen)}` : ''}</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0 ${chip}">${label}</span>
+          </div>
+          ${s.handoff ? `<div class="mt-1 text-[11px] inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-800">передано тебе: ${esc(log.handoffLabels[s.handoff] || s.handoff)}</div>` : ''}
+          ${s.summary ? `<div class="text-[12px] text-gray-500 mt-1">Итог ИИ: ${esc(s.summary)}</div>` : ''}
+          <div class="mt-2 space-y-1">${s.messages.map(assistantBubble).join('')}</div>
+          <div class="flex flex-wrap items-center gap-2 mt-2 text-[12px]">
+            <select data-as-category class="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-[12px]">
+              ${Object.entries(log.categories).map(([k, v]) => `<option value="${k}" ${(s.adminCategory || s.aiCategory) === k ? 'selected' : ''}>${esc(v)}${!s.adminCategory && s.aiCategory === k ? ' (ИИ)' : ''}</option>`).join('')}
+            </select>
+            ${s.adminCategory ? '<span class="text-emerald-600">✓ подтверждено</span>' : '<button type="button" data-as-confirm class="px-2 py-1 rounded-lg border border-gray-200 text-gray-700">Подтвердить</button>'}
+            <span class="text-gray-400 ml-auto">${s.modelCalls} отв. · ${money(s.costUsd)}</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            <button type="button" data-as-reply class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-indigo-700">Ответить</button>
+            ${s.hasScreenshot ? '<button type="button" data-as-shot class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-gray-700">📎 Скриншот</button>' : ''}
+            ${order ? `<button type="button" data-open-order="${esc(order)}" class="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] text-gray-700">Заказ ${esc(order)}</button>` : ''}
+          </div>
+          <details class="mt-1.5"><summary class="text-[11px] text-gray-400 cursor-pointer">Что собрал код (снимок)</summary>
+            <pre class="mt-1 text-[10px] text-gray-600 bg-gray-50 rounded-lg p-2 whitespace-pre-wrap break-words max-h-64 overflow-y-auto">${esc(JSON.stringify(s.snapshot, null, 1))}</pre>
+          </details>
+        </div>`;
+      }).join('')}</div>`
+        : `<div class="text-center text-sm text-gray-400 py-8">${filter === 'look' ? 'Всё разобрано 🎉' : 'Вопросов помощнику пока не было'}</div>`}`;
+  }
+
   function feedbackBlock(o, filter) {
     const list = filter === 'new' ? o.feedback.filter((f) => f.status === 'new') : o.feedback;
     const newCount = o.feedback.filter((f) => f.status === 'new').length;
@@ -216,17 +276,20 @@ window.Screens = window.Screens || {};
       document.getElementById('back-btn').addEventListener('click', () => navigateBack('more'));
 
       const isAdmin = window.CURRENT_ACCESS_ROLE === 'admin';
-      let tab = isAdmin && params && ['feedback', 'team', 'errors'].includes(params.tab) ? params.tab : 'me';
+      let tab = isAdmin && params && ['feedback', 'team', 'errors', 'assistant'].includes(params.tab) ? params.tab : 'me';
       let fbFilter = 'new';
+      let asFilter = 'look';
       let overview = null;
+      let assistantLog = null;
 
       root.innerHTML = `
         <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto">
           ${isAdmin ? `<div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-3" id="training-tabs">
-            <button type="button" data-tab="me" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Моё</button>
-            <button type="button" data-tab="team" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Команда</button>
-            <button type="button" data-tab="feedback" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Отзывы</button>
-            <button type="button" data-tab="errors" class="flex-1 py-1.5 rounded-lg text-sm font-medium">Ошибки</button>
+            <button type="button" data-tab="me" class="flex-1 py-1.5 px-0.5 rounded-lg text-[13px] font-medium">Моё</button>
+            <button type="button" data-tab="team" class="flex-1 py-1.5 px-0.5 rounded-lg text-[13px] font-medium">Команда</button>
+            <button type="button" data-tab="feedback" class="flex-1 py-1.5 px-0.5 rounded-lg text-[13px] font-medium">Отзывы</button>
+            <button type="button" data-tab="errors" class="flex-1 py-1.5 px-0.5 rounded-lg text-[13px] font-medium">Ошибки</button>
+            <button type="button" data-tab="assistant" class="flex-1 py-1.5 px-0.5 rounded-lg text-[13px] font-medium">Помощник</button>
           </div>` : ''}
           <div id="training-body"><div class="text-center text-sm text-gray-400 py-10">Загрузка…</div></div>
         </main>`;
@@ -298,10 +361,60 @@ window.Screens = window.Screens || {};
         });
       }
 
+      async function loadAssistant(force) {
+        try {
+          if (!assistantLog || force) assistantLog = await callServer('getAssistantLog');
+          if (tab === 'assistant') paintAssistant();
+        } catch (error) {
+          body.innerHTML = `<div class="text-center text-sm text-red-500 py-10">${esc(error.message)}</div>`;
+        }
+      }
+
+      function paintAssistant() {
+        body.innerHTML = assistantBlock(assistantLog, asFilter);
+        body.querySelectorAll('[data-as-filter]').forEach((b) => b.addEventListener('click', () => { asFilter = b.dataset.asFilter; paintAssistant(); }));
+        body.querySelectorAll('[data-open-order]').forEach((b) => b.addEventListener('click', () => navigateTo(`orders/${encodeURIComponent(b.dataset.openOrder)}/edit`)));
+        body.querySelectorAll('[data-assist]').forEach((card) => {
+          const id = Number(card.dataset.assist);
+          const item = assistantLog.sessions.find((x) => x.id === id);
+          const select = card.querySelector('[data-as-category]');
+          const saveCategory = async () => {
+            try {
+              const updated = await callServer('setAssistantCategory', id, select.value);
+              Object.assign(item, { adminCategory: updated.adminCategory, adminReviewedAt: updated.adminReviewedAt });
+              paintAssistant();
+            } catch (error) { showSaveToast(false, error.message); }
+          };
+          select.addEventListener('change', saveCategory);
+          const confirmBtn = card.querySelector('[data-as-confirm]');
+          if (confirmBtn) confirmBtn.addEventListener('click', saveCategory);
+          card.querySelector('[data-as-reply]').addEventListener('click', async () => {
+            const text = await showPromptModal('Ответ менеджеру (уйдёт в Telegram и в этот разговор)', { confirmLabel: 'Отправить' });
+            if (!text || !text.trim()) return;
+            try {
+              const r = await callServer('replyAssistantSession', id, text.trim());
+              showSaveToast(r.delivered, r.delivered ? 'Ответ отправлен.' : 'Сохранено, но Telegram не доставил сообщение.');
+              await loadAssistant(true);
+            } catch (error) { showSaveToast(false, error.message); }
+          });
+          const shotBtn = card.querySelector('[data-as-shot]');
+          if (shotBtn) shotBtn.addEventListener('click', async () => {
+            try {
+              const shot = await callServer('getAssistantScreenshot', id);
+              const w = document.createElement('div');
+              w.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[96] p-3';
+              w.innerHTML = `<img class="max-w-full max-h-full object-contain rounded-lg" src="data:${shot.mimeType};base64,${shot.data}" alt="">`;
+              w.addEventListener('click', () => w.remove());
+              document.body.appendChild(w);
+            } catch (error) { showSaveToast(false, error.message); }
+          });
+        });
+      }
+
       function show() {
         paintTabs();
         body.innerHTML = '<div class="text-center text-sm text-gray-400 py-10">Загрузка…</div>';
-        if (tab === 'me') loadMe(); else loadOverview(false);
+        if (tab === 'me') loadMe(); else if (tab === 'assistant') loadAssistant(false); else loadOverview(false);
       }
 
       document.querySelectorAll('#training-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; show(); }));
@@ -310,7 +423,7 @@ window.Screens = window.Screens || {};
       // Свайп между вкладками на телефоне (05.10.2026) — screens/_swipe-tabs.js.
       SwipeTabs.attach({
         area: root.querySelector('main'),
-        keys: () => ['me', 'team', 'feedback', 'errors'],
+        keys: () => ['me', 'team', 'feedback', 'errors', 'assistant'],
         getActive: () => tab,
         panelFor: (key) => body,
         activate: (key) => { const b = document.querySelector(`#training-tabs [data-tab="${key}"]`); if (b) b.click(); }

@@ -8,7 +8,8 @@
  * - отзыв после сценария: «Понятно?» / «Легко?» (😕🙂😃) + «Как бы ты
  *   переделал(а)?» — каждый отзыв сразу уходит VASY в Telegram;
  * - праздник новых достижений;
- * - «🆘 Сообщить о проблеме» (этап 2) — из «Помощи» и с тоста ошибки (_error-hints.js).
+ * - «🆘 Сообщить о проблеме» (этап 2) — из «Помощи» и с тоста ошибки (_error-hints.js);
+ * - «🤖 Спросить помощника» (этап 3) — _assistant.js.
  * Сервер — `server/src/training/trainingService.js`.
  */
 (function () {
@@ -53,6 +54,11 @@
           <div class="text-base font-semibold text-gray-900">Помощь</div>
           <button type="button" data-close class="p-1 text-gray-400"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
+        <button type="button" data-assistant class="w-full flex items-center gap-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-left mb-4">
+          <span class="text-xl">🤖</span>
+          <span class="min-w-0"><span class="block text-sm font-medium text-indigo-900">Спросить помощника</span>
+          <span class="block text-[11px] text-indigo-800">Ответит по этому экрану; не знает — передаст VASY</span></span>
+        </button>
         ${here.length ? `<div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Как это сделать — на этом экране</div>
           <div class="space-y-2 mb-4">${here.map(row).join('')}</div>` : ''}
         <button type="button" data-idea class="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-left mb-2">
@@ -73,6 +79,7 @@
       </div>`);
     el.querySelector('[data-close]').onclick = close;
     el.querySelectorAll('[data-start]').forEach((b) => { b.onclick = () => { close(); Tour.start(b.dataset.start); }; });
+    el.querySelector('[data-assistant]').onclick = () => { close(); if (window.Assistant) Assistant.open({}); };
     el.querySelector('[data-idea]').onclick = () => { close(); openIdea(); };
     el.querySelector('[data-problem]').onclick = () => { close(); openProblem({}); };
     el.querySelector('[data-course]').onclick = () => { close(); navigateTo('training'); };
@@ -381,5 +388,5 @@
     }
   }
 
-  window.TrainingUI = { openHelp, openIdea, openProblem, checkWhatsNew, whatsNewEntryHtml, wireWhatsNewShow, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
+  window.TrainingUI = { openHelp, openIdea, openProblem, problemContext, checkWhatsNew, whatsNewEntryHtml, wireWhatsNewShow, afterScenario, checkNewBadges, celebrate, wireHelpButton, renderHomeBanner };
 })();

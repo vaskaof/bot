@@ -175,6 +175,7 @@
           <div class="flex flex-wrap gap-1.5 mt-2">
             ${d.action ? btn('data-hint-action', d.action.label, 'bg-white border border-red-200 text-red-700') : ''}
             ${scenario ? btn('data-hint-scenario', 'Показать по шагам', 'bg-indigo-600 text-white') : ''}
+            ${window.Assistant ? btn('data-hint-assistant', '🤖 Спросить', 'bg-white border border-red-200 text-red-700') : ''}
             ${btn('data-hint-report', '🆘 Сообщить', 'bg-white border border-red-200 text-red-700')}
           </div>
         </div>
@@ -187,6 +188,8 @@
       close();
       if (window.TrainingUI) TrainingUI.openProblem({ error: raw, method, origin: fromServer ? 'server' : 'form' });
     };
+    const assistantBtn = inner.querySelector('[data-hint-assistant]');
+    if (assistantBtn) assistantBtn.onclick = () => { close(); Assistant.open({ error: raw, method, origin: fromServer ? 'server' : 'form' }); };
     const actionBtn = inner.querySelector('[data-hint-action]');
     if (actionBtn) actionBtn.onclick = () => { close(); navigateTo(d.action.route); };
     const scenarioBtn = inner.querySelector('[data-hint-scenario]');
