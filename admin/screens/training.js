@@ -240,6 +240,16 @@ window.Screens = window.Screens || {};
 
       document.querySelectorAll('#training-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; show(); }));
       show();
+      if (isAdmin) {
+      // Свайп между вкладками на телефоне (05.10.2026) — screens/_swipe-tabs.js.
+      SwipeTabs.attach({
+        area: root.querySelector('main'),
+        keys: () => ['me', 'team', 'feedback'],
+        getActive: () => tab,
+        panelFor: (key) => body,
+        activate: (key) => { const b = document.querySelector(`#training-tabs [data-tab="${key}"]`); if (b) b.click(); }
+      });
+      }
       if (window.lucide) window.lucide.createIcons();
     }
   };

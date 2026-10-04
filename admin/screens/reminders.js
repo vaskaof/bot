@@ -81,33 +81,36 @@ window.Screens.reminders = {
     // экран (md+) — все колонки рядом, лента тянется мышью и ползунком снизу,
     // колонки прокручиваются сами (05.10.2026, отзыв VASY). Стили — app.html.
     root.innerHTML = `
-      <main class="pt-16 pb-6 px-4 max-w-2xl md:max-w-none mx-auto">
-        <div class="md:max-w-3xl">
-          <div id="recommendations-block" class="hidden mb-4"></div>
+      <main class="pt-16 pb-6 md:pb-0 px-4 max-w-2xl md:max-w-none mx-auto">
+        <!-- Верх доски сжат (05.10.2026, VASY: «под задачи 60% экрана — мало»):
+             вкладки, фильтры и «Срочно» — одной строкой; на телефоне фильтры
+             под кнопкой, подсказка про индивидуальную отправку — одной строкой. -->
+        <div>
+          <details id="recommendations-block" class="hidden mb-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-1.5"></details>
 
-          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3" id="reminders-tabs">
-            <button type="button" data-tab="client" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Клиентские</button>
-            <button type="button" data-tab="own" class="reminders-tab flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors">Личные</button>
-          </div>
-
-          <div class="flex items-center gap-2 mb-3">
-            <div class="relative flex-1">
-              <input type="text" id="reminders-client-filter" placeholder="Фильтр по клиенту..." class="w-full text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-indigo-400">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 flex-1 md:flex-none md:w-80" id="reminders-tabs">
+              <button type="button" data-tab="client" class="reminders-tab flex-1 py-1 rounded-lg text-sm font-medium transition-colors">Клиентские</button>
+              <button type="button" data-tab="own" class="reminders-tab flex-1 py-1 rounded-lg text-sm font-medium transition-colors">Личные</button>
             </div>
-            <select id="reminders-channel-filter" class="text-sm bg-white border border-gray-200 rounded-xl px-2 py-2 outline-none focus:border-indigo-400">
-              <option value="">Все каналы</option>
-            </select>
+            <button type="button" id="tasks-filters-btn" class="md:hidden relative shrink-0 rounded-xl bg-white border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 inline-flex items-center gap-1" title="Фильтры">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4"></i><span id="tasks-filters-count"></span>
+            </button>
+            <div id="tasks-filters" class="hidden md:flex w-full md:w-auto md:flex-1 flex-wrap items-center gap-2 order-last md:order-none">
+              <input type="text" id="reminders-client-filter" placeholder="Фильтр по клиенту..." class="flex-1 min-w-[150px] text-sm bg-white border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-indigo-400">
+              <select id="reminders-channel-filter" class="text-sm bg-white border border-gray-200 rounded-xl px-2 py-1.5 outline-none focus:border-indigo-400">
+                <option value="">Все каналы</option>
+              </select>
+              <!-- §1.1 (19.09.2026) — сервер УЖЕ ограничил видимый набор ролью,
+                   дропдаун только сужает его на экране для admin/менеджера с
+                   can_view_all_clients. -->
+              <select id="reminders-manager-filter" class="hidden text-sm bg-white border border-gray-200 rounded-xl px-2 py-1.5 outline-none focus:border-indigo-400">
+                <option value="">Все менеджеры</option>
+              </select>
+            </div>
+            <div class="text-[11px] text-gray-400 shrink-0" id="reminders-count"></div>
           </div>
-
-          <!-- §1.1 (19.09.2026) — сервер УЖЕ ограничил видимый набор ролью,
-               дропдаун только сужает его на экране для admin/менеджера с
-               can_view_all_clients. -->
-          <select id="reminders-manager-filter" class="hidden w-full bg-white rounded-2xl shadow-sm border border-gray-100 px-3 py-2 mb-3 text-sm outline-none focus:border-indigo-400">
-            <option value="">Все менеджеры</option>
-          </select>
-
-          <div class="text-[11px] text-gray-400 px-1 mb-2" id="reminders-count"></div>
-          <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-2 mb-2 md:hidden" style="scrollbar-width: none"></div>
+          <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-1.5 mb-1.5 md:hidden" style="scrollbar-width: none"></div>
         </div>
         <div id="reminders-list" class="tasks-board"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Задач нет 🎉</div>
@@ -210,9 +213,25 @@ window.Screens.reminders = {
     });
     setActiveTab(activeTab);
 
-    clientFilterInput.addEventListener('input', () => render());
-    channelFilterSelect.addEventListener('change', () => render());
-    managerFilterSelect.addEventListener('change', () => render());
+    // Фильтры на телефоне — под кнопкой; на ней число включённых.
+    const filtersBtn = document.getElementById('tasks-filters-btn');
+    const filtersBox = document.getElementById('tasks-filters');
+    function paintFiltersCount() {
+      const n = [clientFilterInput.value.trim(), channelFilterSelect.value, managerFilterSelect.value].filter(Boolean).length;
+      document.getElementById('tasks-filters-count').textContent = n ? String(n) : '';
+      filtersBtn.classList.toggle('border-indigo-400', n > 0);
+      filtersBtn.classList.toggle('text-indigo-600', n > 0);
+    }
+    filtersBtn.addEventListener('click', () => {
+      filtersBox.classList.toggle('hidden');
+      filtersBox.classList.toggle('flex');
+      fitBoard();
+    });
+    if (clientFilterInput.value.trim()) { filtersBox.classList.remove('hidden'); filtersBox.classList.add('flex'); }
+    clientFilterInput.addEventListener('input', () => { paintFiltersCount(); render(); });
+    channelFilterSelect.addEventListener('change', () => { paintFiltersCount(); render(); });
+    managerFilterSelect.addEventListener('change', () => { paintFiltersCount(); render(); });
+    paintFiltersCount();
 
     loadReminders();
     loadRecommendations();
@@ -298,8 +317,8 @@ window.Screens.reminders = {
           return;
         }
         recommendationsBlock.innerHTML = `
-          <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-            <div class="text-sm font-semibold text-amber-800 mb-2">💡 Кандидаты на индивидуальную отправку</div>
+          <summary class="text-[12px] font-medium text-amber-800 cursor-pointer select-none">💡 Кандидаты на индивидуальную отправку: ${recs.length}</summary>
+          <div class="pt-1 pb-0.5">
             ${recs.map(r => `<div class="text-xs text-amber-700 py-0.5">${escapeHtmlClient(r.clientDisplay)} — ${r.count} посылок к посреднику КЗ</div>`).join('')}
           </div>
         `;
@@ -381,7 +400,7 @@ window.Screens.reminders = {
       fitBoard();
     }
 
-    const isWide = () => window.innerWidth >= 768;
+    function isWide() { return window.innerWidth >= 768; }
 
     function paintStageTabs() {
       stageTabsContainer.querySelectorAll('[data-stage-key]').forEach((tab) => {
@@ -405,7 +424,7 @@ window.Screens.reminders = {
     function fitBoard() {
       if (!isWide()) { listContainer.style.height = ''; return; }
       const top = listContainer.getBoundingClientRect().top + window.scrollY;
-      listContainer.style.height = Math.max(360, window.innerHeight - top - 12) + 'px';
+      listContainer.style.height = Math.max(360, window.innerHeight - top - 6) + 'px';
     }
     window.addEventListener('resize', () => { fitBoard(); if (!isWide()) jumpToStage(activeStageKey, false); }, signal ? { signal } : undefined);
 
@@ -489,7 +508,7 @@ window.Screens.reminders = {
       const total = stageTotals[col.stage.key];
       const n = col.active.length;
       el.innerHTML = `
-        <div class="board-col-head flex items-center gap-2 px-1 mb-2">
+        <div class="board-col-head hidden md:flex items-center gap-2 px-1 mb-2">
           <span class="text-xs md:text-[15px] font-semibold md:font-bold text-gray-600 md:text-gray-900 uppercase md:normal-case tracking-wide md:tracking-tight">${escapeHtmlClient(col.stage.label)}<span class="md:hidden"> · ${n}</span></span>
           <span class="hidden md:inline-block min-w-[22px] h-[22px] px-1.5 rounded-full text-[12px] font-bold leading-[22px] text-center ${n ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'}">${n}</span>
           ${total ? `<span class="ml-auto text-[11px] text-gray-400">всего заказов: ${total}</span>` : ''}
@@ -628,12 +647,22 @@ window.Screens.reminders = {
         ? `<span class="text-[11px] text-violet-600 font-medium ml-1">· ${escapeHtmlClient(card.stage.label)}</span>`
         : '';
 
+      // «Ждёт N дн» (05.10.2026, демо кабинета) — от самого старого пункта
+      // задачи; цвет — тот же порог, что у рамки карточки (1 и 3 дня).
+      const waitDays = card.oldestSinceMs ? Math.floor((Date.now() - card.oldestSinceMs) / 86400000) : null;
+      const waitBadge = waitDays === null ? ''
+        : `<span class="text-[11px] font-medium ${waitDays >= 3 ? 'text-red-600' : waitDays >= 1 ? 'text-amber-600' : 'text-gray-400'}">${waitDays === 0 ? 'сегодня' : `ждёт ${waitDays} дн`}</span>`;
       el.innerHTML = `
         <div class="flex items-start justify-between gap-2 cursor-pointer" data-open>
-          <div class="min-w-0">
-            ${positionLabel}${stageLabel}
+          ${card.imageUrl ? `<img src="${escapeHtmlClient(card.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1 flex-wrap">${positionLabel}${stageLabel}</div>
             <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(card.productDisplay)}</div>
-            <div class="text-[13px] text-gray-500 mt-0.5">${escapeHtmlClient(card.clientDisplay || 'Клиент не привязан')}</div>
+            <div class="text-[13px] text-gray-500 mt-0.5 truncate">${escapeHtmlClient(card.clientDisplay || 'Клиент не привязан')}</div>
+            <div class="flex items-center gap-1.5 flex-wrap mt-1">
+              ${card.purchaseChannel ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-pink-50 text-pink-700">${escapeHtmlClient(card.purchaseChannel)}</span>` : ''}
+              ${waitBadge}
+            </div>
           </div>
           ${card.debtRub > 0 ? `<div class="shrink-0 text-sm font-semibold text-red-600">${card.debtRub.toFixed(2)} ₽</div>` : ''}
         </div>

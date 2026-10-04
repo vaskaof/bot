@@ -41,6 +41,23 @@ window.Screens.catalog = {
             placeholder="Поиск по каталогу..." autocomplete="off">
         </div>
 
+        <!-- Сортировка, фильтр и бренды (05.10.2026, демо кабинета). -->
+        <div class="flex flex-wrap gap-2 mb-2">
+          <select id="catalog-sort" class="rounded-xl bg-white border border-gray-100 shadow-sm px-3 py-2 text-[13px] outline-none">
+            <option value="name">По названию</option>
+            <option value="new">Сначала новые</option>
+            <option value="orders">По числу заказов</option>
+            <option value="line">По серии</option>
+          </select>
+          <select id="catalog-only" class="rounded-xl bg-white border border-gray-100 shadow-sm px-3 py-2 text-[13px] outline-none">
+            <option value="">Все позиции</option>
+            <option value="nophoto">Без фото</option>
+            <option value="noline">Без серии</option>
+            <option value="noorders">Без заказов</option>
+          </select>
+        </div>
+        <div id="catalog-brands" class="flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-1 mb-2" style="scrollbar-width: none"></div>
+
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="catalog-count"></div>
 
         <div id="catalog-list" class="wide-grid"></div>
@@ -123,8 +140,41 @@ window.Screens.catalog = {
     const handleSearch = debounce(() => render(), 250);
     searchInput.addEventListener('input', handleSearch);
 
+    // Сортировка/фильтр/бренд (05.10.2026) — переживают уход в позицию и
+    // возврат в рамках сессии (тот же приём, что ordersListState).
+    const catState = window.__catalogListState || (window.__catalogListState = { sort: 'name', only: '', brand: '' });
+    const sortSelect = document.getElementById('catalog-sort');
+    const onlySelect = document.getElementById('catalog-only');
+    const brandsEl = document.getElementById('catalog-brands');
+    sortSelect.value = catState.sort;
+    onlySelect.value = catState.only;
+    sortSelect.addEventListener('change', () => { catState.sort = sortSelect.value; render(); });
+    onlySelect.addEventListener('change', () => { catState.only = onlySelect.value; render(); });
+    brandsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-brand]');
+      if (!btn) return;
+      catState.brand = btn.dataset.brand;
+      render();
+    });
+    // Серия позиции — путь ветки «Линеек» (тот же справочник, что в карточке).
+    let linePathById = new Map();
+    callServer('getCatalogLinesTree').then((tree) => {
+      linePathById = new Map(LinesUtil.ordered((tree && tree.lines) || []).map((l) => [l.id, l.path]));
+      if (allSku.length) render();
+    }).catch(() => { /* без серий — просто без подписи */ });
+
+    function renderBrands() {
+      const counts = new Map();
+      allSku.forEach((s) => { if (s.brand && s.brand !== s.original) counts.set(s.brand, (counts.get(s.brand) || 0) + 1); });
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+      if (catState.brand && !counts.has(catState.brand)) catState.brand = '';
+      const chip = (value, label, n) => `<button type="button" data-brand="${escapeHtmlClient(value)}" class="shrink-0 px-3 py-1.5 rounded-full text-[12px] border ${catState.brand === value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600'}">${escapeHtmlClient(label)} <span class="${catState.brand === value ? 'text-indigo-200' : 'text-gray-400'}">${n}</span></button>`;
+      brandsEl.innerHTML = chip('', 'Все бренды', allSku.length) + top.map(([b, n]) => chip(b, b, n)).join('');
+    }
+
     function render() {
       const query = searchInput.value.trim().toLowerCase();
+      renderBrands();
 
       let filtered = allSku;
       if (query !== '') {
@@ -133,6 +183,20 @@ window.Screens.catalog = {
           return haystack.includes(query);
         });
       }
+      if (catState.brand) filtered = filtered.filter((s) => s.brand === catState.brand);
+      if (catState.only === 'nophoto') filtered = filtered.filter((s) => !s.imageUrl);
+      if (catState.only === 'noline') filtered = filtered.filter((s) => !s.lineId);
+      if (catState.only === 'noorders') filtered = filtered.filter((s) => s.orderCount === 0);
+      // allSku приходит от новых к старым — «Сначала новые» = исходный порядок.
+      const indexOf = new Map(allSku.map((s, i) => [s, i]));
+      const byName = (a, b) => (a.shortName || a.original).localeCompare(b.shortName || b.original, 'ru');
+      const sorters = {
+        name: byName,
+        new: (a, b) => indexOf.get(a) - indexOf.get(b),
+        orders: (a, b) => (b.orderCount || 0) - (a.orderCount || 0) || byName(a, b),
+        line: (a, b) => (linePathById.get(a.lineId) || '\uffff').localeCompare(linePathById.get(b.lineId) || '\uffff', 'ru') || byName(a, b)
+      };
+      filtered = filtered.slice().sort(sorters[catState.sort] || byName);
 
       countLabel.textContent = `Найдено: ${filtered.length}`;
       listContainer.innerHTML = '';
@@ -143,6 +207,11 @@ window.Screens.catalog = {
         emptyMessage.classList.add('hidden');
         filtered.forEach(s => listContainer.appendChild(buildCard(s)));
       }
+    }
+
+    function pluralRu(n, one, few, many) {
+      const m10 = n % 10, m100 = n % 100;
+      return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? few : many;
     }
 
     function buildCard(s) {
@@ -159,6 +228,7 @@ window.Screens.catalog = {
             <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.shortName || s.original)}</div>
             ${s.shortName && s.shortName !== s.original ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(s.original)}</div>` : ''}
             ${tags.length > 0 ? `<div class="flex flex-wrap gap-1.5 mt-2">${tags.map(t => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(t)}</span>`).join('')}</div>` : ''}
+            <div class="text-[11px] text-gray-400 mt-1.5">${s.lineId && linePathById.has(s.lineId) ? escapeHtmlClient(linePathById.get(s.lineId)) : (s.lineId ? '' : '<span class="text-amber-600">без серии</span>')}${s.orderCount === null || s.orderCount === undefined ? '' : `${s.lineId && !linePathById.has(s.lineId) ? '' : ' · '}${s.orderCount} ${pluralRu(s.orderCount, 'заказ', 'заказа', 'заказов')}`}</div>
           </div>
         </div>
       `;

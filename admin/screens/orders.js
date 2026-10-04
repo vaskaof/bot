@@ -27,7 +27,32 @@ window.Screens = window.Screens || {};
 // только "туда-обратно" внутри одного захода в приложение). Режим "Выбрать"
 // НЕ входит сюда намеренно — сбрасывается при каждом новом заходе на экран
 // (см. render() ниже), выбор заказов не должен переживать уход и возврат.
-const ordersListState = { query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0, managerFilter: '' };
+const ordersListState = {
+  query: '', sortFieldValue: 'dateOrderSort', sortDirection: 'desc', displayCount: 50, scrollY: 0, managerFilter: '',
+  // 05.10.2026 (демо кабинета): плитки стадий и панель фильтров.
+  stage: '', channel: '', statusDelivery: '', statusOrder: '', dueOnly: false, notInCatalog: false, filtersOpen: false
+};
+
+// Плитки стадий над списком — те же стадии, что колонки «Задач»
+// (server/src/orders/orderStage.js); «Получено» — отдельно, последняя
+// ступень лестницы (12), чтобы закрытые не раздували «Выдачу».
+const ORDER_STAGE_TILES = [
+  { key: 'e2', label: 'Просчёт', dot: 'bg-sky-500' },
+  { key: 'e3', label: 'Выкуп', dot: 'bg-indigo-500' },
+  { key: 'e4', label: 'До КЗ', dot: 'bg-cyan-500' },
+  { key: 'e5', label: 'Склад КЗ', dot: 'bg-orange-500' },
+  { key: 'e6', label: 'Доставка в РФ', dot: 'bg-violet-500' },
+  { key: 'e7', label: 'Выдача', dot: 'bg-emerald-500' },
+  { key: 'done', label: 'Получено', dot: 'bg-gray-400' }
+];
+const ORDER_DELIVERY_LAST_STEP = 12;
+function orderStageKey(o) {
+  if (o.deliveryLadder && o.deliveryLadder.position === ORDER_DELIVERY_LAST_STEP) return 'done';
+  return o.stage ? o.stage.key : '';
+}
+function rubShort(n) {
+  return Math.round(n || 0).toLocaleString('ru-RU') + ' ₽';
+}
 
 window.Screens.orders = {
   render(root, dictionaries, params, signal) {
@@ -99,6 +124,10 @@ window.Screens.orders = {
           </button>
         </div>
 
+        <!-- Плитки стадий (05.10.2026, демо кабинета): сколько заказов на каждой
+             стадии, нажатие — фильтр. Лента листается вбок на телефоне. -->
+        <div id="stage-tiles" class="flex gap-2 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-1 mb-3" style="scrollbar-width: none"></div>
+
         <!-- Широкий экран (04.10.2026): поиск, сортировка и фильтр менеджера — одной строкой. -->
         <div class="md:flex md:gap-3 md:items-start">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 md:flex-1 md:min-w-0">
@@ -106,7 +135,8 @@ window.Screens.orders = {
           <input type="text" id="order-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск по заказам..." autocomplete="off">
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 md:w-80 md:shrink-0">
+        <div class="flex gap-2 md:contents">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 flex-1 min-w-0 md:flex-none md:w-80 md:shrink-0">
           <select id="sort-field" class="flex-1 bg-transparent border-none outline-none text-[14px] cursor-pointer">
             <option value="dateOrderSort">Дата выкупа</option>
             <option value="productDisplay">Выпуск</option>
@@ -114,20 +144,39 @@ window.Screens.orders = {
             <option value="statusDelivery">Статус доставки</option>
             <option value="purchaseChannel">Канал выкупа</option>
             <option value="clientDisplay">Клиент</option>
+            <option value="stage">Стадия</option>
+            <option value="dueNow">Сколько ждём оплаты</option>
           </select>
           <button id="sort-direction" title="Сменить направление сортировки" class="p-1.5 text-indigo-600 flex items-center gap-1 shrink-0">
             <i data-lucide="arrow-down-wide-narrow" class="w-4 h-4"></i>
-            <span class="text-[11px] font-medium">По убыванию</span>
+            <span class="hidden sm:inline text-[11px] font-medium">По убыванию</span>
           </button>
         </div>
-
-        <!-- Фаза 2 (roles/RBAC, M2.6) — только для admin, менеджер видит
-             только свои заказы жёстко, без выбора (см. render()). -->
-        <select id="manager-filter-select" class="hidden w-full md:w-56 md:shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 text-[14px] outline-none focus:border-indigo-400">
-          <option value="">Все менеджеры</option>
-        </select>
+        <!-- Фильтры (05.10.2026, демо кабинета) — кнопка в той же строке, панель ниже. -->
+        <button type="button" id="orders-filters-btn" class="shrink-0 inline-flex items-center gap-1.5 rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 mb-3 text-[13px] text-gray-600">
+          <i data-lucide="sliders-horizontal" class="w-4 h-4"></i><span id="orders-filters-label">Фильтры</span>
+        </button>
+        </div>
         </div>
         <div id="mine-only-badge" class="hidden text-[11px] text-gray-400 px-1 mb-2">Показаны только ваши заказы</div>
+
+        <div id="orders-filters-panel" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <!-- Фаза 2 (roles/RBAC, M2.6) — только для admin / can_view_all_clients,
+               менеджер видит только свои заказы жёстко, без выбора. -->
+          <label class="text-[11px] text-gray-500">Менеджер
+            <select id="manager-filter-select" class="hidden mt-0.5 w-full bg-gray-50 rounded-lg px-2 py-2 text-[14px] text-gray-800 outline-none">
+              <option value="">Все менеджеры</option>
+            </select></label>
+          <label class="text-[11px] text-gray-500">Канал выкупа
+            <select id="of-channel" class="mt-0.5 w-full bg-gray-50 rounded-lg px-2 py-2 text-[14px] text-gray-800 outline-none"><option value="">Все</option></select></label>
+          <label class="text-[11px] text-gray-500">Статус доставки
+            <select id="of-delivery" class="mt-0.5 w-full bg-gray-50 rounded-lg px-2 py-2 text-[14px] text-gray-800 outline-none"><option value="">Все</option></select></label>
+          <label class="text-[11px] text-gray-500">Статус заказа
+            <select id="of-status" class="mt-0.5 w-full bg-gray-50 rounded-lg px-2 py-2 text-[14px] text-gray-800 outline-none"><option value="">Все</option></select></label>
+          <label class="flex items-center gap-2 text-[13px] text-gray-700"><input type="checkbox" id="of-due" class="w-4 h-4 accent-indigo-600"> Только где ждём оплату сейчас</label>
+          <label class="flex items-center gap-2 text-[13px] text-gray-700"><input type="checkbox" id="of-notcat" class="w-4 h-4 accent-indigo-600"> Только «не в каталоге»</label>
+          <button type="button" id="orders-filters-reset" class="hidden text-left text-[13px] text-indigo-600">Сбросить фильтры</button>
+        </div>
 
         <div class="text-[11px] text-gray-400 px-1 mb-2" id="orders-count"></div>
 
@@ -238,7 +287,7 @@ window.Screens.orders = {
       const isDesc = sortDirection === 'desc';
       sortDirBtn.innerHTML = `
         <i data-lucide="${isDesc ? 'arrow-down-wide-narrow' : 'arrow-up-narrow-wide'}" class="w-4 h-4"></i>
-        <span class="text-[11px] font-medium">${isDesc ? 'По убыванию' : 'По возрастанию'}</span>
+        <span class="hidden sm:inline text-[11px] font-medium">${isDesc ? 'По убыванию' : 'По возрастанию'}</span>
       `;
       if (window.lucide) window.lucide.createIcons();
     }
@@ -287,13 +336,100 @@ window.Screens.orders = {
     }
     managerFilterSelect.addEventListener('change', () => { managerFilter = managerFilterSelect.value; render(); });
 
+    // --- Плитки стадий и фильтры (05.10.2026) ---
+    const stageTilesEl = document.getElementById('stage-tiles');
+    const filtersBtn = document.getElementById('orders-filters-btn');
+    const filtersLabel = document.getElementById('orders-filters-label');
+    const filtersReset = document.getElementById('orders-filters-reset');
+    const filtersPanel = document.getElementById('orders-filters-panel');
+    const ofChannel = document.getElementById('of-channel');
+    const ofDelivery = document.getElementById('of-delivery');
+    const ofStatus = document.getElementById('of-status');
+    const ofDue = document.getElementById('of-due');
+    const ofNotCat = document.getElementById('of-notcat');
+    const flt = ordersListState;
+    // «Следующий шаг» в карточке — первый пункт задачи заказа с доски «Задачи».
+    let nextStepByOrder = new Map();
+
+    function fillSelect(select, values, current) {
+      const opts = ['<option value="">Все</option>'].concat(values.map((v) => `<option value="${escapeHtmlClient(v)}">${escapeHtmlClient(v)}</option>`));
+      select.innerHTML = opts.join('');
+      select.value = values.includes(current) ? current : '';
+    }
+    function refreshFilterOptions() {
+      const uniq = (key) => [...new Set(allOrders.map((o) => o[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+      fillSelect(ofChannel, uniq('purchaseChannel'), flt.channel);
+      const ladderOrder = new Map();
+      allOrders.forEach((o) => { if (o.statusDelivery && o.deliveryLadder) ladderOrder.set(o.statusDelivery, o.deliveryLadder.position); });
+      const deliveries = uniq('statusDelivery').sort((a, b) => (ladderOrder.get(a) || 99) - (ladderOrder.get(b) || 99));
+      fillSelect(ofDelivery, deliveries, flt.statusDelivery);
+      fillSelect(ofStatus, uniq('statusOrder'), flt.statusOrder);
+      ofDue.checked = flt.dueOnly;
+      ofNotCat.checked = flt.notInCatalog;
+    }
+    function activeFiltersCount() {
+      return [flt.channel, flt.statusDelivery, flt.statusOrder, flt.dueOnly, flt.notInCatalog].filter(Boolean).length;
+    }
+    function paintFiltersButton() {
+      const mgrLabel = managerFilterSelect.closest('label');
+      if (mgrLabel) mgrLabel.classList.toggle('hidden', managerFilterSelect.classList.contains('hidden'));
+      const n = activeFiltersCount() + (canSeeAll && managerFilter ? 1 : 0);
+      filtersLabel.textContent = n ? `Фильтры (${n})` : 'Фильтры';
+      filtersBtn.classList.toggle('border-indigo-400', n > 0);
+      filtersBtn.classList.toggle('text-indigo-600', n > 0);
+      filtersReset.classList.toggle('hidden', n === 0);
+      filtersPanel.classList.toggle('hidden', !flt.filtersOpen);
+    }
+    function renderStageTiles(base) {
+      const counts = new Map();
+      base.forEach((o) => { const k = orderStageKey(o); counts.set(k, (counts.get(k) || 0) + 1); });
+      const tile = (key, label, dot, n) => `<button type="button" data-stage-tile="${key}" class="shrink-0 rounded-2xl bg-white border ${flt.stage === key ? 'border-indigo-600 ring-1 ring-indigo-200' : 'border-gray-100'} shadow-sm px-3 py-2 text-left min-w-[84px]">
+          <div class="text-[11px] text-gray-500 flex items-center gap-1 whitespace-nowrap">${dot ? `<span class="w-2 h-2 rounded-full ${dot}"></span>` : ''}${label}</div>
+          <div class="text-lg font-semibold text-gray-900 tabular-nums">${n}</div></button>`;
+      stageTilesEl.innerHTML = tile('', 'Все', '', base.length) + ORDER_STAGE_TILES.map((t) => tile(t.key, t.label, t.dot, counts.get(t.key) || 0)).join('');
+    }
+    stageTilesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-stage-tile]');
+      if (!btn) return;
+      flt.stage = flt.stage === btn.dataset.stageTile ? '' : btn.dataset.stageTile;
+      displayCount = PAGE_SIZE;
+      render();
+    });
+    filtersBtn.addEventListener('click', () => { flt.filtersOpen = !flt.filtersOpen; paintFiltersButton(); });
+    filtersReset.addEventListener('click', () => {
+      Object.assign(flt, { channel: '', statusDelivery: '', statusOrder: '', dueOnly: false, notInCatalog: false });
+      if (canSeeAll) { managerFilter = ''; managerFilterSelect.value = ''; }
+      refreshFilterOptions();
+      displayCount = PAGE_SIZE;
+      render();
+    });
+    [[ofChannel, 'channel'], [ofDelivery, 'statusDelivery'], [ofStatus, 'statusOrder']].forEach(([el, key]) => {
+      el.addEventListener('change', () => { flt[key] = el.value; displayCount = PAGE_SIZE; render(); });
+    });
+    ofDue.addEventListener('change', () => { flt.dueOnly = ofDue.checked; displayCount = PAGE_SIZE; render(); });
+    ofNotCat.addEventListener('change', () => { flt.notInCatalog = ofNotCat.checked; displayCount = PAGE_SIZE; render(); });
+
+    async function loadNextSteps() {
+      try {
+        const board = await callServer('getTasksBoard');
+        nextStepByOrder = new Map();
+        for (const card of board.cards || []) {
+          const item = (card.items || []).find((i) => !i.quiet) || null;
+          if (item) nextStepByOrder.set(card.orderId, item.kind === 'behind_collective' ? 'Отстал от коллективки' : item.label);
+        }
+        render();
+      } catch (error) { /* «Следующий шаг» необязателен — список работает и без него */ }
+    }
+
     loadOrders();
 
     async function loadOrders() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка заказов...</div>';
       try {
         allOrders = await callServer('getOrdersList');
+        refreshFilterOptions();
         render();
+        loadNextSteps();
         // Восстановление прокрутки — ПОСЛЕ первого реального render(), не
         // сразу после вызова loadOrders() (запрос асинхронный, к моменту
         // ответа сервера ранние rAF уже давно отработали бы вхолостую —
@@ -447,6 +583,13 @@ window.Screens.orders = {
       if (effectiveManagerId) {
         filtered = filtered.filter(o => o.managerId === effectiveManagerId);
       }
+      // Плитки считают по набору ДО фильтра стадии (видно, сколько где),
+      // но после остальных фильтров.
+      if (flt.channel) filtered = filtered.filter(o => o.purchaseChannel === flt.channel);
+      if (flt.statusDelivery) filtered = filtered.filter(o => o.statusDelivery === flt.statusDelivery);
+      if (flt.statusOrder) filtered = filtered.filter(o => o.statusOrder === flt.statusOrder);
+      if (flt.dueOnly) filtered = filtered.filter(o => o.money && o.money.dueNow > 0.01);
+      if (flt.notInCatalog) filtered = filtered.filter(o => !o.inCatalog);
       if (query !== '') {
         filtered = filtered.filter(o => {
           const haystack = `${o.productDisplay} ${o.productOriginal} ${o.searchTags} ${o.statusOrder} ${o.statusDelivery} ${o.purchaseChannel} ${o.clientDisplay} ${o.orderId}`.toLowerCase();
@@ -454,11 +597,20 @@ window.Screens.orders = {
         });
       }
 
+      renderStageTiles(filtered);
+      paintFiltersButton();
+      if (flt.stage) filtered = filtered.filter(o => orderStageKey(o) === flt.stage);
+
       const field = sortField.value;
+      const stageRank = (o) => { const i = ORDER_STAGE_TILES.findIndex((t) => t.key === orderStageKey(o)); return i === -1 ? 99 : i; };
       const sorted = filtered.slice().sort((a, b) => {
         let result;
         if (field === 'dateOrderSort') {
           result = a.dateOrderSort - b.dateOrderSort;
+        } else if (field === 'stage') {
+          result = stageRank(a) - stageRank(b);
+        } else if (field === 'dueNow') {
+          result = ((a.money && a.money.dueNow) || 0) - ((b.money && b.money.dueNow) || 0);
         } else {
           result = (a[field] || '').localeCompare(b[field] || '', 'ru');
         }
@@ -500,6 +652,16 @@ window.Screens.orders = {
       return `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 cursor-pointer" data-lot-id="${escapeHtmlClient(lotId)}">Лот #${escapeHtmlClient(lotId)}</span>`;
     }
 
+    // «Оплачено · ждём» (05.10.2026, демо кабинета) — ждём = этапы, которые
+    // по статусу уже пора платить; остальное — «позже».
+    function moneyLine(o) {
+      const m = o.money;
+      if (!m) return '';
+      if (m.dueNow > 0.01) return `<div class="text-[12px] text-amber-700 mt-1">Оплачено ${rubShort(m.paid)} · ждём ${rubShort(m.dueNow)}${m.due - m.dueNow > 0.01 ? ` <span class="text-gray-400">(+${rubShort(m.due - m.dueNow)} позже)</span>` : ''}</div>`;
+      if (m.due > 0.01) return `<div class="text-[12px] text-gray-500 mt-1">Оплачено ${rubShort(m.paid)} · ещё ${rubShort(m.due)} позже</div>`;
+      return `<div class="text-[12px] text-emerald-700 mt-1">Оплачено всё известное: ${rubShort(m.paid)}</div>`;
+    }
+
     function buildCard(o) {
       const card = document.createElement('div');
       const isSelected = selectedIds.has(o.orderId);
@@ -528,7 +690,10 @@ window.Screens.orders = {
                 ${o.productOriginal && o.productOriginal !== o.productDisplay ? `<div class="text-[12px] text-gray-400 mt-0.5">${escapeHtmlClient(o.productOriginal)}</div>` : ''}
                 <div class="text-[11px] text-gray-300 mt-0.5">№ ${escapeHtmlClient(o.orderId)}</div>
               </div>
-              <div class="text-[11px] text-gray-400 shrink-0">${escapeHtmlClient(o.dateOrderDisplay)}</div>
+              <div class="text-right shrink-0">
+                <div class="text-[11px] text-gray-400">${escapeHtmlClient(o.dateOrderDisplay)}</div>
+                ${o.money ? `<div class="text-[13px] font-semibold text-gray-900 tabular-nums mt-0.5" title="Сумма по известным этапам">${rubShort(o.money.total)}</div>` : ''}
+              </div>
             </div>
             <div class="flex flex-wrap gap-1.5 mt-2">
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
@@ -543,6 +708,8 @@ window.Screens.orders = {
             </div>
             <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
+            ${moneyLine(o)}
+            ${nextStepByOrder.has(o.orderId) ? `<div class="text-[12px] text-indigo-700 mt-1 flex items-start gap-1"><i data-lucide="arrow-right-circle" class="w-3.5 h-3.5 mt-px shrink-0"></i><span>${escapeHtmlClient(nextStepByOrder.get(o.orderId))}</span></div>` : ''}
             ${o.remark ? `
             <div class="mt-2 pt-2 border-t border-gray-50">
               <div class="order-remark-text text-[12px] text-gray-500 line-clamp-2 whitespace-pre-wrap">${escapeHtmlClient(o.remark)}</div>

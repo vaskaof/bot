@@ -71,13 +71,32 @@ window.Screens.payments = {
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
         <div id="tab-switcher" class="flex gap-1.5 mb-3">
+          <button type="button" data-tab="due" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Кто должен <span id="due-count-badge"></span></button>
           <button type="button" data-tab="client" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Клиент</button>
           <button type="button" data-tab="claims" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">
-            Заявки клиентов <span id="claims-count-badge"></span>
+            Заявки<span class="hidden sm:inline"> клиентов</span> <span id="claims-count-badge"></span>
           </button>
         </div>
 
-        <div id="client-tab">
+        <!-- «Кто должен сейчас» (05.10.2026, демо кабинета) — только просмотр:
+             кто, сколько и за что пора платить (этапы, дошедшие до своего
+             порога статуса, минус свободный остаток клиента — то же «Итого к
+             оплате», что в напоминании). Отметок «пришло» нет (решение VASY
+             03.10) — действия те же, что в карточке клиента. -->
+        <div id="due-tab" class="hidden">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+            <p class="text-[12px] text-gray-500 sm:flex-1">Кто, сколько и за что должен сейчас. Деньги пришли — «Занести оплату»; ещё нет — можно напомнить.</p>
+            <select id="due-sort" class="rounded-xl bg-white border border-gray-100 shadow-sm px-3 py-2 text-[13px] outline-none">
+              <option value="amount">Сначала большие суммы</option>
+              <option value="lastPayment">Давно не платили</option>
+              <option value="name">По имени</option>
+            </select>
+          </div>
+          <div id="due-list" class="wide-grid" style="--card-min: 24rem"></div>
+          <div id="due-covered-note" class="hidden text-[12px] text-gray-400 mt-3 px-1"></div>
+        </div>
+
+        <div id="client-tab" class="hidden">
           <div id="client-search-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-3 flex items-center gap-2 relative">
             <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
             <input type="text" id="payments-client-search" class="w-full bg-transparent border-none outline-none text-[15px] placeholder-gray-400" placeholder="Поиск клиента по имени/username..." autocomplete="off">
@@ -276,6 +295,7 @@ window.Screens.payments = {
     let currentEarmarks = []; // getEarmarksForClient — {id,orderId,stage,amount,note,createdBy,createdAt}
     let currentCreditBalance = 0;
     let currentRollup = { totalRemaining: 0, priorityAmount: 0, priorityStage: null }; // getClientPaymentsRollup (12.08.2026, по запросу VASY)
+    let currentPreview = null; // getPaymentReminderPreview — «Сейчас к оплате» (05.10.2026)
     let currentPoolLeftover = 0; // свободный остаток клиента — для «Из остатка» (04.10.2026)
     let earmarkContext = null; // {clientTelegramId, orderId, stage, remaining} — контекст открытой earmark-модалки
 
@@ -284,7 +304,8 @@ window.Screens.payments = {
     const clientView = document.getElementById('payments-client-view');
 
     // === Вкладки "Клиент" / "Заявки клиентов" (F3, 11.08.2026) ===
-    let currentTab = 'client';
+    // Главная вкладка — «Кто должен»; переход по ссылке на клиента — сразу «Клиент».
+    let currentTab = params && params.telegramId ? 'client' : 'due';
     const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
     tabButtons.forEach((btn) => {
       btn.addEventListener('click', () => { currentTab = btn.dataset.tab; updateTabStyles(); });
@@ -294,9 +315,21 @@ window.Screens.payments = {
         const active = btn.dataset.tab === currentTab;
         btn.className = `tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium ${active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`;
       });
+      document.getElementById('due-tab').classList.toggle('hidden', currentTab !== 'due');
       document.getElementById('client-tab').classList.toggle('hidden', currentTab !== 'client');
       document.getElementById('claims-tab').classList.toggle('hidden', currentTab !== 'claims');
     }
+    window.__paymentsSetTab = (tab) => { currentTab = tab; updateTabStyles(); };
+
+    // Свайп между вкладками на телефоне (05.10.2026) — screens/_swipe-tabs.js.
+    SwipeTabs.attach({
+      area: root.querySelector('main'),
+      keys: () => ['due', 'client', 'claims'],
+      getActive: () => currentTab,
+      panelFor: (key) => document.getElementById(`${key}-tab`),
+      activate: (key) => { const b = document.querySelector(`#tab-switcher [data-tab="${key}"]`); if (b) b.click(); }
+    });
+
     updateTabStyles();
     // loadClaims() вызывается НИЖЕ, сразу после объявления claimsList/claimsEmpty
     // (см. "Вкладка Заявки клиентов") — реальный баг, найденный VASY 12.08.2026:
@@ -431,6 +464,88 @@ window.Screens.payments = {
       }
     }
 
+    // === Вкладка «Кто должен» (05.10.2026) ===
+    const dueList = document.getElementById('due-list');
+    const dueSort = document.getElementById('due-sort');
+    const dueCoveredNote = document.getElementById('due-covered-note');
+    let dueData = null;
+    function daysAgoLabel(at) {
+      if (!at) return '';
+      const d = Math.floor((Date.now() - new Date(at).getTime()) / 86400000);
+      return d <= 0 ? 'сегодня' : `${d} дн назад`;
+    }
+    function renderDue() {
+      if (!dueData) return;
+      const badge = document.getElementById('due-count-badge');
+      if (badge) badge.textContent = dueData.clients.length ? `(${dueData.clients.length})` : '';
+      const list = dueData.clients.slice();
+      if (dueSort.value === 'name') list.sort((a, b) => a.display.localeCompare(b.display, 'ru'));
+      else if (dueSort.value === 'lastPayment') list.sort((a, b) => new Date(a.lastPayment ? a.lastPayment.at : 0) - new Date(b.lastPayment ? b.lastPayment.at : 0));
+      if (list.length === 0) {
+        dueList.innerHTML = '<div class="text-center text-sm text-gray-400 py-10">Сейчас никто ничего не должен 🎉</div>';
+      } else {
+        dueList.innerHTML = list.map((c) => {
+          const lines = c.orders.slice(0, 4).map((o) => `
+            <div class="flex items-start gap-2 py-1">
+              ${o.imageUrl ? `<img src="${escapeHtmlClient(o.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
+              <div class="min-w-0 flex-1 text-[12px]">
+                <div class="text-gray-800 truncate">${escapeHtmlClient(o.productDisplay || '')} <span class="text-gray-400">№ ${escapeHtmlClient(o.orderId)}</span></div>
+                <div class="text-gray-500">${o.parts.map((p) => `${escapeHtmlClient(p.label)} ${money(p.remaining)} ₽`).join(' · ')}</div>
+              </div>
+            </div>`).join('');
+          return `
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" data-due-client="${escapeHtmlClient(c.telegramId)}">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(c.display)}</div>
+                <div class="text-[11px] text-gray-400">${c.lastPayment ? `последняя оплата ${money(c.lastPayment.amount)} ₽ — ${daysAgoLabel(c.lastPayment.at)}` : 'оплат ещё не было'}${c.lastReminderAt ? ` · напоминали ${daysAgoLabel(c.lastReminderAt)}` : ''}</div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-lg font-bold text-amber-700 tabular-nums">${money(c.toPay)} ₽</div>
+                ${c.poolLeftover > 0.01 ? `<div class="text-[11px] text-gray-400">с учётом остатка ${money(c.poolLeftover)} ₽</div>` : ''}
+              </div>
+            </div>
+            <div class="mt-2 border-t border-gray-50 pt-1">${lines}${c.orders.length > 4 ? `<div class="text-[11px] text-gray-400 pt-1">и ещё ${c.orders.length - 4} заказ(ов)</div>` : ''}</div>
+            <div class="flex gap-2 mt-3">
+              <button type="button" data-due-action="pay" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium">Занести оплату</button>
+              <button type="button" data-due-action="remind" ${c.pending ? 'disabled title="Клиент ещё не открывал бота"' : ''} class="flex-1 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium disabled:opacity-40">Напомнить</button>
+              <button type="button" data-due-action="open" class="flex-1 py-2 rounded-xl border border-indigo-100 text-indigo-600 text-xs font-medium">Открыть</button>
+            </div>
+          </div>`;
+        }).join('');
+      }
+      dueCoveredNote.classList.toggle('hidden', !dueData.coveredByBalanceCount);
+      dueCoveredNote.textContent = dueData.coveredByBalanceCount
+        ? `Ещё у ${dueData.coveredByBalanceCount} клиент(ов) есть что платить по этапам, но это уже покрыто их свободным остатком — в списке их нет.`
+        : '';
+    }
+    async function loadDue() {
+      dueList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      try {
+        dueData = await callServer('getPaymentsOverview');
+        renderDue();
+      } catch (error) {
+        dueList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
+      }
+    }
+    dueSort.addEventListener('change', renderDue);
+    dueList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-due-action]');
+      if (!btn) return;
+      const card = btn.closest('[data-due-client]');
+      const c = dueData && dueData.clients.find((x) => x.telegramId === card.dataset.dueClient);
+      if (!c) return;
+      if (btn.dataset.dueAction === 'pay') pendingDeepLinkAction = { kind: 'pay', orderId: c.orders.length === 1 ? c.orders[0].orderId : null };
+      else if (btn.dataset.dueAction === 'remind') pendingDeepLinkAction = { kind: 'remind' };
+      currentTab = 'client';
+      updateTabStyles();
+      const displayName = c.display;
+      clientSearch.value = displayName;
+      selectClient({ telegramId: c.telegramId, username: c.username || '', name: c.name || '', displayName, pending: c.pending });
+      window.scrollTo(0, 0);
+    });
+    loadDue();
+
     function scrollToAndHighlightOrder(orderId) {
       const cards = Array.from(clientView.querySelectorAll('[data-order-card]'));
       const el = cards.find((c) => c.dataset.orderCard === orderId);
@@ -452,13 +567,17 @@ window.Screens.payments = {
         // Волна 4 (03.10.2026) — заказы вместе с details одним вызовом: раньше
         // здесь шёл getOrderDetails на каждый заказ, у клиента со ~180
         // заказами экран грузился 30+ с.
-        const [orders, payments, earmarks, creditBalance, rollup] = await Promise.all([
+        const [orders, payments, earmarks, creditBalance, rollup, preview] = await Promise.all([
           callServer('getPaymentsScreenOrders', currentClient.telegramId),
           callServer('getPaymentsForClient', currentClient.telegramId),
           callServer('getEarmarksForClient', currentClient.telegramId),
           callServer('getClientCreditBalance', currentClient.telegramId),
-          callServer('getClientPaymentsRollup', currentClient.telegramId)
+          callServer('getClientPaymentsRollup', currentClient.telegramId),
+          // «Сейчас к оплате» сверху карточки (05.10.2026) — то же число, что
+          // во вкладке «Кто должен» и в напоминании. Необязательно.
+          callServer('getPaymentReminderPreview', currentClient.telegramId).catch(() => null)
         ]);
+        currentPreview = preview;
         currentOrders = orders;
         currentPayments = payments;
         currentEarmarks = earmarks;
@@ -582,37 +701,51 @@ window.Screens.payments = {
           <button id="change-client-btn" class="shrink-0 text-xs font-medium text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100">Сменить</button>
         </div>
 
-        ${currentOrders.length > 0 ? `
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
-            <div class="text-[11px] text-gray-400 mb-1">Нужно заплатить по всем заказам</div>
-            <div class="flex items-baseline gap-2">
-              <div class="text-2xl font-bold text-gray-900">${money(grandRemaining)} ₽</div>
-              <div class="text-xs text-gray-400">осталось из ${money(grandTarget)} ₽ (оплачено ${money(grandPaid)} ₽)</div>
-            </div>
-            ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mt-1">По заказам старой модели Вес/СДЭК/Доставка по РФ считаются по флажку — «Да» значит оплачено целиком, без частичного учёта.</p>` : ''}
-            ${grandRemaining > 0.01 ? `
-              <button data-action="open-reminder" class="mt-2 text-xs font-medium text-indigo-600 border border-indigo-100 rounded-lg px-3 py-1.5 flex items-center gap-1">
-                <i data-lucide="bell" class="w-3.5 h-3.5"></i> Напомнить об оплате
-              </button>
-            ` : ''}
+        <!-- Упрощённая сводка (05.10.2026, VASY: «чтобы было понятно менеджеру»,
+             на функционал не влиять) — сверху одно число «сейчас к оплате» и за
+             что, плитки и кнопки; пул, кредит и очередь этапов — под «Баланс и
+             кредит». Все прежние кнопки и данные на месте. -->
+        ${(() => {
+          const STATUS_RECEIVED_ = 'Получено клиентом';
+          const parts = [];
+          newModelOrders.forEach((o) => {
+            if (o.details.isOwnPurchase) return;
+            (o.details.stagesBalance || []).forEach((st) => {
+              if (st.eligible && st.target > 0 && st.remaining > 0.01) parts.push({ orderId: o.orderId, stage: st.stage, remaining: st.remaining });
+            });
+          });
+          const toPay = currentPreview ? currentPreview.toPay : Math.max(0, parts.reduce((a, p) => a + p.remaining, 0) - poolLeftover);
+          const leftoverUsed = currentPreview ? currentPreview.poolLeftover : poolLeftover;
+          const inWork = currentOrders.filter((o) => o.details.statusDelivery !== STATUS_RECEIVED_ && !o.isCompleted).length;
+          const closedDebtSum = closedDebtItems.reduce((a, i) => a + i.debt, 0);
+          return `
+          <div class="rounded-2xl p-4 mb-3 ${toPay > 0.01 ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-100'}">
+            ${toPay > 0.01 ? `
+              <div class="text-[12px] text-amber-800">Сейчас к оплате</div>
+              <div class="text-2xl font-bold text-amber-900 tabular-nums">${money(toPay)} ₽</div>
+              <div class="text-[12px] text-amber-800 mt-1">${parts.slice(0, 6).map((p) => `${escapeHtmlClient(stageLabel(p.stage))} № ${escapeHtmlClient(p.orderId)} — ${money(p.remaining)} ₽`).join('<br>')}${parts.length > 6 ? `<br>и ещё ${parts.length - 6}` : ''}</div>
+              ${leftoverUsed > 0.01 ? `<div class="text-[11px] text-amber-700 mt-1">Уже учтён свободный остаток клиента ${money(leftoverUsed)} ₽.</div>` : ''}
+            ` : `<div class="text-sm text-emerald-800">Сейчас платить нечего — этапы, которые пора оплачивать, покрыты.</div>`}
           </div>
+          <div class="grid grid-cols-2 gap-2 mb-3 text-center">
+            <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Оплачено всего</div><div class="text-sm font-semibold text-gray-900 tabular-nums">${money(grandPaid)} ₽</div></div>
+            <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Осталось по всем заказам</div><div class="text-sm font-semibold text-gray-900 tabular-nums">${money(grandRemaining)} ₽</div></div>
+            <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Заказов в работе</div><div class="text-sm font-semibold text-gray-900">${inWork}</div></div>
+            <div class="bg-white rounded-xl border border-gray-100 py-2"><div class="text-[11px] text-gray-400">Долг по полученным</div><div class="text-sm font-semibold ${closedDebtSum > 0.01 ? 'text-red-600' : 'text-gray-900'} tabular-nums">${money(closedDebtSum)} ₽</div></div>
+          </div>`;
+        })()}
+        <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-2 flex items-center justify-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i> Занести оплату
+        </button>
+        ${currentOrders.length > 0 && grandRemaining > 0.01 ? `
+          <button data-action="open-reminder" class="w-full mb-3 text-xs font-medium text-indigo-600 border border-indigo-100 bg-white rounded-xl px-3 py-2 flex items-center justify-center gap-1">
+            <i data-lucide="bell" class="w-3.5 h-3.5"></i> Напомнить об оплате
+          </button>
         ` : ''}
-
-        ${currentRollup.priorityAmount > 0.01 ? `
-          <div class="bg-amber-50 rounded-2xl border border-amber-100 p-4 mb-3">
-            <div class="text-[11px] text-amber-700">К доплате сейчас (new-model, кросс-заказно)</div>
-            <div class="flex items-baseline gap-2">
-              <div class="text-2xl font-bold text-amber-700">${money(currentRollup.priorityAmount)} ₽</div>
-              <div class="text-xs text-amber-600">${escapeHtmlClient(stageLabel(currentRollup.priorityStage))}</div>
-            </div>
-            <p class="text-[11px] text-amber-600 mt-1">Уже с учётом остатка в пуле (см. карточку "Свободный остаток" ниже) — это то, чего клиенту РЕАЛЬНО не хватает, чтобы разблокировать следующий тир, а не вся сумма тира целиком. Тир считается покрытым только когда профинансирован ЦЕЛИКОМ по всем открытым new-model заказам клиента сразу.</p>
-          </div>
-        ` : ''}
-
         ${closedDebtItems.length > 0 ? `
           <div class="bg-red-50 rounded-2xl border border-red-100 p-4 mb-3">
             <div class="text-[11px] font-semibold text-red-700 uppercase tracking-wide mb-1">Долг по закрытым заказам</div>
-            <p class="text-[11px] text-red-600 mb-2">Заказ закрыт («Получено клиентом»), автосбор его больше не трогает — погасить можно только вручную. Ниже — самые старые долги первыми; если рядом с суммой есть «предложено закрыть», в пуле клиента уже достаточно свободных денег.</p>
+            <p class="text-[11px] text-red-600 mb-2">Заказ уже у клиента — сам этот долг не закроется. «Закрыть из остатка» — если у клиента есть свободные деньги, иначе «Занести оплату».</p>
             <div class="space-y-1.5">
               ${closedDebtItems.map((item) => `
                 <div class="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2">
@@ -629,14 +762,22 @@ window.Screens.payments = {
           </div>
         ` : ''}
 
+        <details class="mb-3 rounded-2xl" ${poolLeftover > 0.01 || currentCreditBalance > 0.01 ? 'open' : ''}>
+          <summary class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 py-2 cursor-pointer select-none">Баланс и кредит${poolLeftover > 0.01 ? ` · остаток ${money(poolLeftover)} ₽` : ''}${currentCreditBalance > 0.01 ? ` · кредит ${money(currentCreditBalance)} ₽` : ''}</summary>
+        ${currentRollup.priorityAmount > 0.01 ? `
+          <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-3 text-[12px] text-gray-600">
+            По очереди этапов клиенту не хватает <b class="text-gray-900">${money(currentRollup.priorityAmount)} ₽</b> (${escapeHtmlClient(stageLabel(currentRollup.priorityStage))}). Этап считается оплаченным, когда он закрыт по всем открытым заказам клиента сразу.
+          </div>
+        ` : ''}
+        ${oldModelOrders.length > 0 ? `<p class="text-[11px] text-gray-400 mb-2 px-1">Старые заказы (до новой модели): Вес/СДЭК/Доставка считаются по флажку «Да» — оплачено целиком.</p>` : ''}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3">
           <div class="flex items-center justify-between gap-4">
             <div>
-              <div class="text-[11px] text-gray-400">Всего оплачено в пул</div>
+              <div class="text-[11px] text-gray-400">Внесено всего</div>
               <div class="text-lg font-bold text-gray-900">${money(totalPoolPayments)} ₽</div>
             </div>
             <div>
-              <div class="text-[11px] text-gray-400">Распределено по стадиям</div>
+              <div class="text-[11px] text-gray-400">Разнесено по заказам</div>
               <div class="text-lg font-bold text-gray-900">${money(totalAllocated)} ₽</div>
             </div>
             <div>
@@ -645,9 +786,7 @@ window.Screens.payments = {
             </div>
           </div>
           ${poolLeftover > 0 ? `
-            <p class="text-[11px] text-gray-400 mt-2 pt-2 border-t border-gray-50">
-              Стадии финансируются ЦЕЛИКОМ по очереди (Основная → Вес → СДЭК → Доставка) — пока пула не хватает на всю стадию сразу по ВСЕМ открытым заказам клиента, она показывает 0% покрытия, даже если деньги уже есть. Обойти очередь можно кнопкой «Из остатка» на конкретной стадии.
-            </p>
+            <p class="text-[11px] text-gray-400 mt-2 pt-2 border-t border-gray-50">Свободный остаток — деньги клиента, ещё не разнесённые по этапам. Разнести вручную — «Из остатка» на нужном этапе заказа.</p>
           ` : ''}
         </div>
 
@@ -664,15 +803,13 @@ window.Screens.payments = {
           </div>
         </div>
 
-        <button id="open-record-payment-btn" class="w-full bg-indigo-600 text-white rounded-2xl py-3 text-sm font-medium mb-4 flex items-center justify-center gap-2">
-          <i data-lucide="plus" class="w-4 h-4"></i> Занести оплату
-        </button>
+        </details>
         </div>
         <div class="min-w-0">
 
         ${newModelOrders.length > 0 ? `
           <div class="flex items-center justify-between gap-2 mb-2 px-1">
-            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Новая финансовая модель</div>
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Заказы клиента</div>
             ${newModelOrders.length > 1 ? `
               <div class="flex items-center gap-1 shrink-0">
                 <select id="payments-orders-sort-field" class="bg-transparent border-none outline-none text-[11px] text-gray-500 cursor-pointer">
@@ -691,7 +828,8 @@ window.Screens.payments = {
         ` : ''}
 
         ${currentEarmarks.length > 0 ? `
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Активные метки (точечное распределение)</div>
+          <details class="mt-4">
+          <summary class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1 cursor-pointer select-none">Закреплённые суммы · ${currentEarmarks.length}</summary>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 divide-y divide-gray-50">
             ${currentEarmarks.map((m) => `
               <div class="p-3 flex items-center justify-between gap-2 text-sm">
@@ -703,18 +841,21 @@ window.Screens.payments = {
               </div>
             `).join('')}
           </div>
+          </details>
         ` : ''}
 
         ${currentPayments.length > 0 ? `
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Платежи в общий пул</div>
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">История платежей</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 divide-y divide-gray-50">
             ${currentPayments.map((p) => renderPaymentRow(p, 'pool')).join('')}
           </div>
         ` : ''}
 
         ${oldModelOrders.length > 0 ? `
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 mt-4 px-1">Старая модель (по заказу)</div>
+          <details class="mt-4">
+          <summary class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1 cursor-pointer select-none">Старые заказы (до новой модели) · ${oldModelOrders.length}</summary>
           ${oldModelOrders.map((o) => renderOldModelOrderCard(o)).join('')}
+          </details>
         ` : ''}
 
         ${currentOrders.length === 0 ? '<div class="text-center text-sm text-gray-400 py-6">У клиента пока нет заказов.</div>' : ''}

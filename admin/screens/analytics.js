@@ -220,6 +220,7 @@ const METHOD_LABELS = {
   attachPaymentReceipt: 'Прикрепить чек к платежу',
   getPaymentReceipt: 'Открыть чек платежа',
   getPaymentReminderPreview: 'Напоминание об оплате: предпросмотр',
+  getPaymentsOverview: 'Оплаты: кто должен сейчас',
   sendPaymentReminder: 'Напоминание об оплате: отправить',
   getOrdersList: 'Список заказов',
   getOwnPurchasesReport: 'Отчёт по личным закупкам',

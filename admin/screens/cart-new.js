@@ -217,6 +217,16 @@ window.Screens.cartNew = {
             </div>
           </div>
 
+          <!-- Доставка / статус / дата (05.10.2026, демо кабинета) — на телефоне
+               одной строкой «Выкуплено сегодня · статус · Изменить», раскрываются
+               по нажатию; на широком (lg) открыты всегда. Поля прежние. НЕ
+               использовать обратные кавычки в этом комментарии. -->
+          <button type="button" id="cart-meta-toggle" class="lg:hidden w-full flex items-center gap-3 text-left p-4 border-t border-gray-100">
+            <i data-lucide="calendar" class="w-4 h-4 text-gray-400 shrink-0"></i>
+            <span id="cart-meta-summary" class="flex-1 min-w-0 text-[13px] text-gray-700"></span>
+            <span id="cart-meta-toggle-label" class="text-[13px] text-indigo-600 shrink-0">Изменить</span>
+          </button>
+          <div id="cart-meta-rows" class="hidden lg:block border-t border-gray-100 lg:border-t-0">
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
@@ -246,6 +256,7 @@ window.Screens.cartNew = {
               <span class="text-sm font-medium text-gray-700">Дата выкупа</span>
             </div>
             <div class="flex-1 w-full"><input type="date" id="cart-date-input" class="w-full bg-transparent border-none outline-none text-[15px] py-1 text-gray-700"></div>
+          </div>
           </div>
         </div>
 
@@ -1269,6 +1280,25 @@ window.Screens.cartNew = {
     }
     document.querySelector('select[data-dict="statusDelivery"]').addEventListener('change', updateDeliveryLadderPreview);
     updateDeliveryLadderPreview();
+
+    // Сводка «Выкуплено сегодня · статус доставки · статус заказа» (05.10.2026).
+    const metaRows = document.getElementById('cart-meta-rows');
+    function updateMetaSummary() {
+      const d = dateInput.value;
+      const today = todayFormatter.format(new Date());
+      const dateText = !d ? 'Дата выкупа не указана' : d === today ? 'Выкуплено сегодня' : `Выкуплено ${d.split('-').reverse().join('.')}`;
+      const sd = document.querySelector('select[data-dict="statusDelivery"]').value;
+      const so = document.querySelector('select[data-dict="statusOrder"]').value;
+      document.getElementById('cart-meta-summary').innerHTML = `<b class="font-medium">${escapeHtmlClient(dateText)}</b>${sd ? ' · ' + escapeHtmlClient(sd) : ''}${so ? ' · ' + escapeHtmlClient(so) : ''}`;
+    }
+    document.getElementById('cart-meta-toggle').addEventListener('click', () => {
+      metaRows.classList.toggle('hidden');
+      document.getElementById('cart-meta-toggle-label').textContent = metaRows.classList.contains('hidden') ? 'Изменить' : 'Свернуть';
+    });
+    metaRows.addEventListener('change', updateMetaSummary);
+    metaRows.addEventListener('input', updateMetaSummary);
+    updateMetaSummary();
+    setTimeout(updateMetaSummary, 400);
 
     // rateRequestSeq — ОБЩИЙ гвард от гонки между "Обновить курс" (кнопка)
     // и сменой "Дата выкупа" (найдено ДВУМЯ раундами целевого ревью перед

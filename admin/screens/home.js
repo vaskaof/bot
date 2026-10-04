@@ -162,6 +162,15 @@ window.Screens.home = {
     }
     updateTabStyles();
 
+    // Свайп между вкладками на телефоне (05.10.2026) — screens/_swipe-tabs.js.
+    SwipeTabs.attach({
+      area: root.querySelector('main'),
+      keys: () => ['news', 'questions'],
+      getActive: () => currentTab,
+      panelFor: (key) => document.getElementById(`${key}-tab`),
+      activate: (key) => { const b = document.querySelector(`#tab-switcher [data-tab="${key}"]`); if (b) b.click(); }
+    });
+
     // ===================== Вкладка "Новости" (логика из бывшего news.js) =====================
     let editingNewsId = null;
     let allNews = [];

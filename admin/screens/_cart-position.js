@@ -60,6 +60,55 @@
 // баннер, зеркало старого `pendingBulkOrderDraft` (order-new.js).
 const MULTIPLY_DRAFT_KEY = 'pendingCartMultiplyDraft';
 
+  /**
+   * Свёрнутые на телефоне части карточки позиции (05.10.2026, демо кабинета):
+   * «Особые случаи» и «Прогноз логистики». Только показ: поля те же, на
+   * широком экране всегда открыты. Сводка обновляется на ввод и раз в секунду
+   * (прогноз подставляется кодом, без событий ввода).
+   */
+  function wireCompactSections(rowEl) {
+    const pairs = [
+      ['.pos-extras-toggle', '.pos-extras', '.pos-extras-chevron'],
+      ['.pos-forecast-toggle', '.pos-forecast', '.pos-forecast-chevron']
+    ];
+    pairs.forEach(([t, b, c]) => {
+      const toggle = rowEl.querySelector(t);
+      const body = rowEl.querySelector(b);
+      if (!toggle || !body) return;
+      toggle.addEventListener('click', () => {
+        body.classList.toggle('hidden');
+        const chev = rowEl.querySelector(c);
+        if (chev) chev.classList.toggle('rotate-180', !body.classList.contains('hidden'));
+      });
+    });
+    const marksEl = rowEl.querySelector('.pos-extras-marks');
+    const sumEl = rowEl.querySelector('.pos-forecast-sum');
+    const forecastInputs = ['.weight-sum-input', '.taxi-kz-input', '.sdek-input', '.taxi-rf-input', '.taxi-rf-send-input', '.shipping-rf-input', '.taxi-rf-receive-input']
+      .map((sel) => rowEl.querySelector(sel)).filter(Boolean);
+    const mark = (text) => `<span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">${text}</span>`;
+    function refresh() {
+      if (!rowEl.isConnected) { clearInterval(timer); return; }
+      if (marksEl) {
+        const selfBought = rowEl.querySelector('.client-self-purchased-checkbox');
+        const note = rowEl.querySelector('.note-input');
+        const notify = rowEl.querySelector('.notify-client-checkbox');
+        marksEl.innerHTML = [
+          selfBought && selfBought.checked ? mark('выкупил сам') : '',
+          note && note.value.trim() ? mark('есть примечание') : '',
+          notify && notify.checked ? mark('уведомить') : ''
+        ].join('');
+      }
+      if (sumEl) {
+        const sum = forecastInputs.reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
+        sumEl.textContent = Math.round(sum).toLocaleString('ru-RU') + ' ₽';
+      }
+    }
+    rowEl.addEventListener('input', refresh);
+    rowEl.addEventListener('change', refresh);
+    const timer = setInterval(refresh, 1000);
+    refresh();
+  }
+
 window.CartPosition = {
   // Читается `cart-new.js`'s баннером восстановления при монтировании
   // экрана — тот же ключ, что пишет scheduleMultiplyDraftSave ниже.
@@ -294,14 +343,23 @@ window.CartPosition = {
            расчёта её % компания не знает, т.к. сама не покупала). Скрывает
            ТОЛЬКО напоминание "Курсы и сумма не подтверждены" по этому
            заказу — на клиента/оплату/уведомление не влияет. -->
+      <!-- «Сколько уже оплачено» переехало в блок «Итог и оплаты» в конце
+           экрана (волна 2, сессия 2) — выбор по клиенту. -->
+      </div>
+      <!-- «Особые случаи» (05.10.2026, демо кабинета) — на телефоне свёрнуты в
+           одну строку с метками того, что внутри включено; на широком (lg)
+           открыты всегда. Поля и их классы прежние. -->
+      <button type="button" class="pos-extras-toggle lg:hidden w-full flex items-center gap-2 text-left text-[12px] text-gray-600 py-1.5 mb-1">
+        <i data-lucide="chevron-down" class="pos-extras-chevron w-4 h-4 shrink-0 transition-transform"></i>
+        <span class="shrink-0">Особые случаи, примечание, уведомление</span>
+        <span class="pos-extras-marks flex flex-wrap gap-1"></span>
+      </button>
+      <div class="pos-extras hidden lg:block">
       <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
         <input type="checkbox" class="client-self-purchased-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
         Товар выкупил сам клиент (мы только доставляем)
         ${helpIcon('Товар выкупил сам клиент', '<p>Клиент сам купил товар у продавца, компания только везёт готовую покупку — курс/сумму выкупа компания не знает физически, т.к. сама не покупала.</p><p>Комиссию за доставку/консолидацию в этом случае вводите суммой в поле "Комиссия ₽" (не процентом).</p>')}
       </label>
-      <!-- «Сколько уже оплачено» переехало в блок «Итог и оплаты» в конце
-           экрана (волна 2, сессия 2) — выбор по клиенту. -->
-      </div>
       <div class="mb-2">
         <label class="text-[11px] text-gray-500">Примечание</label>
         <textarea class="note-input w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm outline-none" rows="2" maxlength="300" placeholder="Введите примечание..."></textarea>
@@ -310,9 +368,18 @@ window.CartPosition = {
         <input type="checkbox" class="notify-client-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
         Уведомить клиента
       </label>
+      </div>
       <div class="wishlist-link-slot"></div>
 
       <div class="single-client-fields pt-2 border-t border-gray-100">
+        <!-- Прогноз расходов (05.10.2026) — на телефоне одной строкой с суммой,
+             раскрывается по нажатию; на широком (lg) открыт. -->
+        <button type="button" class="pos-forecast-toggle lg:hidden w-full flex items-center gap-2 text-left text-[12px] text-gray-600 py-1">
+          <i data-lucide="truck" class="w-4 h-4 text-gray-400 shrink-0"></i>
+          <span class="flex-1">Прогноз логистики ≈ <b class="pos-forecast-sum tabular-nums text-gray-800">0 ₽</b> <span class="text-gray-400">(подставляется сам, можно поправить)</span></span>
+          <i data-lucide="chevron-down" class="pos-forecast-chevron w-4 h-4 shrink-0 transition-transform"></i>
+        </button>
+        <div class="pos-forecast hidden lg:block">
         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Прогноз расходов (можно поправить)</div>
         <div class="flex items-center gap-2 mb-1.5">
           <span class="text-[11px] text-gray-500 w-16 shrink-0">Вес</span>
@@ -328,11 +395,13 @@ window.CartPosition = {
           <div><div class="text-[9px] text-gray-400 mb-0.5">Отправка</div><input type="number" class="shipping-rf-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
           <div><div class="text-[9px] text-gray-400 mb-0.5">Такси (получ.)</div><input type="number" class="taxi-rf-receive-input w-full bg-gray-50 rounded-lg px-2 py-1 text-xs outline-none" placeholder="0.00" step="0.01"></div>
         </div>
+        </div>
       </div>
       </div>
     `;
     ctx.itemsList.appendChild(rowEl);
     if (window.lucide) window.lucide.createIcons();
+    wireCompactSections(rowEl);
 
     const item = {
       id, type: 'position', rowEl,
