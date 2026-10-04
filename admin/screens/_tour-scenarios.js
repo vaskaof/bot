@@ -53,6 +53,14 @@
   const firstShown = (sel) => Array.from(document.querySelectorAll(sel)).find(shown) || null;
   const boardEmpty = () => { const e = document.getElementById('empty-message'); return !!e && !e.classList.contains('hidden'); };
   const boardReady = () => boardEmpty() || !!firstShown('#reminders-list [data-order-card]');
+  // На телефоне колонки доски лежат лентой: первая видимая колонка бывает
+  // пустой, а карточки — в соседней за краем. Докручиваем ленту до первой
+  // карточки, иначе шаг «Открой заказ» ждал впустую (отзыв VASY №13).
+  function revealFirstCard() {
+    if (firstShown('#reminders-list [data-order-card]')) return;
+    const card = Array.from(document.querySelectorAll('#reminders-list [data-order-card]')).find((el) => el.getClientRects().length > 0);
+    if (card) card.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
 
   // Вопрос для «Вопросов и вишлиста»: лучше новый (у него есть «Закрыть без ответа»).
   function questionCard() {
@@ -98,7 +106,7 @@
         { target: '#reminders-tabs', title: 'Клиентские и личные', text: '«Клиентские» — заказы клиентов. «Личные» — твои собственные покупки: там нет оплат, только движение.' },
         { target: () => { const el = document.getElementById('stage-tabs'); return el && el.children.length ? el : null; }, title: 'Этапы', text: 'Просчёт → Выкуп → Логистика → Консолидация → Доставка в РФ → Выдача. Цифра — сколько задач на этапе.', optional: true },
         {
-          target: '#reminders-list [data-order-card]', title: 'Карточка задачи', group: 'card', groupLeader: true, optional: true, wait: 12000,
+          target: '#reminders-list [data-order-card]', title: 'Карточка задачи', group: 'card', groupLeader: true, optional: true, wait: 12000, onEnter: revealFirstCard,
           missingIf: () => { const empty = document.getElementById('empty-message'); return !!empty && !empty.classList.contains('hidden'); },
           text: 'Один заказ — одна карточка. Красная точка — срочно, жёлтая — ждёт денег. Ниже — что именно нужно сделать.',
           skippedText: 'Сейчас задач нет 🎉 на этой вкладке (свои покупки — во вкладке «Личные»). Когда появятся — здесь будут карточки заказов, а «Следующий шаг» в заказе подскажет, что делать.'
@@ -125,7 +133,6 @@
       momentScreens: ['cartNew'],
       // Учебный режим: корзину не создаём — ничего не запишется.
       block: ['#save-cart-btn'],
-      onComplete: () => navigateTo('training'),
       steps: [
         { target: nav('orders'), title: 'Открой «Заказы»', text: 'Новый выкуп начинается здесь.', advance: 'click', skipIf: onScreen('orders', 'cartNew') },
         { target: '#new-cart-btn', title: '«Корзина»', text: 'Нажми — откроется форма нового выкупа.', advance: 'click', skipIf: onScreen('cartNew') },
@@ -183,7 +190,7 @@
         },
         {
           target: '#collective-picker-modal .bg-white', title: 'Выбор коллективки', optional: true,
-          text: 'Сверху поиск, ниже — коллективки с числом заказов. «+ Создать новую» — если нужной ещё нет. В работе выбираешь — система спросит подтверждение. Сейчас просто закрой окно крестиком.',
+          text: 'Первая строка — <b>«+ Создать новую»</b>, ниже — коллективки с числом заказов. В работе выбираешь — система спросит подтверждение. Подсказка мешает смотреть — «Свернуть». Сейчас закрой окно крестиком.',
           advance: { until: () => { const m = document.getElementById('collective-picker-modal'); return !m || m.classList.contains('hidden'); } }
         },
         {
@@ -378,7 +385,7 @@
           text: 'У долга, оплаты, списания, «Отстал от коллективки» и «Клиент отметил получение» кнопки «Пропустить» нет — <b>это деньги и посылки</b>. Их делают: «Занести оплату», «Напомнить», «Перевести». Кажется, что задача неверная, — «?» → «🆘 Что-то не работает», VASY разберётся.'
         },
         {
-          target: () => firstShown('#reminders-list [data-order-card] [data-open]'), title: 'Открой любой заказ', advance: 'click',
+          target: () => firstShown('#reminders-list [data-order-card] [data-open]'), title: 'Открой любой заказ', advance: 'click', onEnter: revealFirstCard,
           optional: true, group: 'order', groupLeader: true, wait: 12000, missingIf: boardEmpty,
           text: 'Посмотрим то же самое в карточке заказа. Нажми на карточку.',
           skippedText: 'Задач нет — карточку заказа посмотрим в другой раз. В заказе «Следующий шаг» показывает те же кнопки, а пропущенное — серой плашкой «Пропущено» с причиной и кнопкой «Отменить».'

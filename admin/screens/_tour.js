@@ -29,6 +29,17 @@
  * - Состояние в sessionStorage: перезагрузка WebView продолжает с того же шага.
  * - События (start/step/complete/abandon) — на сервер без ожидания: по ним
  *   VASY видит, на каком шаге бросают.
+ *
+ * Правки по отзывам VASY 04.10.2026 (staff_feedback №10, 11, 13):
+ * - текст подсказки печатается (≈40 знаков/с), «Далее» — когда допечатан;
+ *   нажатие на текст допечатывает сразу. Повторный показ шага (← Назад) и
+ *   e2e (`window.__E2E_TOUR_INSTANT`) — без печати;
+ * - «Свернуть» в подсказке — когда она закрывает нужное на экране;
+ * - на шаге-пояснении («Далее») нажатие на подсвеченное не срабатывает —
+ *   раньше так открывались окна, которые нечем было закрыть (коллективка,
+ *   «Статус доставки»); нужно нажимать — `allowClick: true`;
+ * - после смены экрана следующий шаг ждёт, пока экран отрисуется;
+ * - выход из урока и конец урока — в «Обучение».
  */
 (function () {
   const STATE_KEY = 'knopkaTourState';
@@ -42,6 +53,14 @@
   let rafId = null;
   let lastRectKey = '';
   let skippedGroups = new Set();
+  let typingTimer = null;
+  let collapsed = false;
+  let routeChangedAt = 0;
+  const TYPE_CHARS = 2;   // знаков за такт
+  const TYPE_TICK_MS = 50; // ≈40 знаков в секунду
+  const ROUTE_SETTLE_MS = 400;
+
+  window.addEventListener('hashchange', () => { routeChangedAt = Date.now(); });
 
   function scenarios() { return window.TourScenarios || {}; }
 
@@ -168,7 +187,8 @@
     let bTop;
     // place: 'away' — у поля поиска с выпадающим списком: подсказка у дальнего
     // края экрана, иначе она закрывает список (e2e «Занести оплату», 04.10).
-    if (step.place === 'away') bTop = (r.top + r.height / 2) < vh / 2 ? vh - bh - 12 : 12;
+    // Свёрнутая подсказка — тоже у дальнего края, чтобы открыть цель целиком.
+    if (step.place === 'away' || collapsed) bTop = (r.top + r.height / 2) < vh / 2 ? vh - bh - 12 : 12;
     else if (vh - bottom >= bh + 12) bTop = bottom + 10;
     else if (top >= bh + 12) bTop = top - bh - 10;
     else bTop = Math.max(12, vh - bh - 12);
@@ -194,33 +214,108 @@
     rafId = null;
   }
 
+  function stopTyping() {
+    if (typingTimer) clearInterval(typingTimer);
+    typingTimer = null;
+  }
+
+  /**
+   * Печатает текст подсказки: весь текст сразу лежит на месте невидимым
+   * (размер подсказки не прыгает, раскладка не съезжает), и по такту
+   * становится видимым. Разметка (<b>, <br>) не ломается — печатаются только
+   * текстовые узлы. Нажатие на текст — допечатать сразу.
+   */
+  function typeText(el, onDone) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const parts = [];
+    while (walker.nextNode()) parts.push(walker.currentNode);
+    const queue = parts.filter((n) => n.nodeValue.length).map((node) => {
+      const full = node.nodeValue;
+      const ghost = document.createElement('span');
+      ghost.style.visibility = 'hidden';
+      ghost.textContent = full;
+      node.nodeValue = '';
+      node.parentNode.insertBefore(ghost, node.nextSibling);
+      return { node, ghost, full, shown: 0 };
+    });
+    let i = 0;
+    const finish = () => {
+      stopTyping();
+      queue.forEach((p) => { p.node.nodeValue = p.full; p.ghost.remove(); });
+      el.removeEventListener('click', finish);
+      onDone();
+    };
+    el.addEventListener('click', finish);
+    typingTimer = setInterval(() => {
+      let budget = TYPE_CHARS;
+      while (budget > 0 && i < queue.length) {
+        const p = queue[i];
+        const take = Math.min(budget, p.full.length - p.shown);
+        p.shown += take;
+        budget -= take;
+        p.node.nodeValue = p.full.slice(0, p.shown);
+        p.ghost.textContent = p.full.slice(p.shown);
+        if (p.shown >= p.full.length) { p.ghost.remove(); i += 1; }
+      }
+      if (i >= queue.length) finish();
+    }, TYPE_TICK_MS);
+  }
+
   function renderBubble(step, opts) {
+    stopTyping();
     const bubble = document.getElementById('tour-bubble');
     const total = active.scenario.steps.length;
     const showNext = opts.showNext;
+    // Печатаем только «настоящий» текст шага и только при первом показе.
+    const typing = !!opts.typing && !window.__E2E_TOUR_INSTANT && !active.seen.has(active.index);
     bubble.innerHTML = `
       <div class="flex items-center justify-between gap-2 mb-1.5">
-        <div class="text-[11px] font-semibold text-indigo-600 uppercase tracking-wide">Шаг ${active.index + 1} из ${total} · ${escapeHtmlClient(active.scenario.title)}</div>
+        <div class="text-[11px] font-semibold text-indigo-600 uppercase tracking-wide min-w-0 truncate">Шаг ${active.index + 1} из ${total} · ${escapeHtmlClient(active.scenario.title)}</div>
         <span class="flex items-center gap-3 shrink-0">
           ${active.history.length > 1 ? '<button type="button" data-tour="back" class="text-[11px] text-indigo-600">← Назад</button>' : ''}
+          <button type="button" data-tour="collapse" class="text-[11px] text-indigo-600">${collapsed ? 'Развернуть' : 'Свернуть'}</button>
           <button type="button" data-tour="exit" class="text-[11px] text-gray-400">Выйти</button>
         </span>
       </div>
-      ${opts.title ? `<div class="text-[15px] font-semibold text-gray-900 mb-1">${opts.title}</div>` : ''}
-      <div class="text-sm text-gray-700 leading-snug">${opts.text}</div>
-      ${opts.quiz ? `<div class="space-y-1.5 mt-3">${opts.quiz.options.map((o, i) => `<button type="button" data-quiz="${i}" class="w-full text-left px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800">${o.label}</button>`).join('')}</div>
-        <div data-quiz-explain class="hidden text-[13px] leading-snug mt-2 rounded-xl px-3 py-2"></div>` : ''}
-      ${opts.hint ? `<div class="text-[12px] text-amber-700 mt-2">${opts.hint}</div>` : ''}
-      <div class="flex flex-wrap gap-2 mt-3" data-tour-actions>
-        ${(opts.actions || []).map((a, i) => `<button type="button" data-tour-action="${i}" class="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium">${escapeHtmlClient(a.label)}</button>`).join('')}
-        ${showNext ? `<button type="button" data-tour="next" class="${opts.quiz ? 'hidden ' : ''}flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">${active.index + 1 === total ? 'Готово' : 'Далее'}</button>` : ''}
+      <div data-tour-body class="${collapsed ? 'hidden' : ''}">
+        ${opts.title ? `<div class="text-[15px] font-semibold text-gray-900 mb-1">${opts.title}</div>` : ''}
+        <div data-tour-text class="text-sm text-gray-700 leading-snug">${opts.text}</div>
+        ${opts.quiz ? `<div data-quiz-options class="space-y-1.5 mt-3 ${typing ? 'hidden' : ''}">${opts.quiz.options.map((o, i) => `<button type="button" data-quiz="${i}" class="w-full text-left px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800">${o.label}</button>`).join('')}</div>
+          <div data-quiz-explain class="hidden text-[13px] leading-snug mt-2 rounded-xl px-3 py-2"></div>` : ''}
+        ${opts.hint ? `<div class="text-[12px] text-amber-700 mt-2">${opts.hint}</div>` : ''}
+        <div class="flex flex-wrap gap-2 mt-3" data-tour-actions>
+          ${(opts.actions || []).map((a, i) => `<button type="button" data-tour-action="${i}" class="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium">${escapeHtmlClient(a.label)}</button>`).join('')}
+          ${showNext ? `<button type="button" data-tour="next" class="${opts.quiz || typing ? 'hidden ' : ''}flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">${active.index + 1 === total ? 'Готово' : 'Далее'}</button>` : ''}
+        </div>
       </div>
+      ${collapsed ? `<div class="text-[13px] text-gray-700 truncate">${opts.title ? opts.title.replace(/<[^>]+>/g, '') : 'Подсказка свёрнута'}</div>` : ''}
     `;
     bubble.querySelector('[data-tour="exit"]').addEventListener('click', () => exit());
+    bubble.querySelector('[data-tour="collapse"]').addEventListener('click', () => {
+      collapsed = !collapsed;
+      const index = active.index;
+      active.seen.add(index); // при разворачивании — не печатать заново
+      renderBubble(step, opts);
+      lastRectKey = ''; // пересчитать место подсказки
+    });
     const backBtn = bubble.querySelector('[data-tour="back"]');
     if (backBtn) backBtn.addEventListener('click', () => goBack());
     const nextBtn = bubble.querySelector('[data-tour="next"]');
     if (nextBtn) nextBtn.addEventListener('click', () => goNext());
+    if (typing) {
+      const textEl = bubble.querySelector('[data-tour-text]');
+      const index = active.index;
+      typeText(textEl, () => {
+        if (!active || active.index !== index) return;
+        active.seen.add(index);
+        const quizOptions = bubble.querySelector('[data-quiz-options]');
+        if (quizOptions) quizOptions.classList.remove('hidden');
+        else if (nextBtn) nextBtn.classList.remove('hidden');
+        lastRectKey = '';
+      });
+    } else if (opts.typing) {
+      active.seen.add(active.index);
+    }
     if (opts.quiz) {
       const explain = bubble.querySelector('[data-quiz-explain]');
       bubble.querySelectorAll('[data-quiz]').forEach((btn) => {
@@ -279,12 +374,14 @@
     const last = active.history[active.history.length - 1];
     if (!last || last.index !== active.index) active.history.push({ index: active.index, hash: window.location.hash });
     track('step', active.index + 1);
-    if (step.onEnter) { try { step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
+    collapsed = false;
 
     ensureLayer();
     // Шаг без цели — объяснение или вопрос-проверка по центру экрана.
     if (!step.target) {
-      renderBubble(step, { title: step.title, text: step.text, quiz: step.quiz, actions: step.actions, showNext: true });
+      if (step.onEnter) { try { await step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
+      if (token !== stepToken || !active) return;
+      renderBubble(step, { title: step.title, text: step.text, quiz: step.quiz, actions: step.actions, showNext: true, typing: true });
       startLoop({}, () => null);
       return;
     }
@@ -295,6 +392,15 @@
       : { title: step.title, text: step.text, hint: 'Секунду, ищу нужное место на экране…', showNext: false });
     startLoop({ free: true }, () => null);
 
+    // Экран только что сменился — даём ему отрисоваться, иначе шаг цепляется
+    // за элемент старого экрана или за место, которое сейчас съедет
+    // (отзыв VASY №10: «не идеально следует открытию экрана»).
+    const sinceRoute = Date.now() - routeChangedAt;
+    if (sinceRoute < ROUTE_SETTLE_MS) await wait(ROUTE_SETTLE_MS - sinceRoute);
+    if (token !== stepToken || !active) return;
+    if (step.onEnter) { try { await step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
+    if (token !== stepToken || !active) return;
+
     const target = await waitTarget(step, token);
     if (token !== stepToken || !active) return;
 
@@ -302,7 +408,7 @@
       if (step.optional) {
         if (step.group && step.groupLeader) skippedGroups.add(step.group);
         if (step.skippedText) {
-          renderBubble(step, { title: step.title, text: step.skippedText, showNext: true });
+          renderBubble(step, { title: step.title, text: step.skippedText, showNext: true, typing: true });
           startLoop({}, () => null);
           return;
         }
@@ -312,7 +418,7 @@
       renderBubble(step, {
         title: step.title, text: step.text,
         hint: 'Не вижу нужное место на экране — возможно, он ещё грузится или выглядит иначе. Можно нажать «Далее».',
-        showNext: true
+        showNext: true, typing: true
       });
       startLoop({}, () => null);
       return;
@@ -323,9 +429,10 @@
     renderBubble(step, {
       title: step.title, text: step.text,
       hint: advance === 'click' ? '👆 Нажми на подсвеченное.' : step.hint,
-      actions: step.actions, showNext: advance === 'next'
+      actions: step.actions, showNext: advance === 'next', typing: true
     });
-    startLoop(step, () => findTarget(step) || target);
+    // Старая цель ушла вместе с экраном — подсказка не висит над пустым местом.
+    startLoop(step, () => findTarget(step) || (target.isConnected ? target : null));
 
     if (advance && typeof advance === 'object' && advance.until) {
       while (token === stepToken && active) {
@@ -380,7 +487,20 @@
       showSaveToast(true, 'Учебный режим: здесь не сохраняем — ничего не запишется.');
       return;
     }
-    if (!step || step.advance !== 'click') return;
+    if (!step) return;
+    // Шаг-пояснение: подсвеченное только показываем. Иначе нажатие открывает
+    // окно, которое под затемнением нечем закрыть (отзыв VASY №11).
+    if ((step.advance || 'next') === 'next' && step.target && !step.free && !step.allowClick) {
+      const shown = findTarget(step);
+      if (shown && shown.contains(e.target)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        pulseBubble();
+        showSaveToast(true, 'Это пояснение — нажми «Далее» в подсказке.');
+      }
+      return;
+    }
+    if (step.advance !== 'click') return;
     const target = findTarget(step);
     if (target && target.contains(e.target)) {
       const token = stepToken;
@@ -391,6 +511,7 @@
 
   function teardown() {
     stopLoop();
+    stopTyping();
     stepToken++;
     if (layer) { layer.remove(); layer = null; }
     writeState(null);
@@ -402,6 +523,7 @@
     active = null;
     teardown();
     if (scenario.onComplete) { try { scenario.onComplete(); } catch (e) { /* не мешаем отзыву */ } }
+    backToTraining();
     if (window.TrainingUI) window.TrainingUI.afterScenario(scenario);
   }
 
@@ -414,6 +536,12 @@
     active = null;
     teardown();
     if (scenario.onExit) { try { scenario.onExit(); } catch (e) { /* ничего */ } }
+    backToTraining();
+  }
+
+  /** Вышел или прошёл — назад в «Обучение», а не на экран, где остановился (отзыв VASY №13). */
+  function backToTraining() {
+    if (currentScreen() !== 'training' && typeof navigateTo === 'function') navigateTo('training');
   }
 
   /** Запуск сценария по id (из «Обучения» или «Помощи»). */
@@ -422,7 +550,7 @@
     if (!scenario) { showSaveToast(false, 'Этот сценарий ещё готовится.'); return; }
     if (active) teardown();
     skippedGroups = new Set();
-    active = { scenario, index: 0, history: [] };
+    active = { scenario, index: 0, history: [], seen: new Set() };
     track('start', 0);
     showStep();
   }
@@ -434,7 +562,7 @@
     const scenario = scenarios()[state.scenarioId];
     if (!scenario) { writeState(null); return; }
     skippedGroups = new Set();
-    active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1), history: [] };
+    active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1), history: [], seen: new Set() };
     showStep();
   }
 
