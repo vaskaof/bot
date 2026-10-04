@@ -111,6 +111,10 @@ window.Screens.cartNew = {
              снова. НЕ использовать обратные кавычки в этом комментарии. -->
         <div id="cart-save-error" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"></div>
 
+        <!-- Волна 6 аудита менеджера (04.10.2026) — скриншот оформления, ИИ
+             подсказывает позиции и суммы (см. _checkout-shot.js). -->
+        ${CheckoutShot.html()}
+
         <!-- Шапка корзины — общая на все заявки внутри (§4 п.1 плана) -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible mb-3">
           <!-- Волна 1 аудита менеджера (28.09.2026) — канал первым: по нему
@@ -2115,6 +2119,87 @@ window.Screens.cartNew = {
     recomputeTotals();
     bootstrapping = false;
 
+    // --- Волна 6 (04.10.2026): «Скриншот оформления → ИИ» ---
+    // Подставляется ТОЛЬКО в пустые поля, по кнопке; выбранное человеком не
+    // трогается (тот же принцип, что автоподстановки канала волны 1). Отчёт
+    // «подставлено / не тронуто» показывает блок скриншота.
+    function applyCheckoutShot(p) {
+      const filled = [];
+      const skipped = [];
+      if (p.storeDomain) {
+        if (currentChannel()) skipped.push(`канал (уже выбран «${currentChannel()}»)`);
+        else {
+          onPurchaseLinkEntered(`https://${p.storeDomain}/`);
+          if (currentChannel()) filled.push(`канал «${currentChannel()}»`);
+        }
+      }
+      if (p.currency && p.currency !== currencySelect.value) {
+        if (cartHasAmounts()) skipped.push(`валюта — на скриншоте ${p.currency}, а суммы уже введены в ${currencySelect.value}`);
+        else { setCartCurrency(p.currency); currencyTouched = true; renderCurrencyChoice(); filled.push(`валюта ${p.currency}`); }
+      }
+      if (p.orderDate && p.orderDate !== dateInput.value) {
+        if (dateInput.value !== todayFormatter.format(new Date())) skipped.push('дата выкупа (уже изменена)');
+        else {
+          dateInput.value = p.orderDate;
+          dateInput.dispatchEvent(new Event('change'));
+          filled.push(`дата выкупа ${p.orderDate.split('-').reverse().join('.')}`);
+        }
+      }
+
+      const positions = items.filter((it) => it.type === 'position');
+      const isEmpty = (it) => !it.isMultiplied && !(it.productOriginal || '').trim() && !(it.productSearchEl.value || '').trim() && !(parseFloat(it.amountInputEl.value) > 0);
+      const free = positions.filter(isEmpty);
+      const untouchedCount = items.length - free.length;
+      const units = CheckoutShot.expandUnits(p.items, 30);
+      units.forEach((u, i) => {
+        const item = free[i] || CartPosition.create(cartItemCtx);
+        if (u.match) {
+          item.productSearchEl.value = u.match.shortName || u.match.skuOriginal;
+          item.productOriginal = u.match.skuOriginal;
+          item.productFromCatalog = true;
+        } else {
+          item.productSearchEl.value = u.name;
+          item.productOriginal = u.name;
+          item.productFromCatalog = false;
+          item.showNotInCatalogHint();
+        }
+        if (u.unitPrice !== null && u.unitPrice > 0) {
+          item.amountInputEl.value = String(u.unitPrice);
+          item.amountInputEl.dispatchEvent(new Event('input'));
+        }
+      });
+      if (units.length) {
+        recomputeTotals();
+        const notInCatalog = units.filter((u) => !u.match).length;
+        filled.push(`позиции: ${units.length}${notInCatalog ? ` (без каталога: ${notInCatalog} — выберите товар)` : ''}`);
+      }
+      if (untouchedCount) skipped.push(`уже заполненные заявки: ${untouchedCount}`);
+
+      if (p.total !== null && p.total > 0) {
+        if (untouchedCount > 0 || !units.length) skipped.push('итог по чеку — в корзине есть заявки не со скриншота');
+        else if (isSingleMode()) {
+          const only = items[0];
+          only.amountInputEl.value = String(p.total);
+          only.amountInputEl.dispatchEvent(new Event('input'));
+          filled.push('сумма по чеку');
+          if (p.discount > 0) {
+            if (only.singleDiscountBlockEl.classList.contains('hidden')) only.rowEl.querySelector('.had-discount-btn').click();
+            only.singleDiscountInputEl.value = String(p.discount);
+            only.singleDiscountInputEl.dispatchEvent(new Event('input'));
+            filled.push('скидка — выберите, кому она');
+          }
+        } else if (parseFloat(siteTotalInput.value) > 0) skipped.push('итог по чеку (уже введён)');
+        else {
+          siteTotalInput.value = String(p.total);
+          siteTotalInput.dispatchEvent(new Event('input'));
+          filled.push('итог по чеку');
+        }
+      }
+      updateSummaryDisplay();
+      return { filled, skipped };
+    }
+    const checkoutShot = CheckoutShot.init({ signal, apply: applyCheckoutShot });
+
     // Волна 7, §7 п.2 — восстановление черновика «Размножить на клиентов».
     // В отличие от order-new.js's тихого auto-retry (там черновик — готовый
     // payload createOrder, можно попробовать отправить молча), здесь
@@ -2417,6 +2502,13 @@ window.Screens.cartNew = {
       saveOrderDraft(CART_DRAFT_KEY, payload);
       try {
         const response = await callServer('createCart', payload);
+        // Волна 6 — скриншот оформления к созданной корзине (VASY: «сохраняй
+        // на всякий случай»). Сбой не отменяет корзину — только тост.
+        const shot = checkoutShot.getImage();
+        if (shot && response && response.cartId) {
+          try { await callServer('attachCartScreenshot', response.cartId, shot, checkoutShot.getParsed()); }
+          catch (shotError) { showSaveToast(false, `Корзина создана, но скриншот не сохранился: ${shotError.message}`); }
+        }
         clearOrderDraft(CART_DRAFT_KEY);
         // Волна 7, §7 п.2 — черновик «Размножить на клиентов» (см. JSDoc
         // scheduleMultiplyDraftSave в _cart-position.js) чистится только

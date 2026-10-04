@@ -60,6 +60,11 @@ window.Screens.cartDetail = {
                  setCartManagerId, bulk по всем заказам корзины). Скрыто
                  целиком для менеджера — та же логика, что order-edit.js's
                  аналогичная строка. -->
+            <!-- Волна 6 (04.10.2026) — скриншот оформления заказа, сохранённый
+                 при создании корзины; картинка грузится только по нажатию. -->
+            <button type="button" id="cart-screenshot-btn" class="hidden mt-3 pt-3 border-t border-gray-100 w-full text-left text-[13px] text-violet-700 font-medium flex items-center gap-1.5">
+              <i data-lucide="image" class="w-4 h-4"></i> Скриншот оформления заказа
+            </button>
             <div id="cart-manager-row" class="hidden mt-3 pt-3 border-t border-gray-100">
               <div class="text-[11px] text-gray-400 mb-1">Менеджер (все заявки корзины)</div>
               <select id="cart-manager-select" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
@@ -111,7 +116,31 @@ window.Screens.cartDetail = {
       </main>
 
       ${CartPurchaseEventModal.html()}
+      <div id="cart-screenshot-modal" class="fixed inset-0 bg-black/80 hidden flex-col items-center justify-center z-[60] p-3 gap-2">
+        <div id="cart-screenshot-caption" class="text-white text-[13px] text-center"></div>
+        <img id="cart-screenshot-img" class="max-w-full max-h-[85vh] object-contain rounded-lg" alt="">
+      </div>
     `;
+
+    const screenshotModal = document.getElementById('cart-screenshot-modal');
+    screenshotModal.addEventListener('click', () => { screenshotModal.classList.add('hidden'); screenshotModal.classList.remove('flex'); });
+    document.getElementById('cart-screenshot-btn').addEventListener('click', async () => {
+      try {
+        const shot = await callServer('getCartScreenshot', params.cartId);
+        if (!shot) { showSaveToast(false, 'Скриншота нет.'); return; }
+        const p = shot.parsed || {};
+        document.getElementById('cart-screenshot-caption').textContent = [
+          p.store || p.storeDomain || '',
+          p.orderNumber ? `заказ № ${p.orderNumber}` : '',
+          `сохранён ${new Date(shot.createdAt).toLocaleDateString('ru-RU')}`
+        ].filter(Boolean).join(' · ');
+        document.getElementById('cart-screenshot-img').src = `data:${shot.mimeType};base64,${shot.data}`;
+        screenshotModal.classList.remove('hidden');
+        screenshotModal.classList.add('flex');
+      } catch (error) {
+        showSaveToast(false, error.message);
+      }
+    });
 
     const purchaseEventModal = CartPurchaseEventModal.init({
       onRecorded: () => load()
@@ -158,6 +187,7 @@ window.Screens.cartDetail = {
         document.getElementById('cart-content').classList.remove('hidden');
 
         document.getElementById('cart-currency').textContent = details.currency;
+        document.getElementById('cart-screenshot-btn').classList.toggle('hidden', !details.hasScreenshot);
         document.getElementById('cart-purchase-date').textContent = details.purchaseDate || '—';
         document.getElementById('cart-cargo').textContent = details.cargo || '—';
         document.getElementById('cart-entry-count').textContent =
