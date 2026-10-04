@@ -592,7 +592,7 @@ window.Screens.reminders = {
               <span class="w-2 h-2 rounded-full ${SEVERITY_DOT[worst]}"></span>
               <span class="text-[11px] text-violet-600 font-medium">Коллективка · ${cards.length} заказ(ов)</span>
             </div>
-            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(collective.name)}</div>
+            <div class="font-semibold text-gray-900 text-[15px] line-clamp-2 break-words">${escapeHtmlClient(collective.name)}</div>
           </div>
           ${debt > 0 ? `<div class="shrink-0 text-sm font-semibold text-red-600">${debt.toFixed(2)} ₽</div>` : ''}
         </div>
@@ -657,7 +657,7 @@ window.Screens.reminders = {
           ${card.imageUrl ? `<img src="${escapeHtmlClient(card.imageUrl)}" alt="" class="w-11 h-11 rounded-xl object-cover shrink-0 bg-gray-100" onerror="this.style.display='none'">` : ''}
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1 flex-wrap">${positionLabel}${stageLabel}</div>
-            <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(card.productDisplay)}</div>
+            <div class="font-semibold text-gray-900 text-[15px] line-clamp-2 break-words">${escapeHtmlClient(card.productDisplay)}</div>
             <div class="text-[13px] text-gray-500 mt-0.5 truncate">${escapeHtmlClient(card.clientDisplay || 'Клиент не привязан')}</div>
             <div class="flex items-center gap-1.5 flex-wrap mt-1">
               ${card.purchaseChannel ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-pink-50 text-pink-700">${escapeHtmlClient(card.purchaseChannel)}</span>` : ''}
