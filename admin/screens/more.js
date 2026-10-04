@@ -34,7 +34,7 @@ window.Screens.more = {
 
     const items = [
       // Обучение менеджеров (04.10.2026) — первым: курс, значки, идеи.
-      { route: 'training', icon: 'graduation-cap', title: 'Обучение', description: 'Пошаговые сценарии по приложению, значки, твои идеи' },
+      { route: 'training', icon: 'graduation-cap', title: 'Обучение', description: 'Пошаговые сценарии по приложению, достижения, твои идеи' },
       { route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' },
       { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
       { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },

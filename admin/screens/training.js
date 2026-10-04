@@ -3,7 +3,7 @@
 /**
  * Экран «Обучение» (#/training, обучение менеджеров этап 1, 04.10.2026).
  * Сотрудник: уровень, весь курс (доступные сценарии — «Пройти», остальные —
- * «скоро»), значки, свои идеи со статусами. Админ дополнительно: «Команда»
+ * «скоро»), достижения, свои идеи со статусами. Админ дополнительно: «Команда»
  * (прогресс каждого, где бросают сценарии, средние оценки) и «Отзывы»
  * (решение по каждому: в работу / внедрено / не будем).
  * Сервер — `server/src/training/trainingService.js`.
@@ -61,7 +61,7 @@ window.Screens = window.Screens || {};
 
   function badgesGrid(t) {
     return `
-      <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Значки</div>
+      <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Достижения</div>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
         ${t.badges.map((b) => `
           <div class="bg-white rounded-2xl border border-gray-100 p-2 text-center ${b.earned ? '' : 'opacity-40 grayscale'}" title="${esc(b.description)}" data-badge="${esc(b.code)}">
@@ -86,7 +86,7 @@ window.Screens = window.Screens || {};
           </div>
           <div class="text-sm text-gray-800 mt-1 whitespace-pre-wrap">${esc(i.text)}</div>
         </div>`).join('')}</div>`
-        : '<div class="text-[12px] text-gray-400 px-1 mb-4">Пока нет. Всё, что мешает в работе, — сюда: за внедрённую идею — значок 🛠</div>'}`;
+        : '<div class="text-[12px] text-gray-400 px-1 mb-4">Пока нет. Всё, что мешает в работе, — сюда: за внедрённую идею — достижение 🛠</div>'}`;
   }
 
   function teamBlock(o) {

@@ -67,8 +67,14 @@
 
   function findTarget(step) {
     if (!step.target) return null;
-    const el = typeof step.target === 'function' ? step.target() : document.querySelector(step.target);
-    return isVisible(el) ? el : null;
+    if (typeof step.target === 'function') {
+      const el = step.target();
+      return isVisible(el) ? el : null;
+    }
+    // Первый ВИДИМЫЙ: на доске «Задачи» первые по DOM карточки бывают в
+    // скрытой колонке этапа или в свёрнутой группе коллективки (репорт VASY
+    // 04.10: «задач нет», хотя задачи были).
+    return Array.from(document.querySelectorAll(step.target)).find(isVisible) || null;
   }
 
   function ensureLayer() {
@@ -184,7 +190,10 @@
     bubble.innerHTML = `
       <div class="flex items-center justify-between gap-2 mb-1.5">
         <div class="text-[11px] font-semibold text-indigo-600 uppercase tracking-wide">Шаг ${active.index + 1} из ${total} · ${escapeHtmlClient(active.scenario.title)}</div>
-        <button type="button" data-tour="exit" class="text-[11px] text-gray-400 shrink-0">Выйти</button>
+        <span class="flex items-center gap-3 shrink-0">
+          ${active.history.length > 1 ? '<button type="button" data-tour="back" class="text-[11px] text-indigo-600">← Назад</button>' : ''}
+          <button type="button" data-tour="exit" class="text-[11px] text-gray-400">Выйти</button>
+        </span>
       </div>
       ${opts.title ? `<div class="text-[15px] font-semibold text-gray-900 mb-1">${opts.title}</div>` : ''}
       <div class="text-sm text-gray-700 leading-snug">${opts.text}</div>
@@ -195,6 +204,8 @@
       </div>
     `;
     bubble.querySelector('[data-tour="exit"]').addEventListener('click', () => exit());
+    const backBtn = bubble.querySelector('[data-tour="back"]');
+    if (backBtn) backBtn.addEventListener('click', () => goBack());
     const nextBtn = bubble.querySelector('[data-tour="next"]');
     if (nextBtn) nextBtn.addEventListener('click', () => goNext());
     (opts.actions || []).forEach((a, i) => {
@@ -237,12 +248,19 @@
       active.index += 1;
       return showStep();
     }
+    // История показанных шагов — для «← Назад»: вместе с экраном, на котором
+    // шаг показывался (возврат через переход возвращает и экран).
+    const last = active.history[active.history.length - 1];
+    if (!last || last.index !== active.index) active.history.push({ index: active.index, hash: window.location.hash });
     track('step', active.index + 1);
     if (step.onEnter) { try { step.onEnter(); } catch (e) { /* шаг всё равно показываем */ } }
 
     ensureLayer();
     // Пока ищем цель — подсказка по центру, без затемнения кликов по экрану.
-    renderBubble(step, { title: step.title, text: step.text, hint: 'Секунду, ищу нужное место на экране…', showNext: false });
+    // Необязательный шаг может не найтись — его текст не показываем заранее.
+    renderBubble(step, step.optional
+      ? { text: 'Секунду, ищу нужное место на экране…', showNext: false }
+      : { title: step.title, text: step.text, hint: 'Секунду, ищу нужное место на экране…', showNext: false });
     startLoop({ free: true }, () => null);
 
     const target = await waitTarget(step, token);
@@ -290,6 +308,17 @@
   function goNext() {
     if (!active) return;
     active.index += 1;
+    showStep();
+  }
+
+  /** «← Назад» — предыдущий показанный шаг; если он был на другом экране — туда же. */
+  function goBack() {
+    if (!active || active.history.length < 2) return;
+    active.history.pop();
+    const prev = active.history.pop(); // снова попадёт в историю в showStep
+    active.index = prev.index;
+    skippedGroups = new Set();
+    if (prev.hash !== window.location.hash) window.location.hash = prev.hash;
     showStep();
   }
 
@@ -346,7 +375,7 @@
     if (!scenario) { showSaveToast(false, 'Этот сценарий ещё готовится.'); return; }
     if (active) teardown();
     skippedGroups = new Set();
-    active = { scenario, index: 0 };
+    active = { scenario, index: 0, history: [] };
     track('start', 0);
     showStep();
   }
@@ -358,7 +387,7 @@
     const scenario = scenarios()[state.scenarioId];
     if (!scenario) { writeState(null); return; }
     skippedGroups = new Set();
-    active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1) };
+    active = { scenario, index: Math.min(state.index || 0, scenario.steps.length - 1), history: [] };
     showStep();
   }
 

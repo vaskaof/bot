@@ -7,7 +7,7 @@
  *   «💡 Неудобно / идея»;
  * - отзыв после сценария: «Понятно?» / «Легко?» (😕🙂😃) + «Как бы ты
  *   переделал(а)?» — каждый отзыв сразу уходит VASY в Telegram;
- * - праздник новых значков.
+ * - праздник новых достижений.
  * Сервер — `server/src/training/trainingService.js`.
  */
 (function () {
@@ -62,7 +62,7 @@
         <button type="button" data-course class="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 text-left">
           <span class="text-xl">🎓</span>
           <span class="min-w-0"><span class="block text-sm font-medium text-gray-900">Всё обучение</span>
-          <span class="block text-[11px] text-gray-500">Курс, прогресс и значки</span></span>
+          <span class="block text-[11px] text-gray-500">Курс, прогресс и достижения</span></span>
         </button>
       </div>`);
     el.querySelector('[data-close]').onclick = close;
@@ -167,7 +167,7 @@
     };
   }
 
-  // --- Значки ---
+  // --- Достижения ---
 
   async function checkNewBadges(preloaded) {
     let training = preloaded;
@@ -184,7 +184,7 @@
   function celebrate(badges, level) {
     const { el, close } = overlay('training-badge-modal', `
       <div class="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 text-center">
-        <div class="text-sm font-semibold text-indigo-600 uppercase tracking-wide">Новый значок${badges.length > 1 ? 'и' : ''}!</div>
+        <div class="text-sm font-semibold text-indigo-600 uppercase tracking-wide">${badges.length > 1 ? 'Новые достижения' : 'Новое достижение'}!</div>
         <div class="flex justify-center flex-wrap gap-4 my-4">
           ${badges.map((b) => `<div class="w-24"><div class="text-5xl">${b.emoji}</div><div class="text-sm font-medium text-gray-900 mt-1">${escapeHtmlClient(b.title)}</div></div>`).join('')}
         </div>
@@ -220,7 +220,7 @@
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <div class="text-sm font-semibold">🎓 Обучение: пройдено ${done} из ${available.length}</div>
-            <div class="text-[12px] text-indigo-100 mt-0.5">Дальше: «${escapeHtmlClient(next.title)}» · ~${next.minutes} мин. За каждый сценарий — значок.</div>
+            <div class="text-[12px] text-indigo-100 mt-0.5">Дальше: «${escapeHtmlClient(next.title)}» · ~${next.minutes} мин. За каждый сценарий — достижение.</div>
           </div>
           <button type="button" data-hide class="text-[11px] text-indigo-200 shrink-0">Скрыть</button>
         </div>
