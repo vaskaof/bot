@@ -68,7 +68,9 @@
     record: (id, event, step, total) => callServer('recordMyLessonEvent', id, event, step, total),
     after: (scenario, result) => {
       invalidate();
-      if (window.ClientAchievements) ClientAchievements.celebrate(result, scenario);
+      const closed = window.ClientAchievements ? ClientAchievements.celebrate(result, scenario) : null;
+      // Сначала праздник, потом отзыв (поверх праздника — не успеют порадоваться).
+      Promise.resolve(closed).then(() => askFeedback(scenario)).catch(() => {});
     },
     texts: {
       press: '👆 Нажмите на подсвеченное.',
@@ -77,9 +79,140 @@
       blocked: 'В уроке это не нажимаем — это учебный пример.',
       blockedSlider: 'В уроке это не меняем — это учебный пример.',
       notFound: 'Не вижу нужное место на экране — возможно, он ещё грузится. Можно нажать «Далее».',
-      exit: 'Выйти из урока? Пройти его заново можно в любой момент — «Профиль» → «Обучение».'
-    }
+      exit: 'Выйти из урока? Пройти его заново можно в любой момент — «Профиль» → «Обучение».',
+      practiceMiss: 'Не здесь — попробуйте ещё 🙂',
+      practiceMissAgain: 'Снова не здесь. Можно нажать «Подсказать».',
+      practiceHint: '👆 Вот здесь — нажмите на подсвеченное.'
+    },
+    // Промахи и подсказки в «Найдите сами» — в сводку VASY (где теряются).
+    practiceEvents: true
   };
+
+  // --- Отзыв после урока (05.10.2026, VASY: «нет обратной связи после урока») ---
+  // Смайлик сохраняется сразу по нажатию — одного нажатия достаточно. После
+  // 😕/😐 — «Что было не так?»: кнопки-причины и сразу поле для своих слов;
+  // после 😍 — «Чего ещё не хватает?», только поле. Спрашиваем один раз на
+  // урок: оценённый (rated с сервера) или пропущенный на этом устройстве — нет.
+
+  const FEEDBACK_RATES = [
+    { v: 1, emoji: '😕', label: 'Сложно' },
+    { v: 2, emoji: '😐', label: 'Так себе' },
+    { v: 3, emoji: '😍', label: 'Понятно' }
+  ];
+  const FEEDBACK_REASONS = [
+    { code: 'fast', label: 'Слишком быстро' },
+    { code: 'lost', label: 'Непонятно, куда нажимать' },
+    { code: 'long', label: 'Слишком длинно' },
+    { code: 'unclear', label: 'Непонятный текст' }
+  ];
+  const SKIP_KEY = 'knopkaLessonFeedbackSkipped';
+
+  function skippedFeedback() {
+    try { return JSON.parse(localStorage.getItem(SKIP_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function rememberSkip(id) {
+    try { localStorage.setItem(SKIP_KEY, JSON.stringify([...new Set([...skippedFeedback(), id])])); } catch (e) { /* спросим ещё раз — не страшно */ }
+  }
+
+  async function askFeedback(scenario) {
+    if (window.__E2E_SKIP_LESSON_FEEDBACK || document.getElementById('lesson-feedback-sheet')) return;
+    if (skippedFeedback().includes(scenario.id)) return;
+    let d;
+    try { d = await load(); } catch (e) { return; }
+    const lesson = d.lessons.find((l) => l.id === scenario.id);
+    if (!lesson || lesson.rated || (window.Tour && Tour.isActive())) return;
+
+    const state = { rating: 0, reasons: new Set() };
+    let saved = null; // последняя отправка смайлика — «Готово» дожидается её
+    const el = document.createElement('div');
+    el.id = 'lesson-feedback-sheet';
+    el.className = 'fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-[80]';
+    el.innerHTML = `<div class="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+      <div class="flex items-start justify-between gap-2">
+        <div class="text-[16px] font-bold text-gray-900">Как вам урок «${esc(lesson.title)}»?</div>
+        <button type="button" data-close title="Закрыть" class="shrink-0 p-1 -mt-1 -mr-1 text-gray-300"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="text-[12.5px] text-gray-500 mt-0.5">Ответ видит только магазин — так уроки станут понятнее.</div>
+      <div class="grid grid-cols-3 gap-2 mt-4">${FEEDBACK_RATES.map((r) => `
+        <button type="button" data-rate="${r.v}" class="py-3 rounded-2xl border-2 border-gray-100 flex flex-col items-center gap-1 active:scale-95 transition">
+          <span class="text-4xl leading-none">${r.emoji}</span><span class="text-[12px] text-gray-600">${r.label}</span>
+        </button>`).join('')}
+      </div>
+      <div data-more class="hidden mt-4">
+        <div data-more-title class="text-[14px] font-semibold text-gray-900"></div>
+        <div data-reasons class="flex flex-wrap gap-2 mt-2">${FEEDBACK_REASONS.map((r) => `
+          <button type="button" data-reason="${r.code}" class="px-3 py-1.5 rounded-full border border-gray-200 text-[13px] text-gray-700">${r.label}</button>`).join('')}
+        </div>
+        <textarea data-text rows="3" maxlength="1000" class="w-full mt-3 text-sm bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:border-indigo-400"></textarea>
+        <button type="button" data-done class="mt-3 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold">Готово</button>
+      </div>
+      <button type="button" data-skip class="mt-4 w-full text-[13px] text-gray-400">Пропустить</button>
+    </div>`;
+    document.body.appendChild(el);
+    if (window.lucide) window.lucide.createIcons();
+
+    const more = el.querySelector('[data-more]');
+    const text = el.querySelector('[data-text]');
+    const doneBtn = el.querySelector('[data-done]');
+    const close = () => {
+      el.remove();
+      if (!state.rating) rememberSkip(scenario.id);
+    };
+    const send = (payload) => callServer('submitMyLessonFeedback', scenario.id, payload);
+
+    el.querySelectorAll('[data-rate]').forEach((btn) => {
+      btn.onclick = () => {
+        state.rating = Number(btn.dataset.rate);
+        el.querySelectorAll('[data-rate]').forEach((b) => {
+          const on = b === btn;
+          b.classList.toggle('border-indigo-400', on);
+          b.classList.toggle('bg-indigo-50', on);
+          b.classList.toggle('border-gray-100', !on);
+        });
+        const good = state.rating === 3;
+        el.querySelector('[data-more-title]').textContent = good ? 'Спасибо! 💜 Чего ещё не хватает?' : 'Что было не так?';
+        el.querySelector('[data-reasons]').classList.toggle('hidden', good);
+        if (good) state.reasons.clear();
+        text.placeholder = good ? 'Например: хочу урок про…' : 'Или напишите своими словами';
+        more.classList.remove('hidden');
+        el.querySelector('[data-skip]').classList.add('hidden');
+        // Оценка уходит сразу — даже если дальше просто закроют.
+        saved = send({ rating: state.rating, reasons: [...state.reasons], text: text.value }).catch(() => null);
+        invalidate();
+      };
+    });
+    el.querySelectorAll('[data-reason]').forEach((btn) => {
+      btn.onclick = () => {
+        const code = btn.dataset.reason;
+        if (state.reasons.has(code)) state.reasons.delete(code); else state.reasons.add(code);
+        const on = state.reasons.has(code);
+        btn.classList.toggle('bg-indigo-600', on);
+        btn.classList.toggle('text-white', on);
+        btn.classList.toggle('border-indigo-600', on);
+        btn.classList.toggle('text-gray-700', !on);
+      };
+    });
+    doneBtn.onclick = async () => {
+      if (doneBtn.disabled) return;
+      const comment = text.value.trim();
+      if (!state.reasons.size && !comment) { close(); return; }
+      doneBtn.disabled = true;
+      doneBtn.textContent = 'Отправляю…';
+      try {
+        await saved;
+        await send({ rating: state.rating, reasons: [...state.reasons], text: comment });
+        el.remove();
+        showSaveToast(true, 'Спасибо за отзыв! 💜');
+      } catch (error) {
+        doneBtn.disabled = false;
+        doneBtn.textContent = 'Готово';
+        showSaveToast(false, error.message);
+      }
+    };
+    el.querySelector('[data-close]').onclick = close;
+    el.querySelector('[data-skip]').onclick = close;
+    el.addEventListener('click', (e) => { if (e.target === el) close(); });
+  }
 
   // --- Квест на «Новостях» ---
 

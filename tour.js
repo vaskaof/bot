@@ -51,6 +51,17 @@
  * Различия — в `window.TourHost` (задаёт клиент, client/training.js):
  * куда писать события, куда возвращаться, что делать после урока и тексты
  * (клиенту — на «вы»). Без TourHost — поведение кабинета, как было.
+ *
+ * 05.10.2026 (VASY: «объяснение идёт автоматически — дай клиентам нажимать
+ * на кнопки, чтобы лучше понимать, где что»): шаг `practice: true` —
+ * упражнение «Найдите сами». Цель НЕ подсвечена и не затемнена — экран
+ * виден целиком и прокручивается; нажатие на цель (или `accept(el, target)`)
+ * — «✅ Верно!» и текст `found`, дальше «Далее»; мимо — «Не здесь», после
+ * третьего промаха или через `hintAfter` мс (по умолчанию 18 с) и по кнопке
+ * «Подсказать» цель подсвечивается рамкой. Нажатия в упражнении ничего не
+ * открывают (ни цель, ни остальное). Промахи и подсказки — события
+ * 'miss'/'hint' (только если `TourHost.practiceEvents`): по ним видно, где
+ * теряются.
  */
 (function () {
   // Кабинет менеджера — по умолчанию (на «ты», события recordTrainingEvent).
@@ -65,7 +76,10 @@
       blocked: 'Учебный режим: здесь не сохраняем — ничего не запишется.',
       blockedSlider: 'Учебный режим: здесь не меняем — ничего не запишется.',
       notFound: 'Не вижу нужное место на экране — возможно, он ещё грузится или выглядит иначе. Можно нажать «Далее».',
-      exit: 'Выйти из обучения? Пройти сценарий можно заново в любой момент — «Обучение» в разделе «Ещё».'
+      exit: 'Выйти из обучения? Пройти сценарий можно заново в любой момент — «Обучение» в разделе «Ещё».',
+      practiceMiss: 'Не здесь — попробуй ещё 🙂',
+      practiceMissAgain: 'Снова не здесь. Можно нажать «Подсказать».',
+      practiceHint: '👆 Вот здесь — нажми на подсвеченное.'
     }
   };
   function host() {
@@ -90,6 +104,9 @@
   const TYPE_TICK_MS = 50; // ≈40 знаков в секунду
   const ROUTE_SETTLE_MS = 400;
   const RESUME_WAIT_MS = 3000;
+  const PRACTICE_HINT_MS = 18000;
+  const PRACTICE_MISSES_TO_HINT = 3;
+  let practiceTimer = null;
 
   window.addEventListener('hashchange', () => { routeChangedAt = Date.now(); });
 
@@ -200,6 +217,40 @@
       s.style.pointerEvents = free ? 'none' : 'auto';
       s.style.opacity = free ? '0.35' : '1';
     });
+
+    // «Найдите сами»: без затемнения — экран виден целиком. Пока цель не
+    // найдена и подсказки не было — без рамки, подсказка у края экрана
+    // (над нижним меню или под шапкой — `place: 'top'`), чтобы не выдать место.
+    if (step.practice) {
+      layer.querySelectorAll('.tour-shade').forEach((s) => { s.style.pointerEvents = 'none'; s.style.opacity = '0'; });
+      if (practiceHidden(step) || !target) {
+        ring.style.display = 'none';
+        const bh = bubble.offsetHeight;
+        const nav = document.getElementById('bottom-nav');
+        const navRect = nav ? nav.getBoundingClientRect() : null;
+        const navTop = navRect && navRect.height ? navRect.top : vh;
+        const tb = toastBottom();
+        const topAt = (side) => {
+          let t = side === 'top' ? 64 : navTop - bh - 10;
+          if (tb && t < tb + 8) t = tb + 8;
+          return Math.max(12, Math.min(t, vh - bh - 12));
+        };
+        // Сторона — `place` шага; иначе снизу, а если подсказка закрывает цель
+        // — к другому краю (без прыжков туда-обратно при прокрутке).
+        const p = active && active.practice;
+        let side = step.place === 'top' ? 'top' : ((p && p.side) || 'bottom');
+        if (target && step.place !== 'top') {
+          const r = target.getBoundingClientRect();
+          const covers = (s) => { const t = topAt(s); return r.bottom > t && r.top < t + bh; };
+          if (covers(side) && !covers(side === 'top' ? 'bottom' : 'top')) side = side === 'top' ? 'bottom' : 'top';
+        }
+        if (p) p.side = side;
+        const bTop = topAt(side);
+        bubble.style.top = `${bTop}px`;
+        bubble.style.left = `${Math.max(12, (vw - bubble.offsetWidth) / 2)}px`;
+        return;
+      }
+    }
 
     if (!target) {
       setShade('top', 0, 0, vw, vh);
@@ -328,7 +379,9 @@
         ${opts.quiz ? `<div data-quiz-options class="space-y-1.5 mt-3 ${typing ? 'hidden' : ''}">${opts.quiz.options.map((o, i) => `<button type="button" data-quiz="${i}" class="w-full text-left px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800">${o.label}</button>`).join('')}</div>
           <div data-quiz-explain class="hidden text-[13px] leading-snug mt-2 rounded-xl px-3 py-2"></div>` : ''}
         ${opts.hint ? `<div class="text-[12px] text-amber-700 mt-2">${opts.hint}</div>` : ''}
+        ${opts.practice ? '<div data-practice-msg class="hidden text-[13px] leading-snug mt-2 rounded-xl px-3 py-2"></div>' : ''}
         <div class="flex flex-wrap gap-2 mt-3" data-tour-actions>
+          ${opts.practice ? '<button type="button" data-tour="hint" class="flex-1 py-2 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium">💡 Подсказать</button>' : ''}
           ${(opts.actions || []).map((a, i) => `<button type="button" data-tour-action="${i}" class="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium">${escapeHtmlClient(a.label)}</button>`).join('')}
           ${showNext ? `<button type="button" data-tour="next" class="${opts.quiz || typing ? 'hidden ' : ''}flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium">${active.index + 1 === total ? 'Готово' : 'Далее'}</button>` : ''}
         </div>
@@ -347,6 +400,8 @@
     if (backBtn) backBtn.addEventListener('click', () => goBack());
     const nextBtn = bubble.querySelector('[data-tour="next"]');
     if (nextBtn) nextBtn.addEventListener('click', () => goNext());
+    const hintBtn = bubble.querySelector('[data-tour="hint"]');
+    if (hintBtn) hintBtn.addEventListener('click', () => showPracticeHint());
     if (typing) {
       const textEl = bubble.querySelector('[data-tour-text]');
       const index = active.index;
@@ -407,6 +462,8 @@
   async function showStep() {
     if (!active) return;
     const token = ++stepToken;
+    clearPracticeTimer();
+    active.practice = null;
     const { scenario } = active;
     const step = scenario.steps[active.index];
     if (!step) return finish();
@@ -489,6 +546,15 @@
       return;
     }
 
+    // «Найдите сами»: цель не подсвечиваем и не прокручиваем к ней — ищут сами.
+    if (step.practice) {
+      active.practice = { hinted: false, solved: false, misses: 0 };
+      renderBubble(step, { title: step.title, text: step.text, practice: true, showNext: false, typing: true });
+      startLoop(step, () => findTarget(step) || (target.isConnected ? target : null));
+      practiceTimer = setTimeout(() => { if (token === stepToken) showPracticeHint(); }, step.hintAfter || PRACTICE_HINT_MS);
+      return;
+    }
+
     if (step.scroll !== false) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
     const advance = step.advance || 'next';
     renderBubble(step, {
@@ -500,6 +566,68 @@
     startLoop(step, () => findTarget(step) || (target.isConnected ? target : null));
 
     if (advance && typeof advance === 'object' && advance.until) await waitUntil(step, token);
+  }
+
+  // --- «Найдите сами» ---
+
+  function practiceHidden(step) {
+    return !!(step && step.practice && active && active.practice && !active.practice.hinted && !active.practice.solved);
+  }
+
+  function clearPracticeTimer() {
+    if (practiceTimer) clearTimeout(practiceTimer);
+    practiceTimer = null;
+  }
+
+  function trackPractice(event) {
+    if (active && host().practiceEvents) track(event, active.index + 1);
+  }
+
+  function practiceMsg(text, kind) {
+    const el = document.querySelector('#tour-bubble [data-practice-msg]');
+    if (!el) return;
+    el.className = `text-[13px] leading-snug mt-2 rounded-xl px-3 py-2 ${kind === 'miss' ? 'bg-amber-50 text-amber-800' : 'bg-indigo-50 text-indigo-800'}`;
+    el.textContent = text;
+    lastRectKey = ''; // подсказка выросла — пересчитать место
+  }
+
+  function haptic(kind) {
+    try { if (window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred(kind); } catch (e) { /* без вибрации */ }
+  }
+
+  /** Подсказка: рамка на цели (и прокрутка к ней). Кнопка, таймер или третий промах. */
+  function showPracticeHint() {
+    if (!active || !active.practice || active.practice.solved || active.practice.hinted) return;
+    clearPracticeTimer();
+    active.practice.hinted = true;
+    trackPractice('hint');
+    const step = active.scenario.steps[active.index];
+    const target = findTarget(step);
+    if (target && step.scroll !== false) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const btn = document.querySelector('#tour-bubble [data-tour="hint"]');
+    if (btn) btn.remove();
+    practiceMsg(host().texts.practiceHint, 'hint');
+    lastRectKey = '';
+  }
+
+  function missPractice() {
+    const p = active.practice;
+    p.misses += 1;
+    trackPractice('miss');
+    haptic('error');
+    const bubble = document.getElementById('tour-bubble');
+    if (bubble) bubble.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 250 });
+    if (p.hinted) { practiceMsg(host().texts.practiceHint, 'miss'); return; }
+    practiceMsg(p.misses === 1 ? host().texts.practiceMiss : host().texts.practiceMissAgain, 'miss');
+    if (p.misses >= PRACTICE_MISSES_TO_HINT) showPracticeHint();
+  }
+
+  function solvePractice(step) {
+    active.practice.solved = true;
+    clearPracticeTimer();
+    haptic('success');
+    renderBubble(step, { title: step.foundTitle || '✅ Верно!', text: step.found || '', showNext: true, typing: true });
+    lastRectKey = '';
   }
 
   /** `advance: { until }` — дальше, как только условие выполнилось. */
@@ -564,6 +692,18 @@
   document.addEventListener('click', (e) => {
     if (!active) return;
     const step = active.scenario.steps[active.index];
+    // «Найдите сами»: нажатие только проверяется — ни цель, ни остальное не
+    // открывается (кроме самой подсказки, окна «Выйти?» и тоста).
+    if (step && step.practice && active.practice) {
+      if (e.target.closest && e.target.closest('#tour-layer, #shared-confirm-modal, #save-toast')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (active.practice.solved) { pulseBubble(); return; }
+      const target = findTarget(step);
+      const hit = !!target && (step.accept ? !!step.accept(e.target, target) : target.contains(e.target));
+      if (hit) solvePractice(step); else missPractice();
+      return;
+    }
     if (isBlocked(e.target)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -607,6 +747,7 @@
   function teardown() {
     stopLoop();
     stopTyping();
+    clearPracticeTimer();
     if (window.TrainingSandbox) window.TrainingSandbox.deactivate();
     stepToken++;
     if (layer) { layer.remove(); layer = null; }

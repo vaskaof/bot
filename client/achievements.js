@@ -251,7 +251,7 @@
     const progressText = r.total ? `Пройдено уроков: ${r.done} из ${r.total}` : '';
     if (!achievements.length && !sovy) {
       showSaveToast(true, `🎓 Урок «${lesson ? lesson.title : ''}» пройден!${progressText ? ` ${progressText}` : ''}`);
-      return;
+      return Promise.resolve();
     }
     if (!document.getElementById('ach-celebrate-style')) {
       const st = document.createElement('style');
@@ -283,8 +283,11 @@
     document.body.appendChild(el);
     if (window.lucide) window.lucide.createIcons();
     try { if (window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch (e) { /* без вибрации */ }
-    el.querySelector('[data-ok]').onclick = () => el.remove();
-    el.querySelector('[data-all]').onclick = () => { el.remove(); navigateTo('achievements'); };
+    // Праздник закрыли — следом отзыв об уроке (client/training.js).
+    return new Promise((resolve) => {
+      el.querySelector('[data-ok]').onclick = () => { el.remove(); resolve(); };
+      el.querySelector('[data-all]').onclick = () => { el.remove(); navigateTo('achievements'); resolve(); };
+    });
   }
 
   window.ClientAchievements = { badgeHtml, tileHtml, profileCardHtml, celebrate, plural };

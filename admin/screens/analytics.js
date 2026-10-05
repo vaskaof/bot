@@ -218,6 +218,7 @@ const METHOD_LABELS = {
   setMyWhatsNewPopup: 'Клиент: «Что нового» при входе вкл/выкл',
   getMyLessons: 'Клиент: обучение — уроки',
   recordMyLessonEvent: 'Клиент: обучение — шаг урока',
+  submitMyLessonFeedback: 'Клиент: обучение — отзыв об уроке',
   setMyLessonPrefs: 'Клиент: обучение — приглашение/квест',
   shareMyAchievements: 'Клиент: поделиться достижениями',
   getTaskSignalOptions: 'Задания: варианты достижений/уроков',

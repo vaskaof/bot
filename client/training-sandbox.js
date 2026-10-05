@@ -24,7 +24,7 @@
   let active = false;
   let sent = { claims: [], questions: [] };
 
-  const ALLOWED_WRITES = new Set(['recordMyLessonEvent', 'setMyLessonPrefs', 'markMyWhatsNewSeen', 'reportClientBootIssue', 'recordPrivacyConsent']);
+  const ALLOWED_WRITES = new Set(['recordMyLessonEvent', 'setMyLessonPrefs', 'submitMyLessonFeedback', 'markMyWhatsNewSeen', 'reportClientBootIssue', 'recordPrivacyConsent']);
   // В уроке «как будто отправилось»: экран показывает обычный ответ, на сервер — ничего.
   const SIMULATED = {
     submitPaymentClaim: (amount, proof, orderId) => { sent.claims.push({ amount, orderId }); return { claimId: 'TRN-CLAIM', status: 'pending' }; },

@@ -24,6 +24,8 @@ window.Screens = window.Screens || {};
 
 (function () {
   const SCORE_EMOJI = { 1: '😕', 2: '🙂', 3: '😃' };
+  // Причины в отзыве клиента об уроке (зеркало client/training.js FEEDBACK_REASONS).
+  const LESSON_REASON_LABELS = { fast: 'слишком быстро', lost: 'непонятно, куда нажимать', long: 'слишком длинно', unclear: 'непонятный текст' };
   const STATUS_CHIP = {
     new: 'bg-gray-100 text-gray-600', accepted: 'bg-sky-50 text-sky-700',
     rejected: 'bg-red-50 text-red-600', done: 'bg-emerald-50 text-emerald-700', noted: 'bg-gray-50 text-gray-500'
@@ -454,11 +456,32 @@ window.Screens = window.Screens || {};
           <div class="text-sm font-semibold text-gray-900 mb-1">🎓 Обучение клиентов</div>
           <div class="text-[12px] text-gray-500 mb-2">Учились: ${o.people} · приглашение: «Показать» ${o.offers.show}, «Потом» ${o.offers.later} · скрыли квест: ${o.questHidden}</div>
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
-            ${o.lessons.map((l) => `<div class="p-3 flex items-center justify-between gap-2 text-[13px]">
-              <span>${esc(l.emoji)} ${esc(l.title)}</span>
-              <span class="text-gray-500 shrink-0">начали ${l.started} · прошли ${l.completed}${l.stuckAtStep.length ? ` · бросают на шаге ${l.stuckAtStep[0].step} (${l.stuckAtStep[0].count})` : ''}</span>
+            ${o.lessons.map((l) => {
+              const r = l.ratings || { bad: 0, ok: 0, great: 0 };
+              const rated = r.bad + r.ok + r.great;
+              const practice = (l.practice || []).filter((p) => p.misses || p.hints);
+              return `<div class="p-3 text-[13px]">
+                <div class="flex items-center justify-between gap-2">
+                  <span>${esc(l.emoji)} ${esc(l.title)}</span>
+                  <span class="text-gray-500 shrink-0">начали ${l.started} · прошли ${l.completed}${l.stuckAtStep.length ? ` · бросают на шаге ${l.stuckAtStep[0].step} (${l.stuckAtStep[0].count})` : ''}</span>
+                </div>
+                ${rated ? `<div class="text-[12px] text-gray-600 mt-1">Оценки: 😕 ${r.bad} · 😐 ${r.ok} · 😍 ${r.great}${(l.reasons || []).length ? ` — ${l.reasons.map((x) => `${esc(LESSON_REASON_LABELS[x.code] || x.code)} ${x.count}`).join(', ')}` : ''}</div>` : ''}
+                ${practice.length ? `<div class="text-[12px] text-amber-700 mt-0.5">«Найдите сами»: ${practice.map((p) => `шаг ${p.step} — промахов ${p.misses}, подсказок ${p.hints}`).join('; ')}</div>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
+          ${(o.comments || []).length ? `<div class="text-sm font-semibold text-gray-900 mt-4 mb-2">💬 Отзывы клиентов об уроках</div>
+          <div class="space-y-2">${o.comments.map((c) => `
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 text-[13px]">
+              <div class="flex items-center justify-between gap-2">
+                <button type="button" data-open-client="${esc(c.telegramId)}" class="text-indigo-600 font-medium truncate text-left">${esc(c.clientName || c.clientUsername || c.telegramId)}${c.clientUsername ? ` <span class="text-gray-400 font-normal">@${esc(String(c.clientUsername).replace(/^@/, ''))}</span>` : ''}</button>
+                <span class="text-[11px] text-gray-400 shrink-0">${esc(new Date(c.at).toLocaleDateString('ru-RU'))}</span>
+              </div>
+              <div class="text-[12px] text-gray-500 mt-0.5">${['', '😕', '😐', '😍'][c.rating] || ''} «${esc(c.lessonTitle)}»${c.reasons.length ? ` · ${c.reasons.map((x) => esc(LESSON_REASON_LABELS[x] || x)).join(', ')}` : ''}</div>
+              ${c.text ? `<div class="text-gray-800 mt-1 whitespace-pre-wrap">${esc(c.text)}</div>` : ''}
             </div>`).join('')}
-          </div>`;
+          </div>` : ''}`;
+        slot.querySelectorAll('[data-open-client]').forEach((b) => b.addEventListener('click', () => navigateTo('clients', { telegramId: b.dataset.openClient })));
       }
 
       function paintFeedback() {
