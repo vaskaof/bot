@@ -81,6 +81,7 @@ window.Screens.home = {
         <div id="news-tab">
           <div id="audience-filter" class="flex gap-1.5 mb-2 overflow-x-auto pb-1">
             <button type="button" data-filter="__all__" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Все записи</button>
+            <button type="button" data-filter="__updates__" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">🆕 Обновления</button>
             <button type="button" data-filter="Админ" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Админам</button>
             <button type="button" data-filter="Клиент" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Клиентам</button>
             <button type="button" data-filter="Все" class="filter-btn text-xs px-3 py-1.5 rounded-full font-medium shrink-0">Только «Всем»</button>
@@ -174,6 +175,9 @@ window.Screens.home = {
     // ===================== Вкладка "Новости" (логика из бывшего news.js) =====================
     let editingNewsId = null;
     let allNews = [];
+    // «Что нового» — обновления приложения (05.10.2026, VASY: «текст новых
+    // сообщений — в новостях»): только чтение, вперемешку с новостями по дате.
+    let updates = [];
     let currentFilter = '__all__';
 
     const newsListContainer = document.getElementById('news-list');
@@ -202,7 +206,12 @@ window.Screens.home = {
     async function loadNews() {
       newsListContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        allNews = await callServer('getNewsList');
+        const [news, wn] = await Promise.all([
+          callServer('getNewsList'),
+          callServer('getWhatsNew').catch(() => ({ entries: [] }))
+        ]);
+        allNews = news;
+        updates = wn.entries || [];
         renderNewsList();
       } catch (error) {
         newsListContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -210,20 +219,36 @@ window.Screens.home = {
     }
 
     function renderNewsList() {
-      const news = currentFilter === '__all__' ? allNews : allNews.filter(n => n.audience === currentFilter);
+      const onlyUpdates = currentFilter === '__updates__';
+      const news = onlyUpdates ? [] : currentFilter === '__all__' ? allNews : allNews.filter(n => n.audience === currentFilter);
+      const ups = onlyUpdates || currentFilter === '__all__' ? updates : [];
       newsCountLabel.textContent = currentFilter === '__all__'
-        ? `Всего: ${allNews.length}`
-        : `Показано: ${news.length} из ${allNews.length}`;
+        ? `Всего: ${allNews.length}${updates.length ? ` · обновлений приложения: ${updates.length}` : ''}`
+        : onlyUpdates ? `Обновлений приложения: ${updates.length}` : `Показано: ${news.length} из ${allNews.length}`;
       newsListContainer.innerHTML = '';
 
-      if (news.length === 0) {
+      if (news.length === 0 && ups.length === 0) {
         newsEmptyMessage.classList.remove('hidden');
         return;
       }
       newsEmptyMessage.classList.add('hidden');
 
-      news.forEach(n => newsListContainer.appendChild(buildNewsCard(n)));
+      const updateSort = (e) => new Date(`${e.date}T12:00:00+03:00`).getTime();
+      const items = [
+        ...news.map((n) => ({ sort: n.createdAtSort, el: () => buildNewsCard(n) })),
+        ...ups.map((e) => ({ sort: updateSort(e), el: () => buildUpdateCard(e) }))
+      ].sort((a, b) => b.sort - a.sort);
+      items.forEach((it) => newsListContainer.appendChild(it.el()));
+      if (window.TrainingUI) TrainingUI.wireWhatsNewShow(newsListContainer, ups);
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    /** Карточка обновления приложения — та же, что в «Обучении», с меткой. */
+    function buildUpdateCard(e) {
+      const wrap = document.createElement('div');
+      wrap.className = 'mb-3';
+      wrap.innerHTML = `<div class="text-[10px] font-semibold text-indigo-600 px-1 mb-1">🆕 Обновление приложения</div>${window.TrainingUI ? TrainingUI.whatsNewEntryHtml(e) : ''}`;
+      return wrap;
     }
 
     function buildNewsCard(n) {

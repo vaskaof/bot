@@ -113,23 +113,39 @@ window.Screens.news = {
     async function loadNews() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const news = await callServer('getClientNewsFeed');
-        render(news);
+        // Обновления приложения («Что нового», 05.10.2026) — в той же ленте, по дате.
+        const [news, wn] = await Promise.all([
+          callServer('getClientNewsFeed'),
+          callServer('getMyWhatsNew').catch(() => ({ entries: [] }))
+        ]);
+        render(news, wn.entries || []);
       } catch (error) {
         listContainer.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
       }
     }
 
-    function render(news) {
+    function render(news, updates) {
       listContainer.innerHTML = '';
 
-      if (news.length === 0) {
+      if (news.length === 0 && updates.length === 0) {
         emptyMessage.classList.remove('hidden');
         return;
       }
       emptyMessage.classList.add('hidden');
 
-      news.forEach(n => listContainer.appendChild(buildCard(n)));
+      const items = [
+        ...news.map((n) => ({ sort: n.publishedAtSort, el: () => buildCard(n) })),
+        ...updates.map((e) => ({ sort: new Date(`${e.date}T12:00:00+03:00`).getTime(), el: () => buildUpdateCard(e) }))
+      ].sort((a, b) => b.sort - a.sort);
+      items.forEach((it) => listContainer.appendChild(it.el()));
+      if (window.ClientWhatsNew) ClientWhatsNew.wireGo(listContainer);
+    }
+
+    function buildUpdateCard(e) {
+      const wrap = document.createElement('div');
+      wrap.className = 'mb-3';
+      wrap.innerHTML = window.ClientWhatsNew ? ClientWhatsNew.cardHtml(e) : '';
+      return wrap;
     }
 
     function buildCard(n) {

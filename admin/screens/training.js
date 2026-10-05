@@ -166,11 +166,16 @@ window.Screens = window.Screens || {};
   }
 
   /** История «Что нового» (этап 2, блок Б) — все записи для роли, новые сверху. */
-  function whatsNewBlock(entries) {
+  function whatsNewBlock(entries, popupEnabled) {
     if (!entries.length) return '';
+    // Выключатель листа при входе (05.10.2026, VASY: «можно отключить в целом»).
     return `
       <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2" id="training-whats-new">Что нового</div>
-      <div class="space-y-2 mb-4">${entries.map(TrainingUI.whatsNewEntryHtml).join('')}</div>`;
+      <div class="bg-white rounded-xl border border-gray-100 px-3 py-2 mb-2 flex items-center justify-between gap-2">
+        <div class="text-[12px] text-gray-600">Показывать новое при входе</div>
+        <div id="whats-new-popup-toggle" class="toggle-switch toggle-switch-sm ${popupEnabled === false ? '' : 'on'}"><div class="knob"></div></div>
+      </div>
+      <div class="space-y-2 mb-4">${entries.map((e) => TrainingUI.whatsNewEntryHtml(e)).join('')}</div>`;
   }
 
   /** Память по человеку (то, что видит помощник) + заметки. */
@@ -388,7 +393,19 @@ window.Screens = window.Screens || {};
             callServer('getWhatsNew').catch(() => ({ entries: [] }))
           ]);
           if (tab !== 'me') return;
-          body.innerHTML = levelCard(t) + courseList(t) + badgesGrid(t) + ideasBlock(t) + whatsNewBlock(news.entries);
+          body.innerHTML = levelCard(t) + courseList(t) + badgesGrid(t) + ideasBlock(t) + whatsNewBlock(news.entries, news.popupEnabled);
+          const popupToggle = document.getElementById('whats-new-popup-toggle');
+          if (popupToggle) popupToggle.addEventListener('click', async () => {
+            const next = !popupToggle.classList.contains('on');
+            popupToggle.classList.toggle('on', next);
+            try {
+              await callServer('setWhatsNewPopup', next);
+              showSaveToast(true, next ? 'Новое будет показываться при входе.' : 'При входе больше не показываем — новое есть здесь и в «Новостях».');
+            } catch (error) {
+              popupToggle.classList.toggle('on', !next);
+              showSaveToast(false, error.message);
+            }
+          });
           body.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => Tour.start(b.dataset.start)));
           TrainingUI.wireWhatsNewShow(body, news.entries);
           document.getElementById('training-new-idea').addEventListener('click', () => TrainingUI.openIdea('Обучение'));

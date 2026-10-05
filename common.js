@@ -452,6 +452,37 @@ function escapeHtmlClient(unsafe) {
 }
 
 /**
+ * Большая статья «Что нового» (поле body, 05.10.2026) → HTML. Общая для
+ * кабинета и клиентского приложения. Разметка — простой текст: абзацы через
+ * пустую строку; абзац из одной строки «1. …» или «🙌 …» — заголовок раздела;
+ * строки «• » — пункты списка; «Как было: / Как стало: / Что это даёт:» —
+ * выделяются. Всё экранируется — HTML в тексте не исполняется.
+ * @param {string} body
+ * @returns {string}
+ */
+function whatsNewBodyHtml(body) {
+    const LEAD = /^(Как было|Как стало|Что это даёт):/;
+    return String(body || '').split(/\n\s*\n/).map((para) => {
+        const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) return '';
+        if (lines.length === 1 && /^(\d+\.\s|\p{Extended_Pictographic})/u.test(lines[0])) {
+            return `<div class="text-[14px] font-semibold text-gray-900 mt-4">${escapeHtmlClient(lines[0])}</div>`;
+        }
+        const out = [];
+        let items = [];
+        const flush = () => { if (items.length) { out.push(`<ul class="list-disc pl-5 space-y-0.5">${items.join('')}</ul>`); items = []; } };
+        lines.forEach((l) => {
+            if (l.startsWith('• ')) { items.push(`<li>${escapeHtmlClient(l.slice(2))}</li>`); return; }
+            flush();
+            const m = l.match(LEAD);
+            out.push(`<p>${m ? `<b>${escapeHtmlClient(m[0])}</b>${escapeHtmlClient(l.slice(m[0].length))}` : escapeHtmlClient(l)}</p>`);
+        });
+        flush();
+        return `<div class="space-y-1 mt-2">${out.join('')}</div>`;
+    }).join('');
+}
+
+/**
  * Клиентский порт `server/src/orders/deliveryLadder.js`'s STATUS_TO_POSITION
  * (13.08.2026) — нужен ТОЛЬКО там, где лестницу нужно показать ДО того, как
  * заказ вообще сохранён (order-new.js — ещё нет `orderId`, сервер посчитать

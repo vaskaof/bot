@@ -328,14 +328,25 @@
   const ddmmyy = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 
   /** Карточка записи — и в листе при входе, и в истории на экране «Обучение». */
-  function whatsNewEntryHtml(e) {
+  /**
+   * Карточка записи. Большая статья (e.body, 05.10.2026): full — целиком
+   * (лист при входе), иначе — под «Читать полностью».
+   */
+  function whatsNewEntryHtml(e, full) {
     const canShow = (e.scenarioId && window.TourScenarios && window.TourScenarios[e.scenarioId]) || e.route;
+    const action = e.actionLabel || (e.scenarioId ? 'Показать по шагам' : 'Открыть');
+    const body = e.body
+      ? (full === true
+        ? `<div class="text-[13px] text-gray-700 leading-snug">${whatsNewBodyHtml(e.body)}</div>`
+        : `<details class="mt-1.5"><summary class="text-[13px] text-indigo-600 cursor-pointer select-none">Читать полностью</summary><div class="text-[13px] text-gray-700 leading-snug">${whatsNewBodyHtml(e.body)}</div></details>`)
+      : '';
     return `
       <div class="bg-white rounded-2xl border border-gray-100 p-3" data-whats-new="${escapeHtmlClient(e.id)}">
         <div class="text-[11px] text-gray-400">${ddmmyy(e.date)}</div>
         <div class="text-sm font-semibold text-gray-900 mt-0.5">${escapeHtmlClient(e.title)}</div>
-        ${e.lines.map((l) => `<div class="text-[13px] text-gray-600 mt-1">${escapeHtmlClient(l)}</div>`).join('')}
-        ${canShow ? `<button type="button" data-whats-new-show class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[13px] font-medium">${e.scenarioId ? 'Показать по шагам' : 'Открыть'}</button>` : ''}
+        ${e.body && full === true ? '' : e.lines.map((l) => `<div class="text-[13px] text-gray-600 mt-1">${escapeHtmlClient(l)}</div>`).join('')}
+        ${body}
+        ${canShow ? `<button type="button" data-whats-new-show class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[13px] font-medium">${escapeHtmlClient(action)}</button>` : ''}
       </div>`;
   }
 
@@ -370,12 +381,19 @@
     if (!fresh.length) return;
     await new Promise((r) => setTimeout(r, 800));
     if (Tour.isActive() || document.querySelector('[id^="training-"].flex')) return;
+    // Большая статья — целиком, остальное непросмотренное свёрнуто под ней.
+    const articles = fresh.filter((e) => e.body);
+    const rest = articles.length ? fresh.filter((e) => !e.body) : fresh;
+    const restHtml = rest.map((e) => whatsNewEntryHtml(e)).join('');
     const { el, close } = overlay('training-whats-new-sheet', `
-      <div class="bg-gray-50 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-4 max-h-[85vh] overflow-y-auto">
+      <div class="bg-gray-50 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[85vh] overflow-y-auto">
         <div class="text-base font-semibold text-gray-900 mb-3">🆕 Что нового</div>
-        <div class="space-y-2">${fresh.map(whatsNewEntryHtml).join('')}</div>
+        ${articles.map((e) => whatsNewEntryHtml(e, true)).join('')}
+        ${articles.length && rest.length
+          ? `<details class="mt-2"><summary class="text-[13px] text-indigo-600 cursor-pointer select-none">Коротко по каждому изменению (${rest.length})</summary><div class="space-y-2 mt-2">${restHtml}</div></details>`
+          : `<div class="space-y-2">${restHtml}</div>`}
         <button type="button" data-ok class="mt-3 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Понятно</button>
-        <div class="text-[11px] text-gray-400 text-center mt-2">Всё это есть в «Обучении» → «Что нового».</div>
+        <div class="text-[11px] text-gray-400 text-center mt-2">Всё это есть в «Новостях» на «Главной» и в «Обучении». Не показывать при входе — переключатель в «Обучении» → «Что нового».</div>
       </div>`);
     let marked = false;
     const done = () => {

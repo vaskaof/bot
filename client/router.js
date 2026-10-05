@@ -212,5 +212,7 @@ function startClientRouter() {
   initClientAccess(function (context) {
     renderRoute(context);
     window.addEventListener('hashchange', () => renderRoute(context));
+    // «Что нового» при входе (05.10.2026) — непросмотренные обновления приложения.
+    if (window.ClientWhatsNew) window.ClientWhatsNew.check();
   });
 }

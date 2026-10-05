@@ -140,6 +140,14 @@ window.Screens.profile = {
             </div>
             <div id="notify-stage-updates-toggle" class="toggle-switch on" data-key="orderStageUpdates"><div class="knob"></div></div>
           </div>
+
+          <div class="flex items-center justify-between gap-3 py-2 border-t border-gray-50">
+            <div>
+              <div class="text-sm text-gray-800">Новое в приложении</div>
+              <div class="text-[11px] text-gray-400">Окно «Что нового» при входе после обновлений. Выключите — всё равно найдёте это в «Новостях»</div>
+            </div>
+            <div id="notify-whats-new-toggle" class="toggle-switch on"><div class="knob"></div></div>
+          </div>
         </div>
 
         <!-- ИЗМЕНЕНО 19.08.2026 (п.6 бета-фидбека, round 7) — раньше здесь
@@ -349,6 +357,21 @@ window.Screens.profile = {
           showSaveToast(false, `Не удалось изменить настройку: ${error.message}`);
         }
       });
+    });
+
+    // «Новое в приложении» (05.10.2026) — лист «Что нового» при входе; своё хранилище на сервере.
+    const whatsNewToggle = document.getElementById('notify-whats-new-toggle');
+    let whatsNewPopup = true;
+    callServer('getMyWhatsNew').then((r) => { whatsNewPopup = r.popupEnabled !== false; whatsNewToggle.classList.toggle('on', whatsNewPopup); }).catch(() => {});
+    whatsNewToggle.addEventListener('click', async () => {
+      const next = !whatsNewPopup;
+      whatsNewToggle.classList.toggle('on', next);
+      try {
+        whatsNewPopup = (await callServer('setMyWhatsNewPopup', next)).popupEnabled;
+      } catch (error) {
+        whatsNewToggle.classList.toggle('on', whatsNewPopup);
+        showSaveToast(false, `Не удалось изменить настройку: ${error.message}`);
+      }
     });
 
     // Обратная связь (19.08.2026, п.6) — единственный вход, ведёт на
