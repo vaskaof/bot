@@ -642,6 +642,7 @@
     start,
     resume,
     isActive: () => !!active,
+    activeId: () => (active ? active.scenario.id : ''),
     currentScreen,
     // для тестов
     _layout: layout

@@ -48,7 +48,9 @@
   function placeFab() {
     if (window.__E2E_SKIP_ASSISTANT_FAB || !window.CURRENT_ACCESS_ROLE) return;
     const fab = ensureFab();
-    const hide = (window.Tour && Tour.isActive()) || Array.from(document.querySelectorAll('.fixed.inset-0')).some(visible);
+    // Урок «Твой помощник» показывает саму кнопку — на время него не прячем (слой урока — не окно).
+    const lesson = window.Tour && Tour.isActive() && Tour.activeId() === 'assistant';
+    const hide = (window.Tour && Tour.isActive() && !lesson) || Array.from(document.querySelectorAll('.fixed.inset-0')).some((el) => el.id !== 'tour-layer' && visible(el));
     if (hide) { fab.classList.add('hidden'); fab.classList.remove('flex'); return; }
     let lift = 0;
     for (const sel of BOTTOM_BARS) {
