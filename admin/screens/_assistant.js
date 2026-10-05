@@ -57,7 +57,9 @@
       document.querySelectorAll(sel).forEach((el) => {
         if (!visible(el)) return;
         const r = el.getBoundingClientRect();
-        if (r.bottom >= window.innerHeight - 4) lift = Math.max(lift, window.innerHeight - r.top);
+        // Только полосы внизу: на широком экране #bottom-nav — колонка слева во всю высоту,
+        // «подъём» над ней уводил кнопку за верх экрана.
+        if (r.bottom >= window.innerHeight - 4 && r.top > window.innerHeight / 2) lift = Math.max(lift, window.innerHeight - r.top);
       });
     }
     fab.style.bottom = `${Math.round(lift + 12)}px`;
