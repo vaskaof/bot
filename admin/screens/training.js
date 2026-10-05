@@ -26,7 +26,7 @@ window.Screens = window.Screens || {};
   const SCORE_EMOJI = { 1: '😕', 2: '🙂', 3: '😃' };
   const STATUS_CHIP = {
     new: 'bg-gray-100 text-gray-600', accepted: 'bg-sky-50 text-sky-700',
-    rejected: 'bg-red-50 text-red-600', done: 'bg-emerald-50 text-emerald-700'
+    rejected: 'bg-red-50 text-red-600', done: 'bg-emerald-50 text-emerald-700', noted: 'bg-gray-50 text-gray-500'
   };
   const esc = (s) => escapeHtmlClient(s == null ? '' : String(s));
   const day = (d) => (d ? new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '');
@@ -36,7 +36,8 @@ window.Screens = window.Screens || {};
   const actionLabel = (m) => (typeof METHOD_LABELS !== 'undefined' && METHOD_LABELS[m]) || m;
   const KIND_TITLE = { idea: '💡 Идея', problem: '🆘 Проблема', scenario: '📝 Отзыв' };
   const STATUS_BUTTONS = {
-    idea: [['accepted', 'В работу', 'text-sky-700'], ['done', 'Внедрено', 'text-emerald-700'], ['rejected', 'Не будем', 'text-red-600']],
+    // «👍 Принято» (05.10.2026, VASY) — похвала или отзыв, по которому делать нечего: закрыт без сообщения автору.
+    idea: [['accepted', 'В работу', 'text-sky-700'], ['done', 'Внедрено', 'text-emerald-700'], ['noted', '👍 Принято', 'text-gray-700'], ['rejected', 'Не будем', 'text-red-600']],
     problem: [['accepted', 'В работу', 'text-sky-700'], ['done', 'Исправлено', 'text-emerald-700'], ['rejected', 'Не баг', 'text-red-600']]
   };
 

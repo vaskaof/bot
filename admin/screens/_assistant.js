@@ -73,8 +73,12 @@
     return { ...base, lotId: params.lotId || '' };
   }
 
+  // Урок «Твой помощник» (отзыв VASY 05.10: «тестовый запрос, не за токены»): во время него окно
+  // открывается, а ответы даёт учебная песочница (_training-sandbox.js) — модель не зовётся.
+  const inLesson = () => !!(window.Tour && Tour.isActive() && Tour.activeId() === 'assistant');
+
   async function open(extra) {
-    if (window.Tour && Tour.isActive()) return;
+    if (window.Tour && Tour.isActive() && !inLesson()) return;
     state = { context: context(extra || {}), session: null, remaining: null, perDay: null, history: [], busy: false, rating: false, prefill: extra && extra.error ? 'Что делать с этой ошибкой?' : '' };
     render();
     try {
@@ -102,6 +106,8 @@
       el.addEventListener('click', (e) => { if (e.target === el && !(state && state.busy)) close(); });
       document.body.appendChild(el);
     }
+    // В уроке окно — под слоем подсказки, иначе подсказка оказалась бы за затемнением окна.
+    el.style.zIndex = inLesson() ? '85' : '';
     el.classList.remove('hidden');
     el.classList.add('flex');
     return el;

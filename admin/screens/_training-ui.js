@@ -223,7 +223,12 @@
         };
       });
     });
-    const done = () => { close(); checkNewBadges(); };
+    const done = () => {
+      close();
+      checkNewBadges();
+      // Отзыв мог дать достижение («Первая идея») — «Обучение» сразу с ним.
+      if (window.Tour && Tour.currentScreen() === 'training') window.dispatchEvent(new HashChangeEvent('hashchange'));
+    };
     momentCache = null; // пройден — подсказку «здесь есть урок» по нему больше не показываем
     el.querySelector('[data-skip]').onclick = done;
     const sendBtn = el.querySelector('[data-send]');

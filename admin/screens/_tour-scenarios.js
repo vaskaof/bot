@@ -80,6 +80,9 @@
     '#order-next-step button', '#client-self-purchased-checkbox', '#save-order-btn', '#save-order-sticky-btn'
   ];
 
+  /** Окно помощника (_assistant.js) — его карточка, без затемнения вокруг. */
+  const assistantSheet = () => { const s = document.getElementById('training-assistant-sheet'); return s && !s.classList.contains('hidden') ? s.firstElementChild : null; };
+
   // --- Лот в «Корзине» (_cart-lot.js): карточка лота и её строки ---
   const LOT = '#cart-items-list > div.border-l-indigo-400';
   const lotPart = (sel) => `${LOT} ${sel}`;
@@ -855,6 +858,19 @@
           target: '#assistant-fab', title: 'Помощник всегда под рукой', wait: 6000,
           text: 'Эта кнопка есть на каждом экране. Ещё помощник есть в <b>«?» → «🤖 Спросить помощника»</b> и на красной подсказке, когда что-то пошло не так.'
         },
+        // Учебный разговор (отзыв VASY №27): ответ заготовлен в песочнице, обращение не тратится.
+        { target: '#assistant-fab', title: 'Попробуй', text: 'Нажми на кнопку — зададим учебный вопрос. В уроке обращение <b>не тратится</b>.', advance: 'click' },
+        {
+          target: assistantSheet, title: 'Задай вопрос', wait: 6000, place: 'away',
+          text: 'Напиши любой вопрос, например: «как занести оплату за два заказа?» — и нажми <b>«Отправить»</b>.',
+          advance: { until: () => !!document.querySelector('#training-assistant-sheet [data-helped]') }
+        },
+        {
+          target: assistantSheet, title: 'Ответ', place: 'away',
+          text: 'Так выглядит ответ: коротко и по шагам. Сейчас он учебный. Отметь <b>«✅ Помогло»</b> или <b>«❌ Не помогло»</b> — во втором случае можно дописать, что не так, и это уйдёт VASY.',
+          advance: { until: () => /Рад, что помог|Ушло VASY/.test((document.getElementById('training-assistant-sheet') || {}).textContent || '') }
+        },
+        { target: '#training-assistant-sheet [data-close]', title: 'Закрой окно', text: 'Нажми крестик — продолжим.', advance: 'click', place: 'away' },
         {
           title: 'О чём писать',
           text: 'Пиши своими словами, как коллеге:<br>• <b>вопрос</b> — «как занести оплату, если клиентка перевела сразу за два заказа?»;<br>• <b>ошибку</b> — «нажимаю «Сохранить», а ничего не происходит»;<br>• <b>предложение</b> — «было бы удобнее, если бы…».'

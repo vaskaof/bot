@@ -444,6 +444,25 @@
     });
   }
 
+  /** Учебный ответ помощника: тот же вид, что настоящий (ответ, шаги), но заготовленный. */
+  function assistantDemo(payload) {
+    const question = String((payload && payload.text) || '').trim();
+    const money = /оплат|перев|деньг|₽|долг/i.test(question);
+    const answer = money
+      ? 'Это учебный ответ — в уроке я не думаю по-настоящему, и обращение не тратится. В работе ответ был бы про твой вопрос, например так:'
+      : 'Это учебный ответ — в уроке я не думаю по-настоящему, и обращение не тратится. В работе я отвечу именно на твой вопрос: коротко и по шагам.';
+    const steps = money
+      ? ['«Оплаты» → вкладка «Клиент» → найди клиентку.', '«Занести оплату»: сумма — сколько пришло в банк.', '«За что» — разложи по заказам и «Занести».']
+      : ['Пиши своими словами, как коллеге.', 'Прочитай ответ и шаги.', 'Отметь «Помогло» или «Не помогло» — «Не помогло» уйдёт VASY.'];
+    return {
+      id: -1, status: 'open', handoff: '', screen: 'Обучение', canAsk: false, hasScreenshot: false,
+      messages: [
+        { role: 'manager', text: question, data: {} },
+        { role: 'assistant', text: answer, data: { answer: { answer, steps, clarify: '', scenarioId: '' } } }
+      ]
+    };
+  }
+
   const trnOrder = (id) => world.byId.get(String(id || ''));
   const isTrnClient = (tid) => !!CLIENTS[String(tid || '')];
 
@@ -489,6 +508,10 @@
       ? { ...clone(LOT_PARSE), imageCount: 2, imageUrls: [doll(10), doll(230)] }
       : undefined),
     getWishlistDemandForNames: (names) => demandForNames(names),
+    // Урок «Твой помощник»: учебный разговор — модель не зовётся, обращение не тратится.
+    getMyAssistant: () => ({ remaining: 5, perDay: 5, sessions: [] }),
+    askAssistant: (payload) => ({ session: assistantDemo(payload), remaining: 5, perDay: 5 }),
+    rateAssistantSession: (id, helped) => ({ status: helped ? 'helped' : 'not_helped' }),
     getCollectivesList: () => COLLECTIVE_DEFS.map(collectiveHead),
     getCollectiveDetails: (id) => {
       const def = COLLECTIVE_DEFS.find((c) => c.id === id);

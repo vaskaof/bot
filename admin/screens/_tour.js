@@ -588,11 +588,16 @@
 
   async function finish() {
     const scenario = active.scenario;
-    track('complete', scenario.steps.length);
+    const total = scenario.steps.length;
     active = null;
     teardown();
     if (scenario.onComplete) { try { scenario.onComplete(); } catch (e) { /* не мешаем отзыву */ } }
-    backToTraining();
+    // Ждём, пока сервер запишет «пройдено» (не дольше 4 с): иначе «Обучение»
+    // рисуется со старыми результатами и достижениями до следующего входа
+    // (отзыв VASY 05.10).
+    const saved = callServer('recordTrainingEvent', scenario.id, 'complete', total, total).catch(() => {});
+    await Promise.race([saved, wait(4000)]);
+    backToTraining(true);
     if (window.TrainingUI) window.TrainingUI.afterScenario(scenario);
   }
 
@@ -609,8 +614,10 @@
   }
 
   /** Вышел или прошёл — назад в «Обучение», а не на экран, где остановился (отзыв VASY №13). */
-  function backToTraining() {
+  function backToTraining(refresh) {
     if (currentScreen() !== 'training' && typeof navigateTo === 'function') navigateTo('training');
+    // Урок закончился на самом «Обучении» (сводка, помощник) — перерисовать результаты.
+    else if (refresh) window.dispatchEvent(new HashChangeEvent('hashchange'));
   }
 
   /** Запуск сценария по id (из «Обучения» или «Помощи»). */
