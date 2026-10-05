@@ -91,8 +91,9 @@
   // --- Отзыв после урока (05.10.2026, VASY: «нет обратной связи после урока») ---
   // Смайлик сохраняется сразу по нажатию — одного нажатия достаточно. После
   // 😕/😐 — «Что было не так?»: кнопки-причины и сразу поле для своих слов;
-  // после 😍 — «Чего ещё не хватает?», только поле. Спрашиваем один раз на
-  // урок: оценённый (rated с сервера) или пропущенный на этом устройстве — нет.
+  // после 😍 — «Чего ещё не хватает?», только поле. 06.10.2026 (VASY: «урок
+  // «Мой заказ» не запросил обратную связь» — проходил его второй раз):
+  // спрашиваем после КАЖДОГО прохождения, повтор переписывает прошлый отзыв.
 
   const FEEDBACK_RATES = [
     { v: 1, emoji: '😕', label: 'Сложно' },
@@ -105,22 +106,13 @@
     { code: 'long', label: 'Слишком длинно' },
     { code: 'unclear', label: 'Непонятный текст' }
   ];
-  const SKIP_KEY = 'knopkaLessonFeedbackSkipped';
-
-  function skippedFeedback() {
-    try { return JSON.parse(localStorage.getItem(SKIP_KEY) || '[]'); } catch (e) { return []; }
-  }
-  function rememberSkip(id) {
-    try { localStorage.setItem(SKIP_KEY, JSON.stringify([...new Set([...skippedFeedback(), id])])); } catch (e) { /* спросим ещё раз — не страшно */ }
-  }
 
   async function askFeedback(scenario) {
     if (window.__E2E_SKIP_LESSON_FEEDBACK || document.getElementById('lesson-feedback-sheet')) return;
-    if (skippedFeedback().includes(scenario.id)) return;
     let d;
     try { d = await load(); } catch (e) { return; }
     const lesson = d.lessons.find((l) => l.id === scenario.id);
-    if (!lesson || lesson.rated || (window.Tour && Tour.isActive())) return;
+    if (!lesson || (window.Tour && Tour.isActive())) return;
 
     const state = { rating: 0, reasons: new Set() };
     let saved = null; // последняя отправка смайлика — «Готово» дожидается её
@@ -156,7 +148,6 @@
     const doneBtn = el.querySelector('[data-done]');
     const close = () => {
       el.remove();
-      if (!state.rating) rememberSkip(scenario.id);
     };
     const send = (payload) => callServer('submitMyLessonFeedback', scenario.id, payload);
 

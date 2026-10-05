@@ -47,6 +47,8 @@ const CATEGORY_LABELS = {
   forecast: 'Прогноз расходов на заказ',
   payout_share: 'Доли выплат',
   delivery_position_threshold: 'Пороги для "Доход Руб"',
+  // 06.10.2026 (VASY) — свои пороги для оплат клиента, отдельно от «Доход Руб».
+  payment_due_threshold: 'Когда этап нужно оплатить',
   economy: 'Экономика (совы/билеты)',
   currency_margin: 'Наценка на конвертацию (курсы валют)',
   // Э6, D-10/F-24 (26.08.2026) — 2 generic percent-строки, тот же построчный
@@ -65,7 +67,7 @@ const CATEGORY_LABELS = {
   // деплоя (server/src/reminders/reminderDigestJob.js / notificationWindow.js).
   notifications: 'Уведомления и тихие часы'
 };
-const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'notifications', 'payout_share'];
+const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'payment_due_threshold', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'notifications', 'payout_share'];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -140,6 +142,25 @@ const DELIVERY_POSITION_THRESHOLD_DEFS = [
   { key: 'Позиция_Порог_СДЭК', label: 'СДЭК' },
   { key: 'Позиция_Порог_Доставка_РФ', label: 'Доставка по РФ' }
 ];
+// 06.10.2026 (VASY) — с какого шага этап «нужно оплатить сейчас» (если сумма
+// подтверждена): «Приоритетно сейчас» у клиента, «Кто должен», напоминания,
+// автоматическое разнесение остатка клиента. Ключи — paymentsService.
+const PAYMENT_DUE_THRESHOLD_DEFS = [
+  { key: 'Оплата_Порог_Основная', label: 'Основная' },
+  { key: 'Оплата_Порог_Вес', label: 'Вес' },
+  { key: 'Оплата_Порог_СДЭК', label: 'СДЭК' },
+  { key: 'Оплата_Порог_Доставка_РФ', label: 'Доставка по РФ' }
+];
+const POSITION_THRESHOLD_SECTIONS = {
+  delivery_position_threshold: {
+    defs: DELIVERY_POSITION_THRESHOLD_DEFS,
+    hint: 'Номер шага в лестнице статуса доставки (1-12) — неоплаченный расход по этой статье считается вычетом из "Доход Руб" только когда заказ уже прошёл этот шаг, не раньше.'
+  },
+  payment_due_threshold: {
+    defs: PAYMENT_DUE_THRESHOLD_DEFS,
+    hint: 'Номер шага в лестнице статуса доставки (1-12), с которого этап — «Приоритетно сейчас» у клиента, в «Кто должен» и в напоминаниях (если сумма подтверждена, не предварительная). С этого же шага остаток клиента сам закрывает этап. 1 — Ожидает выкупа, 4 — На складе в США, 8 — У посредника в КЗ, 10 — У посредника в РФ.'
+  }
+};
 
 // 18.08.2026 (подготовка к бета-тесту) — 3 фиксированных ключа, ключи
 // СОВПАДАЮТ с backend economyService.js (ECONOMY_PARAM_*) и миграцией
@@ -266,13 +287,12 @@ window.Screens.settings = {
     function renderBody(settings) {
       const body = document.getElementById('settings-body');
       const byCategory = {};
-      const specialCategories = ['payout_share', 'forecast', 'delivery_position_threshold', 'economy', 'currency_margin'];
+      const specialCategories = ['payout_share', 'forecast', 'payment_due_threshold', 'delivery_position_threshold', 'economy', 'currency_margin'];
       settings.forEach(s => {
         if (specialCategories.includes(s.category)) return; // свои особые блоки, не общий цикл
         (byCategory[s.category] = byCategory[s.category] || []).push(s);
       });
       const forecastRows = settings.filter(s => s.category === 'forecast');
-      const positionThresholdRows = settings.filter(s => s.category === 'delivery_position_threshold');
       const economyRows = settings.filter(s => s.category === 'economy');
       const currencyMarginRows = settings.filter(s => s.category === 'currency_margin');
 
@@ -282,7 +302,7 @@ window.Screens.settings = {
       body.innerHTML = CATEGORY_ORDER.map(cat => {
         if (cat === 'payout_share') return sharesSectionHtml();
         if (cat === 'forecast') return forecastSectionHtml(forecastRows);
-        if (cat === 'delivery_position_threshold') return positionThresholdSectionHtml(positionThresholdRows);
+        if (cat === 'delivery_position_threshold' || cat === 'payment_due_threshold') return positionThresholdSectionHtml(settings.filter(s => s.category === cat), cat);
         if (cat === 'economy') return economySectionHtml(economyRows);
         if (cat === 'currency_margin') return currencyMarginSectionHtml(currencyMarginRows);
         return plainSectionHtml(cat, byCategory[cat] || []);
@@ -291,7 +311,8 @@ window.Screens.settings = {
       CATEGORY_ORDER.filter(c => !specialCategories.includes(c)).forEach(cat => wirePlainSection(cat));
       wireSharesSection();
       wireForecastSection();
-      wirePositionThresholdSection();
+      wirePositionThresholdSection('delivery_position_threshold');
+      wirePositionThresholdSection('payment_due_threshold');
       wireEconomySection();
       wireCurrencyMarginSection();
       wireCollectiveStatusMapSection();
@@ -555,14 +576,15 @@ window.Screens.settings = {
       `;
     }
 
-    function positionThresholdSectionHtml(rows) {
+    function positionThresholdSectionHtml(rows, category) {
+      const section = POSITION_THRESHOLD_SECTIONS[category];
       return `
         <section class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.delivery_position_threshold}</div>
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="delivery_position_threshold">
-            ${DELIVERY_POSITION_THRESHOLD_DEFS.map(def => positionThresholdRowHtml(def, rows.find(r => r.key === def.key))).join('')}
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS[category]}</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="${category}">
+            ${section.defs.map(def => positionThresholdRowHtml(def, rows.find(r => r.key === def.key))).join('')}
           </div>
-          <div class="text-[11px] text-gray-400 px-1 mt-2">Номер шага в лестнице статуса доставки (1-12) — неоплаченный расход по этой статье считается вычетом из "Доход Руб" только когда заказ уже прошёл этот шаг, не раньше.</div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">${section.hint}</div>
         </section>
       `;
     }
@@ -570,8 +592,8 @@ window.Screens.settings = {
     // ИСПРАВЛЕНО 16.08.2026 (fail-safe чек-лист, frontend-contract.md) —
     // disable-guard на время запроса: правки настроек, влияющих на "Доход
     // Руб" во всей таблице, должны быть особенно защищены от двойного тапа.
-    function wirePositionThresholdSection() {
-      const container = document.querySelector('[data-category="delivery_position_threshold"]');
+    function wirePositionThresholdSection(category) {
+      const container = document.querySelector(`[data-category="${category}"]`);
       if (!container) return;
 
       container.querySelectorAll('[data-position-key]').forEach(row => {
@@ -588,7 +610,7 @@ window.Screens.settings = {
           }
           saveBtn.disabled = true;
           try {
-            await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category: 'delivery_position_threshold' });
+            await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category });
             showSaveToast(true, 'Сохранено.');
           } catch (error) {
             showSaveToast(false, error.message);

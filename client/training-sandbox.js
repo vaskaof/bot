@@ -41,22 +41,50 @@
     return { display: d.toLocaleDateString('ru-RU'), sort: d.getTime() };
   };
 
-  /** Учебные заказы клиента. step — укрупнённый шаг пути (0..7), как на сервере. */
+  /**
+   * Учебные заказы клиента. step — укрупнённый шаг пути (0..7), pos — шаг
+   * лестницы статуса (1..12), как на сервере: по нему этап становится
+   * «нужно оплатить сейчас» (`due`, пороги DUE_FROM — как «Оплата_Порог_*»).
+   *
+   * Лагуна (TRN201) — героиня уроков (06.10.2026, VASY: «одна история через
+   * все уроки»): в уроке «Мой заказ» её путь «перематывают» (STORY) — экран
+   * сам показывает, когда этап становится «Приоритетно сейчас» и как
+   * предварительная сумма превращается в точную.
+   */
+  const DUE_FROM = { 'Основная': 1, 'Вес': 4, 'СДЭК': 8, 'СДЭК_Индивидуальная': 8, 'Доставка_РФ': 10 };
+  const LAGOONA_START = {
+    statusDelivery: 'Ожидает выкупа', pos: 1, step: 0, statusOrder: 'Актуально', isCompleted: false,
+    stages: [STAGE('Основная', 7500, 4500, false), STAGE('Вес', 1300, 0, true), STAGE('СДЭК', 550, 0, true), STAGE('Доставка_РФ', 250, 0, true)]
+  };
+  /** «⏩ Перемотать время»: следующие состояния Лагуны. */
+  const STORY = [
+    { statusDelivery: 'Ожидает отправки с магазина', pos: 2, step: 2, statusOrder: 'Актуально, в доставке',
+      stages: [STAGE('Основная', 7500, 7500, false), STAGE('Вес', 1300, 0, true), STAGE('СДЭК', 550, 0, true), STAGE('Доставка_РФ', 250, 0, true)] },
+    { statusDelivery: 'На складе в США (карго)', pos: 4, step: 2, statusOrder: 'Актуально, в доставке',
+      stages: [STAGE('Основная', 7500, 7500, false), STAGE('Вес', 1150, 0, false), STAGE('СДЭК', 550, 0, true), STAGE('Доставка_РФ', 250, 0, true)] },
+    { statusDelivery: 'У посредника в КЗ', pos: 8, step: 3, statusOrder: 'Актуально, в доставке',
+      stages: [STAGE('Основная', 7500, 7500, false), STAGE('Вес', 1150, 1150, false), STAGE('СДЭК', 600, 0, false), STAGE('Доставка_РФ', 250, 0, true)] },
+    { statusDelivery: 'У посредника в РФ', pos: 10, step: 5, statusOrder: 'Актуально, в доставке',
+      stages: [STAGE('Основная', 7500, 7500, false), STAGE('Вес', 1150, 1150, false), STAGE('СДЭК', 600, 600, false), STAGE('Доставка_РФ', 250, 0, false)] },
+    { statusDelivery: 'Получено клиентом', pos: 12, step: 7, statusOrder: 'Выполнен', isCompleted: true, dateReceivedDaysAgo: 0, duration: '3 недели',
+      stages: [STAGE('Основная', 7500, 7500, false), STAGE('Вес', 1150, 1150, false), STAGE('СДЭК', 600, 600, false), STAGE('Доставка_РФ', 250, 250, false)] }
+  ];
+  let storyStep = 0;
+
   const ORDERS = [
     {
       orderId: 'TRN201', productDisplay: 'Лагуна Блю Ghouls Rule', productOriginal: 'Monster High Skullector Ghouls Rule Lagoona Blue Doll',
-      statusDelivery: 'Ожидает выкупа', statusOrder: 'Актуально', step: 0, daysAgo: 3, isCompleted: false, sov: { accrued: false, amount: 150 },
-      stages: [STAGE('Основная', 7500, 4500, false), STAGE('Вес', 0, 0, null), STAGE('СДЭК', 0, 0, null), STAGE('Доставка_РФ', 0, 0, null)]
+      daysAgo: 3, sov: { accrued: false, amount: 150 }, ...LAGOONA_START
     },
     {
       orderId: 'TRN202', productDisplay: 'Дракулаура Skulltimate Secrets', productOriginal: 'Monster High Skulltimate Secrets Draculaura',
-      statusDelivery: 'Едет на склад в Казахстане', statusOrder: 'Актуально, в доставке', step: 2, daysAgo: 16, isCompleted: false, sov: { accrued: true, amount: 180 },
+      statusDelivery: 'Магазин отправил на склад в США', pos: 3, statusOrder: 'Актуально, в доставке', step: 2, daysAgo: 16, isCompleted: false, sov: { accrued: true, amount: 180 },
       collectiveLabel: '',
-      stages: [STAGE('Основная', 9000, 9000, false), STAGE('Вес', 650, 0, true), STAGE('СДЭК', 0, 0, null), STAGE('Доставка_РФ', 0, 0, null)]
+      stages: [STAGE('Основная', 9000, 9000, false), STAGE('Вес', 1300, 0, true), STAGE('СДЭК', 550, 0, true), STAGE('Доставка_РФ', 250, 0, true)]
     },
     {
       orderId: 'TRN203', productDisplay: 'Клео де Нил G3', productOriginal: 'Monster High Cleo De Nile G3 Doll',
-      statusDelivery: 'Получено клиентом', statusOrder: 'Выполнен', step: 7, daysAgo: 48, isCompleted: true, sov: { accrued: true, amount: 120 },
+      statusDelivery: 'Получено клиентом', pos: 12, statusOrder: 'Выполнен', step: 7, daysAgo: 48, isCompleted: true, sov: { accrued: true, amount: 120 },
       dateReceivedDaysAgo: 6, duration: '42 дня',
       stages: [STAGE('Основная', 6000, 6000, false), STAGE('Вес', 520, 520, false), STAGE('СДЭК', 380, 380, false), STAGE('Доставка_РФ', 300, 300, false)]
     }
@@ -90,19 +118,38 @@
       mainBalance: { target: main.target, paid: main.paid, remaining: main.remaining },
       creditBalanceRub: 0,
       isNewModel: true,
-      stagesBalance: o.stages,
+      stagesBalance: o.stages.map((st) => ({ ...st, due: isDue(o, st) })),
       pendingReceiptClaim: null
     };
   }
 
-  // Приоритет «прямо сейчас» — основная оплата TRN201 (кукла ещё не выкуплена);
-  // вес TRN202 — когда кукла доедет до склада (сумма пока предварительная).
-  const ROLLUP = { totalPaid: 0, totalRemaining: 3650, priorityAmount: 3000, priorityStage: 'Основная', priorityIsForecast: false };
+  /** Как на сервере (paymentsService.isStageDueNow): этап наступил по статусу И сумма подтверждена. */
+  function isDue(o, st) { return st.isForecast === false && o.pos >= (DUE_FROM[st.stage] || 1); }
+
+  /** «По всем вашим заказам» — из тех же учебных заказов, как getClientPaymentsRollup. */
+  function rollup() {
+    const open = ORDERS.filter((o) => !o.isCompleted);
+    let totalRemaining = 0; let totalPaid = 0; let priorityAmount = 0;
+    const names = new Set();
+    for (const o of open) {
+      for (const st of known(o)) {
+        totalRemaining += Math.max(st.remaining, 0);
+        totalPaid += st.paid;
+        if (st.remaining > 0.01 && isDue(o, st)) { priorityAmount += st.remaining; names.add(st.stage); }
+      }
+    }
+    return { totalPaid, totalRemaining, priorityAmount, priorityStage: names.size ? Array.from(names).join('/') : null, priorityIsForecast: names.size ? false : null };
+  }
+
+  function setLagoona(state) {
+    const o = ORDERS[0];
+    Object.assign(o, { isCompleted: false, dateReceivedDaysAgo: undefined, duration: undefined }, state);
+  }
 
   function questions() {
     return [
       ...sent.questions.map((q, i) => ({ questionId: `TRN-Q${i}`, orderId: q.orderId, productDisplay: q.orderId ? (ORDERS.find((o) => o.orderId === q.orderId) || {}).productDisplay || 'Общий вопрос' : 'Общий вопрос', text: q.text, status: 'Новый', answer: '', createdAtDisplay: dateAgo(0).display })),
-      { questionId: 'TRN-Q1', orderId: 'TRN202', productDisplay: 'Дракулаура Skulltimate Secrets', text: 'Когда примерно приедет Дракулаура?', status: 'Отвечено', answer: 'Сейчас она едет на склад в Казахстане, обычно это 7–10 дней. Как приедет — пришлём сообщение и сумму за вес.', createdAtDisplay: dateAgo(2).display },
+      { questionId: 'TRN-Q1', orderId: 'TRN202', productDisplay: 'Дракулаура Skulltimate Secrets', text: 'Когда примерно приедет Дракулаура?', status: 'Отвечено', answer: 'Сейчас она едет на склад в США, обычно это 7–10 дней. Как её взвесят — пришлём точную сумму за вес.', createdAtDisplay: dateAgo(2).display },
       { questionId: 'TRN-Q2', orderId: 'TRN201', productDisplay: 'Лагуна Блю Ghouls Rule', text: 'Можно оплатить остаток завтра?', status: 'Новый', answer: '', createdAtDisplay: dateAgo(0).display }
     ];
   }
@@ -125,7 +172,7 @@
   const HANDLERS = {
     getClientOrdersList: () => ORDERS.map(listItem),
     getClientOrderDetails: (orderId) => details(orderId),
-    getMyPaymentsRollup: () => ROLLUP,
+    getMyPaymentsRollup: () => rollup(),
     getMyCreditBalance: () => 0,
     getMyPoolLeftover: () => 0,
     getTransitOfferCount: () => ({ count: 0 }),
@@ -182,10 +229,18 @@
   }
 
   window.TrainingSandbox = {
-    activate() { sent = { claims: [], questions: [] }; active = true; banner(true); },
+    activate() { sent = { claims: [], questions: [] }; storyStep = 0; setLagoona(LAGOONA_START); active = true; banner(true); },
     deactivate() { if (!active) return; active = false; banner(false); },
     isActive: () => active,
     sent: () => clone(sent),
+    /** «⏩ Перемотать время» в уроке «Мой заказ»: Лагуна — на следующий шаг пути. */
+    advanceStory() {
+      if (storyStep >= STORY.length) return storyStep;
+      setLagoona(STORY[storyStep]);
+      storyStep += 1;
+      return storyStep;
+    },
+    storyStep: () => storyStep,
     ORDERS: ORDERS.map((o) => o.orderId)
   };
 })();

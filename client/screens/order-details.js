@@ -323,7 +323,12 @@ window.Screens.orderDetails = {
           // Приоритетная подсветка — только new-model (waterfall-порядок
           // между этапами, §3); у старой модели этапы независимы друг от
           // друга, "приоритета" между ними по смыслу нет.
-          const isPriority = d.isNewModel && firstUncovered && s.stage === firstUncovered.stage;
+          // 06.10.2026 (VASY: «приоритетная оплата — то, что обязательно надо
+          // сейчас»): сервер помечает `due` — этап наступил по статусу И сумма
+          // подтверждена. Без `due` (старый ответ) — как раньше.
+          const isPriority = d.isNewModel && (s.due !== undefined
+            ? s.due && s.remaining > 0.01
+            : firstUncovered && s.stage === firstUncovered.stage);
           const row = document.createElement('div');
           row.className = `mb-2.5 last:mb-0${isPriority ? ' -mx-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200' : ''}`;
           row.innerHTML = `
@@ -417,10 +422,32 @@ window.Screens.orderDetails = {
       if (known.length === 0) { orderBox.innerHTML = ''; updateRollupCardVisibility(); return; }
 
       const totalRemaining = known.reduce((sum, s) => sum + Math.max(s.remaining, 0), 0);
-      const priority = d.isNewModel ? known.find((s) => s.remaining > 0.01) : null;
+      let priority = d.isNewModel ? known.find((s) => s.remaining > 0.01) : null;
+      // 06.10.2026: «Приоритетно сейчас» — только наступившие этапы с
+      // подтверждённой суммой (`due` с сервера), все разом, как в сводке
+      // «по всем заказам». Ничего не наступило — так и пишем.
+      const hasDueFlags = known.some((s) => s.due !== undefined);
+      if (d.isNewModel && hasDueFlags) {
+        const dueStages = known.filter((s) => s.due && s.remaining > 0.01);
+        priority = dueStages.length
+          ? { remaining: dueStages.reduce((sum, s) => sum + s.remaining, 0), stage: dueStages.map((s) => s.stage).join('/'), isForecast: false }
+          : null;
+      }
 
       if (totalRemaining <= 0.01) {
         orderBox.innerHTML = '<div class="text-green-600 font-medium">По этому заказу всё оплачено.</div>';
+      } else if (d.isNewModel && hasDueFlags && !priority) {
+        orderBox.innerHTML = `
+          <div class="text-gray-500 text-[11px]">По этому заказу</div>
+          <div class="flex items-baseline gap-2 mt-0.5">
+            <span class="text-lg font-bold text-gray-900">${totalRemaining.toFixed(2)} ₽</span>
+            <span class="text-[12px] text-gray-400">осталось к оплате</span>
+          </div>
+          <div data-nothing-due class="flex items-start gap-1.5 mt-1.5 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-[12px] text-emerald-700">
+            <i data-lucide="check-circle" class="w-3.5 h-3.5 shrink-0 mt-px"></i>
+            <span>Сейчас оплачивать ничего не нужно. Следующий этап станет «Приоритетно сейчас», когда заказ до него дойдёт и сумму подтвердят.</span>
+          </div>
+        `;
       } else {
         orderBox.innerHTML = `
           <div class="text-gray-500 text-[11px]">По этому заказу</div>
