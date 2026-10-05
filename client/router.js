@@ -83,6 +83,10 @@ function matchRoute(hash) {
     return { screen: 'policy', navKey: null, params: {} };
   }
 
+  // «Обучение» и «Мои достижения» (план Б, 05.10.2026) — часть «Профиля».
+  if (clean === 'training') return { screen: 'training', navKey: 'profile', params: {} };
+  if (clean === 'achievements') return { screen: 'achievements', navKey: 'profile', params: {} };
+
   const route = ROUTES.find((r) => r.path === clean);
   if (route) return { screen: route.screen, navKey: route.navKey, params: {} };
 
@@ -144,6 +148,8 @@ function renderRoute(context) {
 
   if (window.lucide) window.lucide.createIcons();
   window.scrollTo(0, 0);
+  // Квест на «Новостях» и «урок про этот экран» (план Б, client/training.js).
+  if (window.ClientTraining) window.ClientTraining.onScreen(screen);
 }
 
 /**
@@ -212,7 +218,13 @@ function startClientRouter() {
   initClientAccess(function (context) {
     renderRoute(context);
     window.addEventListener('hashchange', () => renderRoute(context));
-    // «Что нового» при входе (05.10.2026) — непросмотренные обновления приложения.
-    if (window.ClientWhatsNew) window.ClientWhatsNew.check();
+    // «Что нового» при входе (05.10.2026) — непросмотренные обновления приложения;
+    // когда лист закрыт — приглашение новичку пройти обучение (план Б).
+    // Урок, прерванный перезапуском окна, продолжается первым (лист «Что нового» поверх урока не всплывёт).
+    if (window.Tour) window.Tour.resume();
+    const whatsNew = window.ClientWhatsNew ? window.ClientWhatsNew.check() : Promise.resolve();
+    Promise.resolve(whatsNew).catch(() => {}).then(() => {
+      if (window.ClientTraining) window.ClientTraining.offer();
+    });
   });
 }

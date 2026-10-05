@@ -257,6 +257,11 @@ window.Screens.contests = {
     function buildTaskCard(t) {
       const card = document.createElement('div');
       card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+      card.dataset.taskId = t.taskId;
+      // План Б (05.10.2026): задания за обучение и достижения — прогресс «1 из 3» и кнопка туда, где его набирать.
+      const progressHtml = t.progress && t.progress.need > 0 && t.status !== 'done'
+        ? `<div class="mt-2"><div class="h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full rounded-full bg-indigo-500" style="width:${Math.round(Math.min(1, t.progress.have / t.progress.need) * 100)}%"></div></div><div class="text-[11px] text-gray-400 mt-0.5">${t.progress.have} из ${t.progress.need}</div></div>`
+        : '';
 
       const statusBadges = {
         done: '<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">Выполнено</span>',
@@ -271,6 +276,7 @@ window.Screens.contests = {
           ${statusBadges[t.status] || ''}
         </div>
         ${t.description ? `<div class="text-[13px] text-gray-500 mt-1">${escapeHtmlClient(t.description)}</div>` : ''}
+        ${progressHtml}
         <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} сов</div>
         <div class="mt-1">${sovyRateInfo ? inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo)) : ''}</div>
       `;
@@ -278,6 +284,16 @@ window.Screens.contests = {
       // Повторяемые задания (баг-репорт и т.п.) — кнопка отправки доступна
       // всегда, независимо от статуса предыдущей заявки: клиент может
       // прислать сразу несколько разных заявок по одному заданию.
+      const ACTIONS = { training: { label: '🎓 Пройти уроки', route: 'training' }, achievements: { label: '🏆 Мои достижения', route: 'achievements' } };
+      if (t.status !== 'done' && ACTIONS[t.action]) {
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'mt-3 w-full py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-medium';
+        go.textContent = ACTIONS[t.action].label;
+        go.addEventListener('click', () => navigateTo(ACTIONS[t.action].route));
+        card.appendChild(go);
+      }
+
       const canSubmit = t.type === 'Ручное' && (t.repeatable || t.status === 'not_done' || t.status === 'rejected');
       if (canSubmit) {
         const btn = document.createElement('button');

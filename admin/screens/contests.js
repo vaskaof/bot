@@ -85,13 +85,32 @@ window.Screens.contests = {
               </select>
             </div>
             <div id="task-signal-block">
-              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Сигнал (для авто-задания) *${helpIcon('Сигнал автозадания', '<p>Список ниже — фиксированный, ровно 3 готовых сигнала. Свой вариант («написал в поддержку», «оформил N заказов» и т.п.) добавить нельзя без правки кода бэкенда — если такой сигнал нужен, это отдельная задача на разработку, не настройка через панель.</p><p>Система сама проверяет сигнал и засчитывает задание — участнику ничего отправлять не нужно, поэтому у "Авто" нет очереди на "Модерации".</p>')}</label>
+              <label class="text-xs font-medium text-gray-500 inline-flex items-center gap-1">Сигнал (для авто-задания) *${helpIcon('Сигнал автозадания', '<p>Список ниже — фиксированный набор готовых сигналов (с 05.10.2026 — и «Открыл достижение», «Прошёл уроки обучения» для обучения клиентов). Свой вариант («написал в поддержку», «оформил N заказов» и т.п.) добавить нельзя без правки кода бэкенда — если такой сигнал нужен, это отдельная задача на разработку, не настройка через панель.</p><p>Система сама проверяет сигнал и засчитывает задание — участнику ничего отправлять не нужно, поэтому у "Авто" нет очереди на "Модерации".</p>')}</label>
               <select id="task-signal-input"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
                 <option value="Есть_Позиция_В_Вишлисте">Есть позиция в вишлисте</option>
                 <option value="Подписан_На_Новости">Подписан на новости</option>
                 <option value="Есть_Вопрос">Задал вопрос по заказу</option>
+                <option value="Достижение">🏅 Открыл достижение</option>
+                <option value="Пройдено_Уроков">🎓 Прошёл уроки обучения</option>
               </select>
+            </div>
+            <!-- План Б (05.10.2026, VASY): совы за достижение и за прогресс обучения клиента. -->
+            <div id="task-achievement-block" class="hidden space-y-2">
+              <div>
+                <label class="text-xs font-medium text-gray-500">За какое достижение *</label>
+                <select id="task-achievement-param" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
+                <div class="text-[11px] text-gray-400 mt-1">Конкретное — совы один раз. «Любое» — за первое открытое; включите «Повторяемое» — совы за каждое (до макс. начислений).</div>
+              </div>
+              <label class="flex items-start gap-2 text-xs text-gray-600">
+                <input type="checkbox" id="task-count-existing" class="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600">
+                <span>Засчитать и уже открытые раньше<br><span class="text-gray-400">Без галочки считаются только достижения, открытые после создания задания — иначе совы сразу получат все, у кого они уже есть.</span></span>
+              </label>
+            </div>
+            <div id="task-lessons-block" class="hidden">
+              <label class="text-xs font-medium text-gray-500">Сколько уроков пройти *</label>
+              <select id="task-lessons-param" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
+              <div class="text-[11px] text-gray-400 mt-1">Совы один раз, когда клиент пройдёт столько уроков. Можно завести несколько заданий-ступенек: 1 урок, 3 урока, весь курс.</div>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Награда (сов) *</label>
@@ -258,6 +277,18 @@ window.Screens.contests = {
     `;
 
     let editingTaskId = null;
+    // Варианты для сигналов «Достижение»/«Пройдено уроков» (план Б) — один раз на экран.
+    let signalOptions = null;
+    const signalOptionsReady = callServer('getTaskSignalOptions').then((o) => { signalOptions = o; }).catch(() => {});
+    function achievementParamLabel(param) {
+      if (!param || param === '*') return 'любое';
+      if (param.startsWith('shelf:')) {
+        const sh = signalOptions && signalOptions.shelves.find((x) => x.key === param.slice(6));
+        return 'любое с полки ' + (sh ? sh.title : param.slice(6));
+      }
+      const a = signalOptions && signalOptions.achievements.find((x) => x.code === param);
+      return a ? a.title : param;
+    }
     let editingLotteryId = null;
     let drawingLotteryId = null;
     let currentTab = 'tasks';
@@ -317,7 +348,7 @@ window.Screens.contests = {
     async function loadTasks() {
       tasksList.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
-        const tasks = await callServer('getAdminTasksList');
+        const [tasks] = await Promise.all([callServer('getAdminTasksList'), signalOptionsReady]);
         renderTasks(tasks);
       } catch (error) {
         tasksList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${error.message}</div>`;
@@ -343,6 +374,8 @@ window.Screens.contests = {
         'Есть_Позиция_В_Вишлисте': 'Есть позиция в вишлисте',
         'Подписан_На_Новости': 'Подписан на новости',
         'Есть_Вопрос': 'Задал вопрос по заказу',
+        'Достижение': `достижение «${achievementParamLabel(t.signalParam)}»${t.countExisting ? ' (и открытые раньше)' : ''}`,
+        'Пройдено_Уроков': t.signalParam === 'all' ? 'весь курс уроков' : `пройдено уроков: ${t.signalThreshold || 1}`,
       };
 
       card.innerHTML = `
@@ -706,7 +739,25 @@ window.Screens.contests = {
     const answerHintInput = document.getElementById('task-answer-hint-input');
     const errorText = document.getElementById('task-error-text');
 
+    const achievementBlock = document.getElementById('task-achievement-block');
+    const achievementParam = document.getElementById('task-achievement-param');
+    const countExistingInput = document.getElementById('task-count-existing');
+    const lessonsBlock = document.getElementById('task-lessons-block');
+    const lessonsParam = document.getElementById('task-lessons-param');
+    function fillTrainingOptions() {
+      const o = signalOptions || { achievements: [], shelves: [], lessonsTotal: 7 };
+      achievementParam.innerHTML = `<option value="*">Любое достижение</option>${o.shelves.map((sh) => `<option value="shelf:${escapeHtmlClient(sh.key)}">Любое с полки «${escapeHtmlClient(sh.title)}»</option>`).join('')}${o.shelves.map((sh) => `<optgroup label="${escapeHtmlClient(sh.emoji + ' ' + sh.title)}">${o.achievements.filter((a) => a.shelf === sh.key).map((a) => `<option value="${escapeHtmlClient(a.code)}">${escapeHtmlClient(a.title)}</option>`).join('')}</optgroup>`).join('')}`;
+      lessonsParam.innerHTML = Array.from({ length: o.lessonsTotal }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('') + '<option value="all">Весь курс</option>';
+    }
+    function updateTrainingBlocks() {
+      const auto = typeInput.value === 'Авто';
+      achievementBlock.classList.toggle('hidden', !auto || signalInput.value !== 'Достижение');
+      lessonsBlock.classList.toggle('hidden', !auto || signalInput.value !== 'Пройдено_Уроков');
+    }
+    signalInput.addEventListener('change', updateTrainingBlocks);
+
     function updateSignalBlockVisibility() {
+      updateTrainingBlocks();
       signalBlock.classList.toggle('hidden', typeInput.value !== 'Авто');
       // "Подсказка формата ответа" имеет смысл только для Ручного — Авто-
       // задание проверяется системой заново при каждом заходе, клиент
@@ -737,6 +788,11 @@ window.Screens.contests = {
       repeatableInput.checked = false;
       maxAccrualsInput.value = '';
       answerHintInput.value = '';
+      fillTrainingOptions();
+      achievementParam.value = '*';
+      countExistingInput.checked = false;
+      lessonsParam.value = '3';
+      if (!lessonsParam.value) lessonsParam.value = '1';
       errorText.classList.add('hidden');
       updateSignalBlockVisibility();
     }
@@ -760,6 +816,8 @@ window.Screens.contests = {
       repeatableInput.checked = !!t.repeatable;
       maxAccrualsInput.value = t.maxAccruals || '';
       answerHintInput.value = t.answerHint || '';
+      if (t.signal === 'Достижение') { achievementParam.value = t.signalParam || '*'; countExistingInput.checked = !!t.countExisting; }
+      if (t.signal === 'Пройдено_Уроков') lessonsParam.value = t.signalParam === 'all' ? 'all' : String(t.signalThreshold || 1);
       updateSignalBlockVisibility();
       taskModal.classList.remove('hidden');
       taskModal.classList.add('flex');
@@ -800,12 +858,19 @@ window.Screens.contests = {
         return;
       }
 
+      // Параметры учебных сигналов (план Б) — 10-м аргументом.
+      const options = signal === 'Достижение'
+        ? { signalParam: achievementParam.value, countExisting: countExistingInput.checked }
+        : (signal === 'Пройдено_Уроков'
+          ? (lessonsParam.value === 'all' ? { signalParam: 'all' } : { signalThreshold: Number(lessonsParam.value) })
+          : {});
+
       taskModalSaveBtn.disabled = true;
       try {
         if (editingTaskId) {
-          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null);
+          await callServer('updateTask', editingTaskId, title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null, options);
         } else {
-          await callServer('createTask', title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null);
+          await callServer('createTask', title, description, type, signal, Number(reward), repeatable, answerHint, maxAccruals !== null ? Number(maxAccruals) : null, options);
         }
         closeTaskModal();
         showSaveToast(true, editingTaskId ? 'Задание обновлено' : 'Задание создано');

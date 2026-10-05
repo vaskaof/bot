@@ -40,6 +40,7 @@
     });
   }
 
+  /** Промис завершается, когда лист закрыт (или показывать нечего) — следом роутер предлагает обучение. */
   async function check() {
     if (checked || window.__E2E_SKIP_WHATS_NEW) return;
     checked = true;
@@ -68,8 +69,11 @@
       </div>`;
     document.body.appendChild(el);
     let marked = false;
+    let closed;
+    const closedPromise = new Promise((resolve) => { closed = resolve; });
     const done = () => {
       el.remove();
+      closed();
       if (marked) return;
       marked = true;
       callServer('markMyWhatsNewSeen', fresh.map((e) => e.id)).catch(() => {});
@@ -77,6 +81,7 @@
     el.querySelector('[data-ok]').onclick = done;
     el.onclick = (ev) => { if (ev.target === el) done(); };
     wireGo(el, done);
+    return closedPromise;
   }
 
   window.ClientWhatsNew = { check, cardHtml, wireGo };

@@ -243,6 +243,7 @@ window.Screens.questions = {
     function buildCard(q) {
       const card = document.createElement('div');
       card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3';
+      card.dataset.questionId = q.questionId || ''; // урок «Вопрос по заказу»
 
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">

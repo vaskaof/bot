@@ -45,8 +45,33 @@
  * окна): если Telegram перезапустил окно, урок продолжается с того же шага,
  * но открытые вкладки и окна пропали — шаг, не найдя цель за 3 с,
  * откатывается к ближайшему шагу «нажми», который их откроет.
+ *
+ * 05.10.2026 (план Б — обучение клиентов): движок общий для кабинета и
+ * клиентского приложения (файл переехал из admin/screens/_tour.js).
+ * Различия — в `window.TourHost` (задаёт клиент, client/training.js):
+ * куда писать события, куда возвращаться, что делать после урока и тексты
+ * (клиенту — на «вы»). Без TourHost — поведение кабинета, как было.
  */
 (function () {
+  // Кабинет менеджера — по умолчанию (на «ты», события recordTrainingEvent).
+  const ADMIN_HOST = {
+    home: 'training',
+    record: (id, event, step, total) => callServer('recordTrainingEvent', id, event, step, total),
+    after: (scenario) => { if (window.TrainingUI) window.TrainingUI.afterScenario(scenario); },
+    texts: {
+      press: '👆 Нажми на подсвеченное.',
+      retry: ' Попробуй ещё раз.',
+      explainOnly: 'Это пояснение — нажми «Далее» в подсказке.',
+      blocked: 'Учебный режим: здесь не сохраняем — ничего не запишется.',
+      blockedSlider: 'Учебный режим: здесь не меняем — ничего не запишется.',
+      notFound: 'Не вижу нужное место на экране — возможно, он ещё грузится или выглядит иначе. Можно нажать «Далее».',
+      exit: 'Выйти из обучения? Пройти сценарий можно заново в любой момент — «Обучение» в разделе «Ещё».'
+    }
+  };
+  function host() {
+    const h = window.TourHost || {};
+    return { ...ADMIN_HOST, ...h, texts: { ...ADMIN_HOST.texts, ...(h.texts || {}) } };
+  }
   const STATE_KEY = 'knopkaTourState';
   const WAIT_MS = 8000;
   const OPTIONAL_WAIT_MS = 3500;
@@ -87,7 +112,9 @@
   function track(event, step) {
     if (!active) return;
     const total = active.scenario.steps.length;
-    callServer('recordTrainingEvent', active.scenario.id, event, step, total).catch(() => {});
+    // id — сейчас: выход из урока обнуляет active сразу после этого вызова.
+    const id = active.scenario.id;
+    Promise.resolve().then(() => host().record(id, event, step, total)).catch(() => {});
   }
 
   function isVisible(el) {
@@ -342,7 +369,7 @@
           bubble.querySelectorAll('[data-quiz]').forEach((b) => b.classList.remove('border-emerald-500', 'bg-emerald-50', 'border-red-400', 'bg-red-50'));
           btn.classList.add(...(option.correct ? ['border-emerald-500', 'bg-emerald-50'] : ['border-red-400', 'bg-red-50']));
           explain.className = `text-[13px] leading-snug mt-2 rounded-xl px-3 py-2 ${option.correct ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`;
-          explain.innerHTML = `${option.correct ? '✅ Верно. ' : '❌ Не совсем. '}${option.explain || ''}${option.correct ? '' : ' Попробуй ещё раз.'}`;
+          explain.innerHTML = `${option.correct ? '✅ Верно. ' : '❌ Не совсем. '}${option.explain || ''}${option.correct ? '' : host().texts.retry}`;
           if (option.correct && nextBtn) nextBtn.classList.remove('hidden');
         });
       });
@@ -455,7 +482,7 @@
       }
       renderBubble(step, {
         title: step.title, text: step.text,
-        hint: 'Не вижу нужное место на экране — возможно, он ещё грузится или выглядит иначе. Можно нажать «Далее».',
+        hint: host().texts.notFound,
         showNext: true, typing: true
       });
       startLoop({}, () => null);
@@ -466,7 +493,7 @@
     const advance = step.advance || 'next';
     renderBubble(step, {
       title: step.title, text: step.text,
-      hint: advance === 'click' ? '👆 Нажми на подсвеченное.' : step.hint,
+      hint: advance === 'click' ? host().texts.press : step.hint,
       actions: step.actions, showNext: advance === 'next', typing: true
     });
     // Старая цель ушла вместе с экраном — подсказка не висит над пустым местом.
@@ -529,7 +556,7 @@
     if (isBlocked(e.target) && e.target.matches && e.target.matches('input[type="range"]')) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      showSaveToast(true, 'Учебный режим: здесь не меняем — ничего не запишется.');
+      showSaveToast(true, host().texts.blockedSlider);
     }
   }, { capture: true, passive: false }));
 
@@ -540,7 +567,7 @@
     if (isBlocked(e.target)) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      showSaveToast(true, 'Учебный режим: здесь не сохраняем — ничего не запишется.');
+      showSaveToast(true, host().texts.blocked);
       return;
     }
     if (!step) return;
@@ -552,7 +579,7 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         pulseBubble();
-        showSaveToast(true, 'Это пояснение — нажми «Далее» в подсказке.');
+        showSaveToast(true, host().texts.explainOnly);
       }
       return;
     }
@@ -574,7 +601,7 @@
   function enterSandbox(scenario) {
     if (scenario.sandbox === false || !window.TrainingSandbox) return;
     window.TrainingSandbox.activate();
-    if (currentScreen() !== 'training') window.dispatchEvent(new HashChangeEvent('hashchange'));
+    if (currentScreen() !== host().home) window.dispatchEvent(new HashChangeEvent('hashchange'));
   }
 
   function teardown() {
@@ -595,15 +622,16 @@
     // Ждём, пока сервер запишет «пройдено» (не дольше 4 с): иначе «Обучение»
     // рисуется со старыми результатами и достижениями до следующего входа
     // (отзыв VASY 05.10).
-    const saved = callServer('recordTrainingEvent', scenario.id, 'complete', total, total).catch(() => {});
+    let result = null;
+    const saved = Promise.resolve().then(() => host().record(scenario.id, 'complete', total, total)).then((r) => { result = r; }).catch(() => {});
     await Promise.race([saved, wait(4000)]);
     backToTraining(true);
-    if (window.TrainingUI) window.TrainingUI.afterScenario(scenario);
+    host().after(scenario, result);
   }
 
   async function exit() {
     if (!active) return;
-    const sure = await showConfirmModal('Выйти из обучения? Пройти сценарий можно заново в любой момент — «Обучение» в разделе «Ещё».', { confirmLabel: 'Выйти', cancelLabel: 'Продолжить' });
+    const sure = await showConfirmModal(host().texts.exit, { confirmLabel: 'Выйти', cancelLabel: 'Продолжить' });
     if (!sure || !active) return;
     track('abandon', active.index + 1);
     const scenario = active.scenario;
@@ -615,7 +643,7 @@
 
   /** Вышел или прошёл — назад в «Обучение», а не на экран, где остановился (отзыв VASY №13). */
   function backToTraining(refresh) {
-    if (currentScreen() !== 'training' && typeof navigateTo === 'function') navigateTo('training');
+    if (currentScreen() !== host().home && typeof navigateTo === 'function') navigateTo(host().home);
     // Урок закончился на самом «Обучении» (сводка, помощник) — перерисовать результаты.
     else if (refresh) window.dispatchEvent(new HashChangeEvent('hashchange'));
   }

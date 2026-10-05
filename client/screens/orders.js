@@ -242,6 +242,7 @@ window.Screens.orders = {
     function buildCard(o) {
       const card = document.createElement('div');
       card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 cursor-pointer active:bg-gray-50 transition-colors';
+      card.dataset.orderCard = o.orderId; // уроки (tour-scenarios.js) указывают на конкретный заказ
       card.addEventListener('click', () => {
         navigateTo(`order-details/${encodeURIComponent(o.orderId)}`);
       });

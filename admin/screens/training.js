@@ -438,6 +438,27 @@ window.Screens = window.Screens || {};
             loadOverview(true);
           } catch (error) { showSaveToast(false, error.message); }
         }));
+        paintClientTraining();
+      }
+
+      // Обучение клиентов (план Б, 05.10.2026) — внизу «Команды»: начали/прошли, где бросают.
+      async function paintClientTraining() {
+        const slot = document.createElement('div');
+        slot.id = 'client-training-overview';
+        slot.className = 'mt-6';
+        body.appendChild(slot);
+        let o;
+        try { o = await callServer('getClientTrainingOverview'); } catch (error) { slot.innerHTML = `<div class="text-xs text-red-500">${esc(error.message)}</div>`; return; }
+        if (!slot.isConnected) return;
+        slot.innerHTML = `
+          <div class="text-sm font-semibold text-gray-900 mb-1">🎓 Обучение клиентов</div>
+          <div class="text-[12px] text-gray-500 mb-2">Учились: ${o.people} · приглашение: «Показать» ${o.offers.show}, «Потом» ${o.offers.later} · скрыли квест: ${o.questHidden}</div>
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+            ${o.lessons.map((l) => `<div class="p-3 flex items-center justify-between gap-2 text-[13px]">
+              <span>${esc(l.emoji)} ${esc(l.title)}</span>
+              <span class="text-gray-500 shrink-0">начали ${l.started} · прошли ${l.completed}${l.stuckAtStep.length ? ` · бросают на шаге ${l.stuckAtStep[0].step} (${l.stuckAtStep[0].count})` : ''}</span>
+            </div>`).join('')}
+          </div>`;
       }
 
       function paintFeedback() {
