@@ -35,6 +35,7 @@ window.Screens.wishlist = {
     try {
       const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
       if (!(params && params.photoScanId) && ['wishlist', 'checklist', 'collections'].includes(saved)) currentTab = saved;
+      if (currentTab === 'collections' && !hasModule('dolls_client')) currentTab = 'wishlist';
     } catch (_e) { /* sessionStorage недоступен — просто стартуем с Вишлиста */ }
     // Кнопка «Моя полка» под «выкуплено» из вишлиста (§3.3 плана геймификации).
     if (params && params.tab === 'checklist') currentTab = 'checklist';
@@ -148,16 +149,16 @@ window.Screens.wishlist = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        <div id="tab-switcher" class="grid grid-cols-3 p-1 mb-1 rounded-2xl bg-gray-200/70">
+        <div id="tab-switcher" class="grid ${hasModule('dolls_client') ? 'grid-cols-3' : 'grid-cols-2'} p-1 mb-1 rounded-2xl bg-gray-200/70">
           <button type="button" data-tab="wishlist" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
             Вишлист <span id="wishlist-count-badge" class="inline-block font-medium text-gray-400"></span>
           </button>
           <button type="button" data-tab="checklist" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
             Чеклист <span id="checklist-count-badge" class="inline-block font-medium text-gray-400"></span>
           </button>
-          <button type="button" data-tab="collections" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
+          ${hasModule('dolls_client') ? `<button type="button" data-tab="collections" class="tab-btn h-9 rounded-xl text-[13.5px] font-semibold">
             Коллекции
-          </button>
+          </button>` : ''}
         </div>
 
         <!-- «Мы узнали N ваших кукол» (§11.16.1, «сверху» п.2) -->
@@ -586,6 +587,7 @@ window.Screens.wishlist = {
     let transitChecked = new Set();
 
     async function loadTransitOffers() {
+      if (!hasModule('dolls_client')) { transitOffers = []; return; }
       try {
         transitOffers = await callServer('getTransitOffers');
       } catch (_error) {
@@ -686,6 +688,7 @@ window.Screens.wishlist = {
       const accept = transitOffers.filter((o) => transitChecked.has(o.orderId)).map((o) => o.orderId);
       const dismiss = transitOffers.filter((o) => !transitChecked.has(o.orderId)).map((o) => o.orderId);
       try {
+        // module-guarded: dolls_client — предложения приходят только из loadTransitOffers.
         const result = await callServer('answerTransitOffers', accept, dismiss);
         closeTransitModal();
         transitOffers = [];
@@ -740,6 +743,7 @@ window.Screens.wishlist = {
       const list = document.getElementById('collections-list');
       list.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
       try {
+        if (!hasModule('dolls_client')) { list.innerHTML = ''; return; }
         const result = await callServer('getClientCollections');
         renderCollections(result);
       } catch (error) {
@@ -1000,6 +1004,7 @@ window.Screens.wishlist = {
         on('grail', async (btn) => {
           btn.disabled = true;
           try {
+            if (!hasModule('dolls_client')) return;
             await callServer('setWishlistItemGrail', item.wishlistId, !item.isGrail);
             Hunt.closeSheet();
             Hunt.haptic(item.isGrail ? 'selection' : 'light');
@@ -1175,6 +1180,7 @@ window.Screens.wishlist = {
     // заход — анонс важнее, отложенные праздники подождут следующего открытия.
     async function runHuntState() {
       let state;
+      if (!hasModule('dolls_client')) return;
       try {
         state = await callServer('getHuntState');
       } catch (_error) {

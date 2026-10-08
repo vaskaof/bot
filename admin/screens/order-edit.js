@@ -1995,7 +1995,8 @@ window.Screens.orderEdit = {
 
     async function wireWishlistLink(details) {
       const box = document.getElementById('wishlist-link-box');
-      if (!box || !currentOrderId) return;
+      // В3 плана SaaS: без модуля «вишлист» связи с вишлистом нет.
+      if (!box || !currentOrderId || !hasModule('wishlist')) return;
       box.innerHTML = '';
       const telegramId = details.client.telegramId;
       const link = WishlistLink.attach(box, { orderId: currentOrderId, defaultChecked: false });
@@ -2015,6 +2016,7 @@ window.Screens.orderEdit = {
         if (busy) { link.setChecked(!checked); return; }
         busy = true;
         try {
+          // module-guarded: wishlist — wireWishlistLink выходит сразу без модуля.
           await callServer('setOrderWishlistLink', currentOrderId, checked ? link.shownId() : '');
           showSaveToast(true, checked ? 'Заказ связан с вишлистом клиента.' : 'Связь с вишлистом снята.');
         } catch (error) {

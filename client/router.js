@@ -123,8 +123,25 @@ function showSaveToast(success, message) {
  * main, модалки) — общая часть (CDN/config/common.js, loading/access-denied,
  * нижняя навигация, toast) живёт в шелле один раз.
  */
+/**
+ * В3 плана SaaS — экраны, которые есть только при включённом модуле канала. Косметика: граница —
+ * на сервере. Экран выключенного модуля → лента новостей.
+ */
+const SCREEN_MODULES = {
+  contests: 'gamification',
+  achievements: 'gamification',
+  wishlist: 'wishlist',
+  yearSummary: 'dolls_client',
+  collectionAlbum: 'dolls_client'
+};
+
 function renderRoute(context) {
-  const { screen, navKey, params } = matchRoute(window.location.hash);
+  const matched = matchRoute(window.location.hash);
+  if (SCREEN_MODULES[matched.screen] && !hasModule(SCREEN_MODULES[matched.screen])) {
+    navigateTo(DEFAULT_ROUTE);
+    return;
+  }
+  const { screen, navKey, params } = matched;
   const screenModule = window.Screens && window.Screens[screen];
   const root = document.getElementById('screen-root');
   const nav = document.getElementById('bottom-nav');
@@ -149,7 +166,7 @@ function renderRoute(context) {
   if (window.lucide) window.lucide.createIcons();
   window.scrollTo(0, 0);
   // Квест на «Новостях» и «урок про этот экран» (план Б, client/training.js).
-  if (window.ClientTraining) window.ClientTraining.onScreen(screen);
+  if (window.ClientTraining && hasModule('client_lessons')) window.ClientTraining.onScreen(screen);
 }
 
 /**
@@ -216,6 +233,12 @@ function startClientRouter() {
   }
 
   initClientAccess(function (context) {
+    // В3 плана SaaS: кнопки нижней панели выключенных модулей канала.
+    [['contests', 'gamification'], ['wishlist', 'wishlist']].forEach(([key, module]) => {
+      if (hasModule(module)) return;
+      const btn = document.querySelector(`#bottom-nav [data-nav-key="${key}"]`);
+      if (btn) btn.style.display = 'none';
+    });
     renderRoute(context);
     window.addEventListener('hashchange', () => renderRoute(context));
     // «Что нового» при входе (05.10.2026) — непросмотренные обновления приложения;
@@ -224,7 +247,7 @@ function startClientRouter() {
     if (window.Tour) window.Tour.resume();
     const whatsNew = window.ClientWhatsNew ? window.ClientWhatsNew.check() : Promise.resolve();
     Promise.resolve(whatsNew).catch(() => {}).then(() => {
-      if (window.ClientTraining) window.ClientTraining.offer();
+      if (window.ClientTraining && hasModule('client_lessons')) window.ClientTraining.offer();
     });
   });
 }

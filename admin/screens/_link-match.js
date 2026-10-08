@@ -73,8 +73,12 @@ window.LinkMatch = (() => {
   }
 
   async function prefillFromModel(key, resolved) {
-    const { model, suggestedTags } = await callServer('getReferenceModelPrefill', key);
     const r = resolved || {};
+    // В3 плана SaaS: справочник кукол — ниша «Куклы»; без него — только то, что дала ссылка.
+    if (!hasModule('dolls_reference')) {
+      return { original: r.title || '', description: r.description || '', imageUrl: r.imageUrl || '', modelCode: '' };
+    }
+    const { model, suggestedTags } = await callServer('getReferenceModelPrefill', key);
     return {
       original: r.title || model.title || '',
       description: r.description || '',

@@ -114,6 +114,7 @@ window.Screens.orders = {
         if (Number(localStorage.getItem(TRANSIT_INVITE_HIDE_KEY) || 0) > Date.now()) return;
       } catch (_e) { /* localStorage недоступен — просто показываем */ }
       let count = 0;
+      if (!hasModule('dolls_client')) return;
       try {
         count = (await callServer('getTransitOfferCount')).count || 0;
       } catch (_error) {
@@ -178,7 +179,7 @@ window.Screens.orders = {
         // всё равно открывается.
         const [orders, referralInfo] = await Promise.all([
           callServer('getClientOrdersList'),
-          callServer('getReferralInfo').catch(() => null)
+          hasModule('gamification') ? callServer('getReferralInfo').catch(() => null) : Promise.resolve(null)
         ]);
         allOrders = orders;
         sovyRateInfo = referralInfo;

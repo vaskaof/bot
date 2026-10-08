@@ -39,7 +39,7 @@ window.Screens.catalogLines = {
         <div class="flex bg-gray-200/60 rounded-xl p-1 mb-3 text-sm font-medium">
           <button type="button" data-tab="tree" class="lines-tab flex-1 py-1.5 rounded-lg">Дерево</button>
           <button type="button" data-tab="series" class="lines-tab flex-1 py-1.5 rounded-lg">Разметка серий</button>
-          <button type="button" data-tab="characters" class="lines-tab flex-1 py-1.5 rounded-lg">Персонажи</button>
+          ${hasModule('dolls_reference') ? '<button type="button" data-tab="characters" class="lines-tab flex-1 py-1.5 rounded-lg">Персонажи</button>' : ''}
         </div>
         <div id="lines-body"></div>
       </main>
@@ -119,7 +119,7 @@ window.Screens.catalogLines = {
       try {
         await loadTree();
         if (tab === 'series') seriesGroups = await callServer('getCatalogSeriesMapping');
-        if (tab === 'characters') characters = await callServer('listCatalogCharacters');
+        if (tab === 'characters' && hasModule('dolls_reference')) characters = await callServer('listCatalogCharacters');
         renderTab();
       } catch (error) {
         body.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
@@ -250,7 +250,7 @@ window.Screens.catalogLines = {
           ${actionBtn('edit', 'pencil', 'Изменить')}
           ${actionBtn('add', 'plus', 'Добавить подветку')}
           ${actionBtn('move', 'move', 'Перенести')}
-          ${actionBtn('verify', verified ? 'circle-slash' : 'badge-check', verified ? 'Снять «состав сверен»' : 'Отметить «состав сверен»')}
+          ${hasModule('dolls_reference') ? actionBtn('verify', verified ? 'circle-slash' : 'badge-check', verified ? 'Снять «состав сверен»' : 'Отметить «состав сверен»') : ''}
           ${canDelete
             ? actionBtn('delete', 'trash-2', 'Удалить', 'text-red-600 active:bg-red-50')
             : `<div class="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Удалить — только пустую ветку</span></div>`}
@@ -260,7 +260,7 @@ window.Screens.catalogLines = {
         if (act === 'edit') openLineForm(line, null);
         else if (act === 'add') openLineForm(null, line);
         else if (act === 'move') openMoveForm(line);
-        else if (act === 'verify') {
+        else if (act === 'verify' && hasModule('dolls_reference')) {
           try {
             await callServer('setCatalogLineReferenceStatus', line.id, verified ? 'draft' : 'verified');
             closeModal();
@@ -457,6 +457,7 @@ window.Screens.catalogLines = {
       const isNew = !character;
       const v = character || { name: '', nameRu: '', aliases: [], brandLineId: null };
       const brands = ordered.filter(l => l.depth === 0);
+      // module-guarded: dolls_reference — форма персонажа открывается только с вкладки «Персонажи» (её нет без модуля).
       const buttons = [{ label: 'Отмена' }];
       if (!isNew) {
         buttons.unshift({
@@ -477,6 +478,7 @@ window.Screens.catalogLines = {
             brandLineId: field('cf-brand').value ? Number(field('cf-brand').value) : null,
             aliases: field('cf-aliases').value.split(',')
           };
+          // module-guarded: dolls_reference — см. выше.
           if (isNew) await callServer('createCatalogCharacter', data);
           else await callServer('updateCatalogCharacter', character.id, data);
           closeModal();

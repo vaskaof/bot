@@ -254,6 +254,8 @@ window.Screens.clients = {
     // отметить «на полку». Необязательный блок — сбой его просто прячет.
     const huntInviteBlock = document.getElementById('hunt-invite-block');
     async function loadHuntInvites() {
+      // В3 плана SaaS: «Мои куклы» — ниша «Куклы» с клиентским приложением.
+      if (!hasModule('dolls_client')) { huntInviteBlock.classList.add('hidden'); return; }
       let items;
       try {
         items = await callServer('getHuntInviteCandidates');
@@ -281,7 +283,7 @@ window.Screens.clients = {
     }
     document.getElementById('hunt-invite-list').addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-hunt-invite]');
-      if (!btn || btn.disabled) return;
+      if (!btn || btn.disabled || !hasModule('dolls_client')) return;
       btn.disabled = true;
       try {
         await callServer('sendHuntInvite', btn.dataset.huntInvite);
@@ -412,7 +414,7 @@ window.Screens.clients = {
         const [report, questions, wishlist, blockLog, payoutRoles] = await Promise.all([
           callServer('getClientReport', currentClient.telegramId, currentRange()),
           callServer('getQuestionsForClientAdmin', currentClient.telegramId),
-          callServer('getWishlistForClientAdmin', currentClient.telegramId),
+          hasModule('wishlist') ? callServer('getWishlistForClientAdmin', currentClient.telegramId) : Promise.resolve([]),
           callServer('getClientBlockLog', currentClient.telegramId),
           isReseller ? callServer('getClientPayoutRoles', currentClient.telegramId) : Promise.resolve(null)
         ]);

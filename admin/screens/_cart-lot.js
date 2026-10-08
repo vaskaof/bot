@@ -412,7 +412,7 @@ window.CartLot = {
         // «Спрос у N клиентов» — лучшим усилием, ОТДЕЛЬНЫМ запросом ПОСЛЕ
         // разбора: сбой этого запроса не должен блокировать сам разбор
         // (спрос — подсказка, не обязательная часть фичи).
-        if (positions.length > 0) {
+        if (positions.length > 0 && hasModule('wishlist')) {
           try {
             const demandByName = await callServer('getWishlistDemandForNames', positions.map((p) => p.name));
             positions.forEach((p, i) => { p.demand = demandByName[i]; });

@@ -645,7 +645,7 @@ window.Screens.wishlistDemand = {
       card.querySelector('.q-add').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         let prefill = { original: g.rawTitle || g.title, description: first.rawDescription, imageUrl: first.rawImageUrl };
-        if (modelKey) {
+        if (modelKey && hasModule('dolls_reference')) {
           btn.disabled = true;
           try {
             const { model, suggestedTags } = await callServer('getReferenceModelPrefill', modelKey);

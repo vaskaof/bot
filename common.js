@@ -253,6 +253,8 @@ function initAccessCheck(onSuccess) {
             // запроса не должен блокировать открытие всей панели целиком;
             // отсутствие window.CURRENT_ACCESS_ROLE трактуется экранами как
             // "не показывать admin-only" (безопасный дефолт, не наоборот).
+            // В3 плана SaaS: тариф канала — какие разделы показывать (best-effort, см. loadTenantProfile).
+            const profilePromise = loadTenantProfile();
             try {
                 const accessInfo = await callServer('getMyAccessInfo');
                 window.CURRENT_ACCESS_ROLE = accessInfo.accessRole;
@@ -277,6 +279,7 @@ function initAccessCheck(onSuccess) {
                 window.CURRENT_LINKED_STAFF_TELEGRAM_ID = '';
                 window.CURRENT_LINKED_STAFF_NAME = '';
             }
+            await profilePromise;
             loadingScreen.classList.add('hidden');
             appContent.classList.remove('hidden');
             onSuccess(dictionaries);
@@ -626,6 +629,35 @@ function buildEmptyState(icon, text, cta) {
 }
 
 /**
+ * Тариф и модули канала (В3 плана SaaS) — `getTenantProfile`: { name, plan, niche, modules }.
+ * Грузится один раз за открытие (админка — в initAccessCheck, клиент — в initClientAccess).
+ * Профиля нет (сбой, старый сервер) → `hasModule` отвечает «есть всё»: прятать разделы по ошибке
+ * нельзя, а настоящая граница — на сервере (метод выключенного модуля он не выполнит).
+ */
+window.TENANT_PROFILE = null;
+
+async function loadTenantProfile() {
+    try {
+        window.TENANT_PROFILE = await callServer('getTenantProfile');
+    } catch (error) {
+        window.TENANT_PROFILE = null;
+    }
+    return window.TENANT_PROFILE;
+}
+
+/**
+ * Включён ли модуль у канала: 'client_app', 'wishlist', 'gamification', 'client_lessons',
+ * 'dolls_reference', 'dolls_client' (состав — server/src/tenantModules.js).
+ * @param {string} name
+ * @returns {boolean}
+ */
+function hasModule(name) {
+    const profile = window.TENANT_PROFILE;
+    if (!profile || !Array.isArray(profile.modules)) return true;
+    return profile.modules.indexOf(name) !== -1;
+}
+
+/**
  * Запрашивает контекст текущего пользователя (роль + личные данные).
  * Единственный метод API, доступный ДО определения роли — используется
  * точкой входа (app.html) для маршрутизации и клиентскими страницами
@@ -735,7 +767,19 @@ function initClientAccess(onSuccess) {
         window.__bootStage = 'context';
         try {
             const cached = _readCachedClientContext();
-            const context = cached || await fetchUserContext();
+            // В3 плана SaaS: профиль тарифа — параллельно с контекстом, загрузку не удлиняет.
+            const [contextResult] = await Promise.allSettled([
+                cached ? Promise.resolve(cached) : fetchUserContext(),
+                loadTenantProfile()
+            ]);
+            if (!hasModule('client_app')) {
+                window.__bootStage = 'booted';
+                loadingScreen.classList.add('hidden');
+                _showBotOnlyScreen();
+                return;
+            }
+            if (contextResult.status === 'rejected') throw contextResult.reason;
+            const context = contextResult.value;
             if (context.role !== 'client') {
                 throw new Error('Доступ только для клиентов.');
             }
@@ -768,6 +812,37 @@ function initClientAccess(onSuccess) {
             _showAccessDeniedScreen(accessDeniedScreen, error);
         }
     })();
+}
+
+/**
+ * В3 плана SaaS — у канала тариф «Бот»: клиентского приложения нет, всё в чате с ботом. Экран вместо
+ * приложения (если клиент открыл старую кнопку/ссылку). Политика конфиденциальности (`policy`) —
+ * открывается целиком: в тарифе «Бот» согласие берёт бот, а текст политики показывает эта страница.
+ */
+function _showBotOnlyScreen() {
+    const isPolicy = /deeplink=policy\b/.test(window.location.search) || window.location.hash === '#/policy';
+    const name = window.TENANT_PROFILE && window.TENANT_PROFILE.name ? escapeHtmlClient(window.TENANT_PROFILE.name) : '';
+    const el = document.createElement('div');
+    el.id = 'bot-only-screen';
+    el.className = 'fixed inset-0 bg-[#f3f4f9] overflow-y-auto z-[95] px-4 py-6';
+    const closeButton = '<button type="button" id="bot-only-close" class="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium">Вернуться в чат</button>';
+    el.innerHTML = isPolicy && window.PolicyText
+        ? `<div class="bg-white rounded-2xl shadow-sm max-w-md mx-auto p-4 text-[13px] text-gray-600 leading-relaxed">
+             <h2 class="text-base font-semibold text-gray-900 mb-3">🔒 Политика конфиденциальности</h2>
+             ${window.PolicyText.POLICY_HTML}
+             ${closeButton}
+           </div>`
+        : `<div class="bg-white rounded-2xl shadow-sm max-w-md mx-auto p-6 text-center mt-10">
+             <div class="text-4xl mb-3">💬</div>
+             <h2 class="text-base font-semibold text-gray-900 mb-2">${name ? `${name} работает через чат-бот` : 'Этот канал работает через чат-бот'}</h2>
+             <p class="text-sm text-gray-500">Заказы, оплаты и отметка «Я оплатил(а)» — прямо в чате. Напишите боту /menu.</p>
+             ${closeButton}
+           </div>`;
+    document.body.appendChild(el);
+    document.getElementById('bot-only-close').addEventListener('click', () => {
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.close === 'function') tg.close();
+    });
 }
 
 /**

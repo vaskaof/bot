@@ -15,15 +15,21 @@
 window.CatalogTabs = {
   TABS: [
     { key: 'catalog', label: 'Каталог', icon: 'book-open', path: 'catalog' },
-    { key: 'demand', label: 'Спрос', icon: 'heart', path: 'wishlist-demand', badge: 'getWishlistMatchQueueCount' },
-    { key: 'tools', label: 'Порядок', icon: 'scan-search', path: 'catalog/tools', badge: 'getCatalogCheckCount' },
+    // В3 плана SaaS: `module` — вкладка есть только при модуле канала; `badgeModule` — счётчик тоже.
+    { key: 'demand', label: 'Спрос', icon: 'heart', path: 'wishlist-demand', badge: 'getWishlistMatchQueueCount', module: 'wishlist' },
+    { key: 'tools', label: 'Порядок', icon: 'scan-search', path: 'catalog/tools', badge: 'getCatalogCheckCount', badgeModule: 'dolls_reference' },
     { key: 'refs', label: 'Справочники', icon: 'git-branch', path: 'catalog/refs' }
   ],
 
+  visibleTabs() {
+    return this.TABS.filter((t) => !t.module || hasModule(t.module));
+  },
+
   html(active) {
+    const tabs = this.visibleTabs();
     return `
-      <div class="catalog-tabs bg-white rounded-2xl shadow-sm border border-gray-100 p-1 mb-3 grid grid-cols-4 gap-1">
-        ${this.TABS.map((t) => `
+      <div class="catalog-tabs bg-white rounded-2xl shadow-sm border border-gray-100 p-1 mb-3 grid ${tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-1">
+        ${tabs.map((t) => `
           <button type="button" data-catalog-tab="${t.key}" class="relative flex flex-col items-center gap-1 py-1.5 rounded-xl transition-colors ${t.key === active ? 'bg-indigo-600 text-white' : 'text-indigo-600 active:bg-indigo-50'}">
             <i data-lucide="${t.icon}" class="w-5 h-5"></i>
             <span class="text-[10px] font-medium leading-none">${t.label}</span>
@@ -41,7 +47,7 @@ window.CatalogTabs = {
         location.replace(location.href.replace(/#.*$/, '') + '#/' + tab.path);
       });
     });
-    this.TABS.filter((t) => t.badge).forEach((t) => {
+    this.visibleTabs().filter((t) => t.badge && (!t.badgeModule || hasModule(t.badgeModule))).forEach((t) => {
       callServer(t.badge).then((count) => {
         const badge = document.querySelector(`[data-catalog-tab-badge="${t.key}"]`);
         if (!badge || !count) return;
@@ -84,7 +90,7 @@ window.Screens.catalogTools = {
         ${CatalogTabs.html('tools')}
         <div class="text-[12px] text-gray-500 px-1 mb-2">Проверки и исправления каталога. Ничего не меняется само — только по вашему выбору.</div>
         <div class="wide-grid">
-          ${CatalogTabs.hubCard({ id: 'tools-check', icon: 'scan-search', title: 'Проверка по справочнику', badgeId: 'tools-check-badge', text: 'Сверка позиций с внешним справочником кукол: ссылка не совпадает с названием, несколько вариантов, одинаковый код модели, не нашлось.' })}
+          ${hasModule('dolls_reference') ? CatalogTabs.hubCard({ id: 'tools-check', icon: 'scan-search', title: 'Проверка по справочнику', badgeId: 'tools-check-badge', text: 'Сверка позиций с внешним справочником кукол: ссылка не совпадает с названием, несколько вариантов, одинаковый код модели, не нашлось.' }) : ''}
           ${CatalogTabs.hubCard({ id: 'tools-duplicates', icon: 'copy-check', title: 'Похожие названия и пробелы', text: 'Позиции с похожими названиями (объединить), заказы без позиции в каталоге, позиции без ссылки или фото.' })}
           ${CatalogTabs.hubCard({ id: 'tools-tags', icon: 'tags', title: 'Теги от ИИ', text: 'Бренд/персонаж/серия, которые ИИ предлагает для позиций с пустыми тегами. Применяете вы.' })}
           ${CatalogTabs.hubCard({ id: 'tools-names', icon: 'wand-2', title: 'Короткие имена', text: 'Короткие русские названия по тегам — как позицию видят клиенты.' })}
@@ -92,11 +98,12 @@ window.Screens.catalogTools = {
       </main>
     `;
     CatalogTabs.wire();
-    document.getElementById('tools-check').addEventListener('click', () => navigateTo('catalog/check'));
+    const toolsCheck = document.getElementById('tools-check');
+    if (toolsCheck) toolsCheck.addEventListener('click', () => navigateTo('catalog/check'));
     document.getElementById('tools-duplicates').addEventListener('click', () => navigateTo('catalog', { tool: 'duplicates' }));
     document.getElementById('tools-tags').addEventListener('click', () => navigateTo('catalog', { tool: 'tags' }));
     document.getElementById('tools-names').addEventListener('click', () => navigateTo('catalog/short-names'));
-    callServer('getCatalogCheckCount').then((count) => {
+    if (hasModule('dolls_reference')) callServer('getCatalogCheckCount').then((count) => {
       const badge = document.getElementById('tools-check-badge');
       if (!badge || !count) return;
       badge.textContent = count > 99 ? '99+' : String(count);
@@ -123,13 +130,14 @@ window.Screens.catalogRefs = {
         <div class="text-[12px] text-gray-500 px-1 mb-2">Справочники, по которым раскладываются позиции каталога.</div>
         <div class="wide-grid">
           ${CatalogTabs.hubCard({ id: 'refs-lines', icon: 'git-branch', title: 'Линейки', text: 'Дерево брендов, поколений и линеек, разметка серий, словарь персонажей — по ним раскладываются позиции каталога.' })}
-          ${CatalogTabs.hubCard({ id: 'refs-collections', icon: 'layers', title: 'Коллекции', text: 'Именованные наборы позиций каталога, собранные вручную.' })}
+          ${hasModule('dolls_client') ? CatalogTabs.hubCard({ id: 'refs-collections', icon: 'layers', title: 'Коллекции', text: 'Именованные наборы позиций каталога, собранные вручную.' }) : ''}
         </div>
       </main>
     `;
     CatalogTabs.wire();
     document.getElementById('refs-lines').addEventListener('click', () => navigateTo('catalog/lines'));
-    document.getElementById('refs-collections').addEventListener('click', () => navigateTo('catalog/collections'));
+    const refsCollections = document.getElementById('refs-collections');
+    if (refsCollections) refsCollections.addEventListener('click', () => navigateTo('catalog/collections'));
     if (window.lucide) window.lucide.createIcons();
   }
 };

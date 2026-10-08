@@ -236,6 +236,8 @@ window.Screens.settings = {
 
     root.innerHTML = `
       <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        <!-- В3 плана SaaS: «Тариф и модули» — только админ посредника (у основного канала блока нет). -->
+        <div id="plan-modules-block"></div>
         <!-- Широкий экран (04.10.2026): разделы — в две колонки (app.html, .wide-columns). -->
         <div id="settings-body" class="wide-columns text-center text-sm text-gray-400 py-10">Загрузка...</div>
       </main>
@@ -251,6 +253,59 @@ window.Screens.settings = {
     let statusDeliveryOptions = [];
 
     load();
+    loadPlanModules();
+
+    /**
+     * В3 плана SaaS — «Тариф и модули»: свой тариф, дневной предел ИИ и модули тарифа с переключателем
+     * «выключить/вернуть». Включить сверх тарифа — только через Кнопку (VASY). Блок независимый:
+     * его сбой не трогает остальные настройки.
+     */
+    async function loadPlanModules() {
+      const block = document.getElementById('plan-modules-block');
+      if (!block || window.CURRENT_ACCESS_ROLE !== 'admin') return;
+      let plan;
+      try {
+        plan = await callServer('getMyPlan');
+      } catch (_error) {
+        return;
+      }
+      if (!block.isConnected || plan.isHome) return;
+      const rows = plan.modules.map((m) => `
+        <label class="flex items-start gap-3 py-2.5 border-t border-gray-50 first:border-t-0">
+          <input type="checkbox" data-plan-module="${escapeHtmlClient(m.module)}" ${m.enabled || m.turnedOffByYou ? '' : 'disabled'} ${m.enabled ? 'checked' : ''} ${m.canToggle ? '' : 'disabled'}
+            class="mt-0.5 w-4 h-4 accent-indigo-600">
+          <span class="text-sm text-gray-800">${escapeHtmlClient(m.label)}${!m.enabled && !m.turnedOffByYou ? '<span class="block text-[11px] text-gray-400">Нужен другой модуль — он выключен</span>' : ''}</span>
+        </label>`).join('');
+      block.innerHTML = `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Тариф и модули</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="text-sm text-gray-900 mb-1">Тариф: <b>${escapeHtmlClient(plan.planLabel)}</b></div>
+            <div class="text-[12px] text-gray-500 mb-3">ИИ сегодня: ${Number(plan.aiUsedToday) || 0} из ${plan.aiDailyLimit === null ? '—' : Number(plan.aiDailyLimit)} запросов. Подключить то, чего нет в тарифе, — напишите в Кнопку.</div>
+            <div>${rows}</div>
+          </div>
+        </section>`;
+      block.querySelectorAll('[data-plan-module]').forEach((box) => {
+        box.addEventListener('change', async () => {
+          const module = box.dataset.planModule;
+          const on = box.checked;
+          if (!on && !(await showConfirmModal('Выключить этот раздел? У клиентов и сотрудников он пропадёт, данные сохранятся — можно вернуть в любой момент.', { confirmLabel: 'Выключить', danger: true }))) {
+            box.checked = true;
+            return;
+          }
+          box.disabled = true;
+          try {
+            await callServer('setMyModuleEnabled', module, on);
+            showSaveToast(true, on ? 'Раздел возвращён — откройте приложение заново' : 'Раздел выключен — откройте приложение заново');
+            loadPlanModules();
+          } catch (error) {
+            box.checked = !on;
+            box.disabled = false;
+            showSaveToast(false, error.message);
+          }
+        });
+      });
+    }
 
     async function load() {
       const body = document.getElementById('settings-body');

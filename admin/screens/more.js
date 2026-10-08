@@ -35,7 +35,7 @@ window.Screens.more = {
     const items = [
       // Обучение менеджеров (04.10.2026) — первым: курс, значки, идеи.
       { route: 'training', icon: 'graduation-cap', title: 'Обучение', description: 'Пошаговые сценарии по приложению, достижения, твои идеи' },
-      { route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' },
+      ...(hasModule('gamification') ? [{ route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' }] : []),
       { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
       { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },
       { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' },
@@ -49,7 +49,7 @@ window.Screens.more = {
         ? [
           { route: 'staff', icon: 'user-cog', title: 'Персонал', description: 'Менеджеры/админы, роли, журнал изменений' },
           // «Итоги года» (§4.2 плана геймификации) — проверка перед рассылкой 25.12.
-          { route: 'year-summaries', icon: 'party-popper', title: 'Итоги года', description: 'Проверка и рассылка итогов клиентам' }
+          ...(hasModule('dolls_client') ? [{ route: 'year-summaries', icon: 'party-popper', title: 'Итоги года', description: 'Проверка и рассылка итогов клиентам' }] : [])
         ]
         : [])
     ];
@@ -82,6 +82,7 @@ window.Screens.more = {
       const badge = document.getElementById('contests-badge');
       if (!badge) return;
       try {
+        if (!hasModule('gamification')) return;
         const pending = await callServer('getPendingTaskSubmissions');
         badge.textContent = pending.length > 0 ? `${pending.length} на проверке` : '';
         if (window.updateMoreBadge) window.updateMoreBadge(pending.length);

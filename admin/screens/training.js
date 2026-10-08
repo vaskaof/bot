@@ -445,6 +445,7 @@ window.Screens = window.Screens || {};
 
       // Обучение клиентов (план Б, 05.10.2026) — внизу «Команды»: начали/прошли, где бросают.
       async function paintClientTraining() {
+        if (!hasModule('client_lessons')) return; // В3: уроков клиентов нет у канала
         const slot = document.createElement('div');
         slot.id = 'client-training-overview';
         slot.className = 'mt-6';

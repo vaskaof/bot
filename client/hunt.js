@@ -514,7 +514,7 @@
   }
 
   function markAchievementsSeen(list) {
-    if (!list || list.length === 0) return;
+    if (!list || list.length === 0 || !hasModule('gamification')) return;
     callServer('markAchievementsSeen', list.map((a) => a.code)).catch(() => { /* покажем ещё раз — не страшно */ });
   }
 

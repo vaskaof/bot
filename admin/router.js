@@ -324,10 +324,12 @@ async function refreshNavBadges() {
     const questions = await callServer('getQuestionsList');
     _setNavBadge('home', questions.filter((q) => q.status === 'Новый').length);
   } catch (error) { /* бейдж необязателен — не мешать навигации ошибкой фонового запроса */ }
-  try {
-    const pending = await callServer('getPendingTaskSubmissions');
-    window.updateMoreBadge(pending.length);
-  } catch (error) { /* см. выше */ }
+  if (hasModule('gamification')) {
+    try {
+      const pending = await callServer('getPendingTaskSubmissions');
+      window.updateMoreBadge(pending.length);
+    } catch (error) { /* см. выше */ }
+  }
   try {
     const claims = await callServer('getPendingPaymentClaims');
     _setNavBadge('payments', claims.length);
@@ -351,7 +353,30 @@ let _currentScreenController = null;
  * экрану, даже если конкретный экран его не использует (дёшево, тот же приём,
  * что был в старых initApp(dictionaries) везде, где нужны справочники).
  */
+/**
+ * В3 плана SaaS — разделы, которые есть только при включённом модуле канала (тариф «Бот» прячет то,
+ * что управляет клиентским приложением). Косметика: граница — на сервере.
+ */
+const ROUTE_MODULES = {
+  'contests': 'gamification',
+  'year-summaries': 'dolls_client',
+  'wishlist-demand': 'wishlist',
+  'catalog/collections': 'dolls_client',
+  'catalog/check': 'dolls_reference'
+};
+
+/** @returns {boolean} раздел доступен по тарифу канала */
+function isRouteAllowedByPlan(path) {
+  const module = ROUTE_MODULES[path];
+  return !module || hasModule(module);
+}
+
 function renderRoute(dictionaries) {
+  const routePath = (window.location.hash || '').replace(/^#\/?/, '').split('?')[0];
+  if (!isRouteAllowedByPlan(routePath)) {
+    navigateTo(DEFAULT_ROUTE);
+    return;
+  }
   const { screen, navKey, showNav, params } = matchRoute(window.location.hash);
   const screenModule = window.Screens && window.Screens[screen];
   const root = document.getElementById('screen-root');
@@ -473,6 +498,15 @@ function startAdminRouter() {
     // HTML), прячем её явно для не-admin здесь, СРАЗУ после того, как роль
     // стала известна (window.CURRENT_ACCESS_ROLE — см. common.js
     // initAccessCheck). Косметика — реальный гейт уже на сервере.
+    // В3 плана SaaS — кнопки разделов выключенных модулей канала.
+    if (!hasModule('gamification')) {
+      const contestsBtn = document.querySelector('#bottom-nav [data-nav-key="contests"]');
+      if (contestsBtn) contestsBtn.style.display = 'none';
+    }
+    if (!hasModule('dolls_client')) {
+      const yearBtn = document.getElementById('year-summaries-nav-btn');
+      if (yearBtn) yearBtn.style.display = 'none';
+    }
     if (window.CURRENT_ACCESS_ROLE !== 'admin') {
       const staffNavBtn = document.getElementById('staff-nav-btn');
       if (staffNavBtn) staffNavBtn.style.display = 'none';

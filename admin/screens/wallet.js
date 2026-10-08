@@ -692,6 +692,12 @@ window.Screens.wallet = {
      */
     async function loadContestDashboard() {
       const body = document.getElementById('contest-dashboard-body');
+      // В3 плана SaaS: без модуля «Бонусы» конкурсов нет — блок не показываем.
+      if (!hasModule('gamification')) {
+        const section = body && body.closest('section');
+        if (section) section.classList.add('hidden'); else if (body) body.classList.add('hidden');
+        return;
+      }
       try {
         const d = await callServer('getContestDashboard');
         const rub = (n) => `${Number(n).toLocaleString('ru-RU')} ₽`;

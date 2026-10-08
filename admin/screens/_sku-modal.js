@@ -238,7 +238,7 @@ window.SkuModal = {
           showSaveToast(false, `Позиция сохранена, но «Также в ветке» — нет: ${error.message}`);
         }
       }
-      if (context && action !== 'delete') {
+      if (context && action !== 'delete' && hasModule('wishlist')) {
         const idsToLink = Array.isArray(context.wishlistIds) ? context.wishlistIds
           : (context.wishlistId ? [context.wishlistId] : []);
         for (const wishlistId of idsToLink) {

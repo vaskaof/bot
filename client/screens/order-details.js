@@ -215,7 +215,7 @@ window.Screens.orderDetails = {
       try {
         const [d, referralInfo] = await Promise.all([
           callServer('getClientOrderDetails', currentOrderId),
-          callServer('getReferralInfo').catch(() => null)
+          hasModule('gamification') ? callServer('getReferralInfo').catch(() => null) : Promise.resolve(null)
         ]);
         currentDetails = d;
         sovyRateInfo = referralInfo;

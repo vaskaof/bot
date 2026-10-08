@@ -188,6 +188,7 @@ window.Screens.profile = {
     async function loadAchievements() {
       const slot = document.getElementById('profile-achievements-slot');
       let data;
+      if (!hasModule('gamification')) return;
       try {
         data = await callServer('getMyAchievements');
       } catch (_error) {
@@ -201,7 +202,7 @@ window.Screens.profile = {
 
     async function loadTraining() {
       const slot = document.getElementById('profile-training-slot');
-      if (!window.ClientTraining) return;
+      if (!window.ClientTraining || !hasModule('client_lessons')) return;
       let d;
       try { d = await ClientTraining.load(true); } catch (_error) { return; }
       if (!slot || !slot.isConnected) return;
@@ -248,6 +249,15 @@ window.Screens.profile = {
     }
 
     async function loadReferralInfo() {
+      // В3 плана SaaS: без модуля «Бонусы» карточек сов и приглашений нет.
+      if (!hasModule('gamification')) {
+        ['sovy-progress-label', 'referral-text'].forEach((id) => {
+          const el = document.getElementById(id);
+          const card = el && el.closest('.bg-white');
+          if (card) card.classList.add('hidden');
+        });
+        return;
+      }
       try {
         const info = await callServer('getReferralInfo');
         // Тот же фикс, что у loadCreditBalance/loadPoolLeftover выше — если

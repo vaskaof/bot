@@ -217,7 +217,7 @@ window.Screens.questions = {
         const [questions, tasks] = await Promise.all([
           callServer('getClientQuestionsList'),
           // Не критично для экрана — сбой не должен ломать список вопросов.
-          callServer('getTasksList').catch(() => [])
+          hasModule('gamification') ? callServer('getTasksList').catch(() => []) : Promise.resolve([])
         ]);
         reviewTask = tasks.find(t => t.title === REVIEW_TASK_TITLE && t.type === 'Ручное' && t.repeatable) || null;
         bugReportTask = tasks.find(t => t.title === BUG_REPORT_TASK_TITLE && t.type === 'Ручное') || null;
@@ -355,6 +355,7 @@ window.Screens.questions = {
 
       feedbackSendBtn.disabled = true;
       try {
+        // module-guarded: gamification — задания приходят только из getTasksList (без модуля список пуст).
         await callServer('submitTaskProof', activeFeedbackTask.taskId, activeFeedbackTextPrefix + text);
         const rewardNote = activeFeedbackTask.reward > 0 ? ` (+${activeFeedbackTask.reward} сов после проверки)` : '';
         closeFeedbackTaskModal();

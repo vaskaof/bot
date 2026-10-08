@@ -42,6 +42,8 @@ window.WishlistLink = (() => {
     }
 
     async function refresh(telegramId, skuOriginal) {
+      // В3 плана SaaS: без модуля «вишлист» у канала галочки нет вовсе.
+      if (!hasModule('wishlist')) { show(null); return; }
       const tg = (telegramId || '').toString().trim();
       const sku = (skuOriginal || '').toString().trim();
       const key = `${tg}|${sku.toLowerCase()}`;
