@@ -327,7 +327,7 @@ window.Screens.settings = {
       { value: 'chat', label: 'Чат' },
       { value: 'account', label: 'Аккаунт' }
     ];
-    const ROLE_LABELS_RU = { admin: 'администратор', manager: 'менеджер' };
+    const ROLE_LABELS_RU = { admin: 'администратор приложения', manager: 'менеджер' };
 
     /**
      * Блокеры продажи, Б2 — «Официальные аккаунты»: кого бот называет клиенту официальным на «Проверить
