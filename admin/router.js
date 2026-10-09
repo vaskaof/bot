@@ -30,7 +30,7 @@
  */
 // 04.10.2026: + 'training'/'year-summaries' — на широком экране у них свои
 // кнопки в колонке навигации (там нет «Ещё»), на узком подсвечивают «Ещё».
-const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff', 'training', 'year-summaries'];
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff', 'training', 'year-summaries', 'bookings'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -89,6 +89,8 @@ const ROUTES = [
   { path: 'year-summaries', screen: 'yearSummaries', navKey: 'year-summaries', showNav: true },
   // Обучение менеджеров (04.10.2026) — вход из «Ещё», «Помощи» и баннера «Главной».
   { path: 'training', screen: 'training', navKey: 'training', showNav: true },
+  // Б1 (09.10.2026) — бронь под постом в канале: список и каналы; карточка и «Новая бронь» — regex ниже.
+  { path: 'bookings', screen: 'bookings', navKey: 'bookings', showNav: true },
 ];
 const DEFAULT_ROUTE = 'home';
 
@@ -197,6 +199,16 @@ function matchRoute(hash) {
   const cartMatch = clean !== 'carts/new' && clean.match(/^carts\/([^/]+)$/);
   if (cartMatch) {
     return { screen: 'cartDetail', navKey: null, showNav: true, params: { cartId: decodeURIComponent(cartMatch[1]) } };
+  }
+
+  // Б1 — карточка брони и «Новая бронь» (из пересланного боту поста: booking-new/<канал>/<пост>[/album]).
+  const bookingMatch = clean.match(/^booking\/([^/]+)$/);
+  if (bookingMatch) {
+    return { screen: 'bookingDetail', navKey: 'bookings', showNav: true, params: { postId: decodeURIComponent(bookingMatch[1]) } };
+  }
+  const bookingNewMatch = clean.match(/^booking-new(?:\/(\d+)\/(\d+)(\/album)?)?$/);
+  if (bookingNewMatch) {
+    return { screen: 'bookingNew', navKey: 'bookings', showNav: true, params: bookingNewMatch[1] ? { channelId: bookingNewMatch[1], messageId: bookingNewMatch[2], album: bookingNewMatch[3] ? '1' : '' } : {} };
   }
 
   const route = ROUTES.find((r) => r.path === clean);
@@ -362,7 +374,8 @@ const ROUTE_MODULES = {
   'year-summaries': 'dolls_client',
   'wishlist-demand': 'wishlist',
   'catalog/collections': 'dolls_client',
-  'catalog/check': 'dolls_reference'
+  'catalog/check': 'dolls_reference',
+  'bookings': 'channel_booking'
 };
 
 /** @returns {boolean} раздел доступен по тарифу канала */
@@ -502,6 +515,10 @@ function startAdminRouter() {
     if (!hasModule('gamification')) {
       const contestsBtn = document.querySelector('#bottom-nav [data-nav-key="contests"]');
       if (contestsBtn) contestsBtn.style.display = 'none';
+    }
+    if (!hasModule('channel_booking')) {
+      const bookingsBtn = document.getElementById('bookings-nav-btn');
+      if (bookingsBtn) bookingsBtn.style.display = 'none';
     }
     if (!hasModule('dolls_client')) {
       const yearBtn = document.getElementById('year-summaries-nav-btn');

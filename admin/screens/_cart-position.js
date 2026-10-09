@@ -1699,7 +1699,8 @@ window.CartPosition = {
         taxiRfSendSum: item.taxiRfSendEl.value,
         shippingRfSum: item.shippingRfEl.value,
         taxiRfReceiveSum: item.taxiRfReceiveEl.value,
-        requestId: generateRequestId()
+        // Б1: позиция из брони — свой requestId (bk-<место>), иначе новый на каждую отправку формы.
+        requestId: item.fixedRequestId || generateRequestId()
       }];
     };
 

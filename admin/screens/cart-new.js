@@ -2133,6 +2133,8 @@ window.Screens.cartNew = {
           item.feePercentEl.value = p.feePercent;
           item.feePercentEl.dispatchEvent(new Event('input'));
         }
+        // Б1 «Оформить заказы» из брони: requestId = bk-<место> — по нему сервер привяжет место к заказу.
+        if (p.requestId) item.fixedRequestId = p.requestId;
       });
     } else if (params && (params.telegramId || params.skuOriginal || params.productOriginal)) {
       const prefillClient = params.telegramId ? {

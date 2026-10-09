@@ -32,6 +32,9 @@ window.Screens.orders = {
           <button type="button" id="transit-invite-close" class="shrink-0 p-1 text-indigo-300 hover:text-indigo-600" title="Не сейчас"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
 
+        <!-- Б1 (09.10.2026) — «Мои брони» под постами канала; пусто — блока нет. -->
+        <div id="my-bookings" class="hidden mb-3"></div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 mb-2 flex items-center gap-2">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
           <input type="text" id="orders-search" autocomplete="off"
@@ -132,6 +135,60 @@ window.Screens.orders = {
       try { localStorage.setItem(TRANSIT_INVITE_HIDE_KEY, String(Date.now() + TRANSIT_INVITE_HIDE_MS)); } catch (_e) { /* не критично */ }
     });
     loadTransitInvite();
+    loadMyBookings();
+
+    // Б1 — брони под постами канала: место, лист ожидания, срок оплаты брони, «Отменить».
+    async function loadMyBookings() {
+      if (!hasModule('channel_booking')) return;
+      let bookings = [];
+      try {
+        bookings = await callServer('getMyBookings');
+      } catch (_error) {
+        return;
+      }
+      renderMyBookings(bookings);
+    }
+    function renderMyBookings(bookings) {
+      const box = document.getElementById('my-bookings');
+      if (!bookings || bookings.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      const when = (v) => new Date(v).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const line = (b) => {
+        if (b.state === 'waitlist') return `Лист ожидания, вы №${b.waitlistPosition}`;
+        const place = b.seatsTotal ? `Место №${b.slot} из ${b.seatsTotal}` : `Место №${b.slot}`;
+        if (!b.confirmed) return `${place} — подтвердите в чате с ботом`;
+        if (b.mode !== 'prepay') return b.orderId ? `${place}, заказ оформлен` : place;
+        if (b.paid) return `${place}, бронь оплачена ✅`;
+        return `${place}, оплатить бронь ${Number(b.bookingRub).toLocaleString('ru-RU')} ₽ до ${when(b.payUntil)}`;
+      };
+      box.innerHTML = `
+        <div class="text-[11px] text-gray-400 px-1 mb-2">Мои брони</div>
+        <div class="space-y-2">${bookings.map((b) => `
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-900">${escapeHtmlClient(b.productTitle)}</div>
+                <div class="text-xs text-gray-500 mt-0.5">${escapeHtmlClient(line(b))}</div>
+              </div>
+              ${b.canCancel ? `<button type="button" data-cancel="${b.seatId}" class="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600">Отменить</button>` : ''}
+            </div>
+            ${b.orderId && b.mode === 'prepay' && !b.paid ? `<button type="button" data-order="${escapeHtmlClient(b.orderId)}" class="mt-2 text-xs text-indigo-600 underline">Открыть заказ и оплатить</button>` : ''}
+            <details class="mt-1"><summary class="text-[11px] text-gray-400">Правила брони</summary>
+              <div class="text-[11px] text-gray-500 mt-1 space-y-1">${b.rules.map((r) => `<div>${escapeHtmlClient(r)}</div>`).join('')}</div>
+              <a href="${escapeHtmlClient(b.link)}" target="_blank" class="text-[11px] text-indigo-600 underline">Пост в канале</a>
+            </details>
+          </div>`).join('')}</div>`;
+      box.classList.remove('hidden');
+      box.querySelectorAll('[data-order]').forEach((btn) => btn.addEventListener('click', () => navigateTo(`order-details/${btn.dataset.order}`)));
+      box.querySelectorAll('[data-cancel]').forEach((btn) => btn.addEventListener('click', async () => {
+        if (!hasModule('channel_booking')) return;
+        if (!await showConfirmModal('Отменить бронь? Место уйдёт следующему.', { confirmLabel: 'Отменить бронь', cancelLabel: 'Оставить' })) return;
+        try {
+          renderMyBookings(await callServer('cancelMyBooking', Number(btn.dataset.cancel)));
+        } catch (error) {
+          showSaveToast(false, error.message);
+        }
+      }));
+    }
     if (window.renderYearSummaryBanner) window.renderYearSummaryBanner(document.getElementById('year-banner'));
 
     function renderPriorityRollup(rollup) {

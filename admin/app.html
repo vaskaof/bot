@@ -16,7 +16,7 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="../config.js?v=20261005134213"></script>
   <script src="../common.js?v=20261005134213"></script>
-  <script src="router.js?v=20261005134213"></script>
+  <script src="router.js?v=20261009180000"></script>
   <script src="screens/_error-hints.js?v=20261005134213"></script>
   <script src="screens/_form-helpers.js?v=20261005134213"></script>
   <script src="screens/_channel-defaults.js?v=20261005134213"></script>
@@ -44,7 +44,7 @@
   <!-- Свайп между вкладками на телефоне (05.10.2026). -->
   <script src="screens/_swipe-tabs.js?v=20261005134213"></script>
   <script src="screens/home.js?v=20261005134213"></script>
-  <script src="screens/more.js?v=20261005134213"></script>
+  <script src="screens/more.js?v=20261009180000"></script>
   <script src="screens/year-summaries.js?v=20261005134213"></script>
   <script src="screens/clients.js?v=20261005134213"></script>
   <script src="screens/analytics.js?v=20261005235000"></script>
@@ -81,7 +81,7 @@
   <!-- «Связать с вишлистом клиента» (IMPLEMENTATION-PLAN-GAMIFICATION.md §3.0) —
        «Корзина» (позиция/лот) и карточка заказа. -->
   <script src="screens/_wishlist-link.js?v=20261005134213"></script>
-  <script src="screens/_cart-position.js?v=20261005134213"></script>
+  <script src="screens/_cart-position.js?v=20261009180000"></script>
   <script src="screens/_weight-usd.js?v=20261005134213"></script>
   <script src="screens/_cart-lot.js?v=20261005134213"></script>
   <!-- §6 Фаза E (IMPLEMENTATION-PLAN-CART-UX.md, 07.09.2026) — модалка
@@ -89,7 +89,7 @@
   <script src="screens/_cart-client-required-modal.js?v=20261005134213"></script>
   <!-- Волна 6 (04.10.2026) — «Скриншот оформления → ИИ» в «Новой корзине». -->
   <script src="screens/_checkout-shot.js?v=20261005134213"></script>
-  <script src="screens/cart-new.js?v=20261005134213"></script>
+  <script src="screens/cart-new.js?v=20261009180000"></script>
   <!-- Фаза F (IMPLEMENTATION-PLAN-CART-UX.md §7, 07.09.2026) — список/
        карточка корзины, факт выкупа по корзине целиком. -->
   <script src="screens/carts.js?v=20261005134213"></script>
@@ -97,6 +97,7 @@
   <script src="screens/cart-detail.js?v=20261005134213"></script>
   <!-- Волна 5 (03.10.2026) — «Покупки» вместо раздельных «Лоты»/«Корзины». -->
   <script src="screens/purchases.js?v=20261005134213"></script>
+  <script src="screens/bookings.js?v=20261009180000"></script>
   <!-- Обучение менеджеров, этап 1 (04.10.2026) — пошаговые сценарии поверх
        экранов, «Помощь», отзывы, значки, экран «Обучение». Порядок: движок →
        сценарии → интерфейс вокруг → экран. -->
@@ -463,6 +464,11 @@
       <button type="button" data-nav-key="training" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1 text-gray-400 transition-colors pb-1.5 h-full">
         <i data-lucide="graduation-cap" class="w-5 h-5"></i>
         <span class="text-[10px] font-medium leading-none">Обучение</span>
+      </button>
+      <!-- Б1 (09.10.2026) — «Брони» под постами канала; на узком — в «Ещё». Прячется без модуля channel_booking. -->
+      <button type="button" data-nav-key="bookings" id="bookings-nav-btn" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1 text-gray-400 transition-colors pb-1.5 h-full">
+        <i data-lucide="ticket" class="w-5 h-5"></i>
+        <span class="text-[10px] font-medium leading-none">Брони</span>
       </button>
       <button type="button" data-nav-key="contests" class="hidden md:flex flex-1 flex-col items-center justify-end gap-1 text-gray-400 transition-colors pb-1.5 h-full">
         <i data-lucide="gift" class="w-5 h-5"></i>
