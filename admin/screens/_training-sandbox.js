@@ -350,7 +350,8 @@
     const list = collectiveOrders(def.id);
     return {
       collectiveId: def.id, name: def.name, trackNumber: def.track, status: def.status, stage: def.stage,
-      createdAt: ruDay(created), sentAt: null, sentAtDisplay: '', orderCount: def.orderCount || list.length
+      createdAt: ruDay(created), sentAt: null, sentAtDisplay: '', orderCount: def.orderCount || list.length,
+      lastActivityAt: created.toISOString()
     };
   }
 
@@ -525,6 +526,18 @@
       return { orders: list, actualLogisticsCosts: { ...NO_COSTS }, summary: collectiveSummary(list) };
     },
     searchOrdersForCollective: () => [],
+    // Коллективки 2.0 (10.10.2026) — «Без коллективки»: учебные заказы без коллективки.
+    getCollectivePool: () => world.orders
+      .filter((o) => !o.def.collective && o.def.statusDelivery !== 'Получено клиентом')
+      .map((o) => {
+        const sdek = o.stagesBalance.find((s) => s.stage === 'СДЭК') || { target: 0, paid: 0, isForecast: null };
+        return {
+          orderId: o.def.id, productDisplay: o.def.short, clientDisplay: display(o.client), imageUrl: o.imageUrl,
+          statusDelivery: o.def.statusDelivery, group: o.def.statusDelivery === 'Ожидает отправки с магазина' ? 'store' : 'kz',
+          dateOrderDisplay: ruDay(o.date), daysSinceOrder: Math.floor((world.now - o.date.getTime()) / DAY),
+          sdekTarget: sdek.target, sdekPaid: sdek.paid, sdekIsForecast: sdek.isForecast
+        };
+      }),
     getPaymentsOverview: () => ({ clients: Object.keys(CLIENTS).map(overviewClient).filter(Boolean).sort((a, b) => b.toPay - a.toPay), coveredByBalanceCount: 0 }),
     getPendingPaymentClaims: () => claims(),
     searchClients: (query) => {

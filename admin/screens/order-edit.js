@@ -586,33 +586,28 @@ window.Screens.orderEdit = {
           </div>
 
           <!-- Э4 рефакторинга коллективок (§3, 24.08.2026) — ДВЕ независимые
-               привязки (плечо 1 «КЗ→РФ» / плечо 2 «По РФ») вместо одного
-               селекта — заказ может ехать через оба этапа одновременно. -->
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+               привязки (плечо 1 «КЗ→РФ» / плечо 2 «По РФ»). Коллективки 2.0
+               (10.10.2026, VASY: «не видно, на какую меняешь») — вместо
+               выпадающего списка карточка коллективки + «Сменить»/«Отвязать»/
+               «Открыть»; выбор — то же окно, что в «Заказах». Строка «По
+               России» скрыта, пока таких коллективок нет и заказ не привязан. -->
+          <div class="field-row flex flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4" id="collective-row-stage1">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
                 <i data-lucide="package-2" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Коллективка КЗ→РФ</span>
+              <span class="text-sm font-medium text-gray-700">Коллективка Казахстан → Россия</span>
             </div>
-            <div class="flex-1 w-full">
-              <select id="collective-select-stage1" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
-                <option value="">— не привязано —</option>
-              </select>
-            </div>
+            <div class="flex-1 w-full" id="collective-box-stage1" data-collective-box="КЗ→РФ"></div>
           </div>
-          <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
+          <div class="field-row hidden flex-col sm:flex-row sm:items-start p-4 border-b border-gray-100 gap-2 sm:gap-4" id="collective-row-stage2">
             <div class="flex items-center gap-3 w-full sm:w-44 shrink-0">
               <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
                 <i data-lucide="package-2" class="w-5 h-5"></i>
               </div>
-              <span class="text-sm font-medium text-gray-700">Коллективка по РФ</span>
+              <span class="text-sm font-medium text-gray-700">Коллективка по России</span>
             </div>
-            <div class="flex-1 w-full">
-              <select id="collective-select-stage2" class="w-full bg-transparent border-none outline-none text-[15px] py-1 cursor-pointer">
-                <option value="">— не привязано —</option>
-              </select>
-            </div>
+            <div class="flex-1 w-full" id="collective-box-stage2" data-collective-box="По РФ"></div>
           </div>
 
           <div class="field-row flex flex-col sm:flex-row sm:items-center p-4 border-b border-gray-100 gap-2 sm:gap-4">
@@ -727,6 +722,7 @@ window.Screens.orderEdit = {
       ${PurchaseEventModal.html()}
       ${WriteoffModal.html()}
       ${DuplicatePositionsModal.html()}
+      ${CollectivePickerModal.html()}
     `;
 
     document.getElementById('back-to-orders-btn').addEventListener('click', () => navigateTo('orders'));
@@ -764,7 +760,7 @@ window.Screens.orderEdit = {
     let taxiRfSendSumInput, shippingRfSumInput, taxiRfReceiveSumInput, deliveryRfTotalDisplay;
     let usdToRubRate = 0; // курс "Доллар" из finalRates (13.08.2026, $→₽ калькулятор веса) — этот экран раньше курсы вообще не запрашивал
     let kztToRubRate = 0; // курс "Тенге" из ТОГО ЖЕ finalRates (16.09.2026, п.8 бэклога — hint рядом с "Количество")
-    let collectiveSelectStage1, collectiveSelectStage2, sdekTypeSelect;
+    let sdekTypeSelect;
     let amountRubBase = 0;
     const CONSTANTS_CLIENT = { SDEK_TYPE_COLLECTIVE: 'Коллективная' };
     let purchaseLinkInput, purchaseLinkHint, purchaseLinkResolveBtn;
@@ -1012,8 +1008,6 @@ window.Screens.orderEdit = {
       deliveryRfTotalDisplay.textContent = computeDeliveryRfTotal().toFixed(2);
     }
     [taxiRfSendSumInput, shippingRfSumInput, taxiRfReceiveSumInput].forEach((input) => input.addEventListener('input', updateDeliveryRfTotalDisplay));
-    collectiveSelectStage1 = document.getElementById('collective-select-stage1');
-    collectiveSelectStage2 = document.getElementById('collective-select-stage2');
     purchaseLinkInput = document.getElementById('purchase-link-input');
     purchaseLinkHint = document.getElementById('purchase-link-hint');
     purchaseLinkResolveBtn = document.getElementById('purchase-link-resolve-btn');
@@ -1273,45 +1267,124 @@ window.Screens.orderEdit = {
       }
     }, { signal });
 
-    // --- Коллективка — ДВА независимых списка по этапу (Э4, §3), назначение
-    // сразу при выборе. Каждый список показывает ТОЛЬКО коллективки СВОЕГО
-    // этапа — assignOrderToCollective сам пишет связь в стадию ЦЕЛЕВОЙ
-    // коллективки (её собственный `stage`, см. collectivesService), так что
-    // выбор в "нужном" списке гарантированно попадает в нужное плечо.
-    async function populateCollectiveSelects() {
+    // --- Коллективка заказа (Э4: две привязки по этапу; Коллективки 2.0,
+    // 10.10.2026 — карточка вместо выпадающего списка). Каждая привязка —
+    // своя стадия: assignOrderToCollective пишет связь в этап ЦЕЛЕВОЙ
+    // коллективки, поэтому окно выбора фильтруется по этапу строки.
+    const collectiveLinkByStage = { 'КЗ→РФ': '', 'По РФ': '' };
+    const COLLECTIVE_BOX_IDS = { 'КЗ→РФ': 'collective-box-stage1', 'По РФ': 'collective-box-stage2' };
+    let collectivesById = new Map();
+    let collectivesLoaded = false;
+
+    async function loadCollectivesForBoxes() {
       try {
         const list = await callServer('getCollectivesList');
-        const buildOptions = (stage) => list
-          .filter((c) => c.stage === stage)
-          .map((c) => {
-            const trackPart = c.trackNumber ? ` (${c.trackNumber})` : '';
-            return `<option value="${c.collectiveId}">${c.collectiveId}${trackPart} — ${c.status}</option>`;
-          }).join('');
-        collectiveSelectStage1.innerHTML = '<option value="">— не привязано —</option>' + buildOptions('КЗ→РФ');
-        collectiveSelectStage2.innerHTML = '<option value="">— не привязано —</option>' + buildOptions('По РФ');
+        collectivesById = new Map(list.map((c) => [c.collectiveId, c]));
       } catch (error) {
-        // Список коллективок не критичен для остальной формы — тихо игнорируем
+        // Список не критичен для остальной формы — карточка покажет ID.
+      }
+      collectivesLoaded = true;
+      renderCollectiveBoxes();
+    }
+
+    function collectiveTitle(id) {
+      const c = collectivesById.get(id);
+      return c && c.name ? c.name : `ID ${id}`;
+    }
+
+    function renderCollectiveBoxes() {
+      const hasRfCollectives = [...collectivesById.values()].some((c) => c.stage === 'По РФ');
+      const rfRow = document.getElementById('collective-row-stage2');
+      if (rfRow) {
+        const showRf = hasRfCollectives || !!collectiveLinkByStage['По РФ'];
+        rfRow.classList.toggle('hidden', !showRf);
+        rfRow.classList.toggle('flex', showRf);
+      }
+      for (const stage of Object.keys(COLLECTIVE_BOX_IDS)) {
+        const box = document.getElementById(COLLECTIVE_BOX_IDS[stage]);
+        if (!box) continue;
+        const id = collectiveLinkByStage[stage];
+        if (!id) {
+          box.innerHTML = `
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[15px] text-gray-400">Не в коллективке</span>
+              <button type="button" class="collective-pick-btn text-sm font-medium text-indigo-600 px-2 py-1" data-stage="${stage}">Выбрать</button>
+            </div>`;
+          continue;
+        }
+        const c = collectivesById.get(id);
+        const date = c ? (c.sentAtDisplay ? `отправлена ${c.sentAtDisplay}` : (c.createdAt ? `создана ${c.createdAt}` : '')) : '';
+        const meta = c ? [c.status, c.trackNumber ? `трек ${c.trackNumber}` : '', `заказов: ${c.orderCount}`, date].filter(Boolean) : [collectivesLoaded ? 'не найдена в списке' : 'загрузка…'];
+        box.innerHTML = `
+          <div class="rounded-xl border border-gray-200 p-3" data-collective-card="${escapeHtmlClient(id)}">
+            <div class="text-[15px] font-medium text-gray-900 break-words">${escapeHtmlClient(collectiveTitle(id))}</div>
+            <div class="text-[12px] text-gray-500 mt-0.5">${meta.map(escapeHtmlClient).join(' · ')}</div>
+            <div class="flex flex-wrap gap-3 mt-2">
+              <button type="button" class="collective-pick-btn text-sm font-medium text-indigo-600" data-stage="${stage}">Сменить</button>
+              <button type="button" class="collective-unassign-btn text-sm font-medium text-gray-500" data-stage="${stage}">Отвязать</button>
+              <button type="button" class="collective-open-btn text-sm font-medium text-gray-500 ml-auto" data-id="${escapeHtmlClient(id)}">Открыть</button>
+            </div>
+          </div>`;
       }
     }
 
-    function wireCollectiveSelect(selectEl, stage) {
-      selectEl.addEventListener('change', async () => {
-        const newId = selectEl.value;
+    let pickerStage = 'КЗ→РФ';
+    const orderCollectivePicker = CollectivePickerModal.init({
+      onPicked: async (collective) => {
+        const stage = collective.stage || pickerStage;
+        const prevId = collectiveLinkByStage[stage];
+        if (prevId === collective.collectiveId) return;
+        const target = collective.name || `ID ${collective.collectiveId}`;
+        const text = prevId
+          ? `Перенести заказ из «${collectiveTitle(prevId)}» в «${target}»?`
+          : `Добавить заказ в «${target}»?`;
+        const confirmed = await showConfirmModal(text, { confirmLabel: prevId ? 'Перенести' : 'Добавить' });
+        if (!confirmed) return;
         try {
-          if (newId === '') {
-            await callServer('unassignOrderFromCollective', currentOrderId, stage);
-            showSaveToast(true, 'Заказ отвязан от коллективки');
-          } else {
-            await callServer('assignOrderToCollective', currentOrderId, newId);
-            showSaveToast(true, 'Заказ привязан к коллективке');
-          }
+          await callServer('assignOrderToCollective', currentOrderId, collective.collectiveId);
+          collectiveLinkByStage[stage] = collective.collectiveId;
+          showSaveToast(true, prevId ? `Заказ перенесён в «${target}»` : `Заказ добавлен в «${target}»`);
+          await loadCollectivesForBoxes();
         } catch (error) {
           showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
         }
-      });
-    }
-    wireCollectiveSelect(collectiveSelectStage1, 'КЗ→РФ');
-    wireCollectiveSelect(collectiveSelectStage2, 'По РФ');
+      }
+    });
+
+    document.addEventListener('click', async (e) => {
+      const pickBtn = e.target.closest('.collective-pick-btn');
+      if (pickBtn) {
+        pickerStage = pickBtn.dataset.stage;
+        orderCollectivePicker.open({
+          stageFilter: pickerStage,
+          excludeCollectiveId: collectiveLinkByStage[pickerStage] || null,
+          allowCreate: true,
+          title: collectiveLinkByStage[pickerStage] ? 'Сменить коллективку' : 'Выбрать коллективку'
+        });
+        return;
+      }
+      const openBtn = e.target.closest('.collective-open-btn');
+      if (openBtn) {
+        navigateTo(`collectives/${encodeURIComponent(openBtn.dataset.id)}`);
+        return;
+      }
+      const unassignBtn = e.target.closest('.collective-unassign-btn');
+      if (unassignBtn) {
+        const stage = unassignBtn.dataset.stage;
+        const prevId = collectiveLinkByStage[stage];
+        if (!prevId) return;
+        const confirmed = await showConfirmModal(`Убрать заказ из «${collectiveTitle(prevId)}»? Он вернётся в «Без коллективки».`, { confirmLabel: 'Убрать' });
+        if (!confirmed) return;
+        try {
+          await callServer('unassignOrderFromCollective', currentOrderId, stage);
+          collectiveLinkByStage[stage] = '';
+          showSaveToast(true, 'Заказ убран из коллективки');
+          await loadCollectivesForBoxes();
+        } catch (error) {
+          showSaveToast(false, `Не удалось изменить коллективку: ${error.message}`);
+        }
+      }
+    }, { signal });
 
     // --- Треугольник Комиссия % / Комиссия ₽ / Основная оплата — база
     // amountRubBase считается из УЖЕ сохранённых сумм заказа (см. loadOrder),
@@ -1633,8 +1706,9 @@ window.Screens.orderEdit = {
       // Э4 (§3) — details.collectiveLinks:[{stage,collectiveId,...}], до
       // ДВУХ записей (по одной на этап). Каждый селект — своя стадия.
       const links = details.collectiveLinks || [];
-      collectiveSelectStage1.value = (links.find((l) => l.stage === 'КЗ→РФ') || {}).collectiveId || '';
-      collectiveSelectStage2.value = (links.find((l) => l.stage === 'По РФ') || {}).collectiveId || '';
+      collectiveLinkByStage['КЗ→РФ'] = (links.find((l) => l.stage === 'КЗ→РФ') || {}).collectiveId || '';
+      collectiveLinkByStage['По РФ'] = (links.find((l) => l.stage === 'По РФ') || {}).collectiveId || '';
+      renderCollectiveBoxes();
       amountInput.value = details.amount || '';
       updateKztRateHint(); // п.8 бэклога — программные .value-присвоения выше не бьют 'change'/'input', обновить hint явно, ПОСЛЕ валюты И суммы
       rateKztInput.value = details.rateKztToCurrency;
@@ -2327,7 +2401,7 @@ window.Screens.orderEdit = {
       deleteOrderModal.open(preview.payments, preview.isNewModel);
     });
 
-    populateCollectiveSelects();
+    loadCollectivesForBoxes();
     loadOrder();
   }
 };

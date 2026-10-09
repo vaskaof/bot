@@ -25,6 +25,11 @@
  * уже известен и не переспрашивается), по сохранению зовёт `createCollective`
  * и передаёт результат в `onPicked` тем же путём, что выбор существующей —
  * вызывающей стороне не нужно различать "выбрана" / "создана".
+ *
+ * Коллективки 2.0 (10.10.2026): строка показывает название, статус, куда
+ * едет, трек, число заказов и дату; порядок — `sortCollectives(...,'smart')`
+ * (в работе и свежие сверху); завершённые по всем шагам (`progress.done`)
+ * свёрнуты под «Показать завершённые». `open({title})` — свой заголовок.
  */
 window.CollectivePickerModal = {
   html() {
@@ -32,13 +37,13 @@ window.CollectivePickerModal = {
       <div id="collective-picker-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[70] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-            <h2 class="text-base font-semibold text-gray-900">Выбрать коллективку</h2>
+            <h2 class="text-base font-semibold text-gray-900" id="collective-picker-title">Выбрать коллективку</h2>
             <button type="button" id="collective-picker-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
           <div class="p-4 pb-2 shrink-0">
-            <input type="text" id="collective-picker-search" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Поиск по названию/ID..." autocomplete="off">
+            <input type="text" id="collective-picker-search" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Поиск по названию, ID или треку..." autocomplete="off">
           </div>
           <!-- Аудит коллективок, п.6Б, 27.08.2026 — inline-форма создания,
                видна только когда open({allowCreate:true}) и после клика на
@@ -61,7 +66,7 @@ window.CollectivePickerModal = {
 
   /**
    * @param {{ onPicked: (collective:{collectiveId:string,name:string,trackNumber:string,status:string,orderCount:number}) => void }} options
-   * @returns {{ open: (opts?:{excludeCollectiveId?:string, stageFilter?:string, allowCreate?:boolean}) => void }}
+   * @returns {{ open: (opts?:{excludeCollectiveId?:string, stageFilter?:string, allowCreate?:boolean, title?:string}) => void }}
    */
   init({ onPicked }) {
     let all = [];
@@ -100,44 +105,81 @@ window.CollectivePickerModal = {
       searchInput.parentElement.classList.remove('hidden');
     }
 
-    function render() {
-      const query = searchInput.value.trim().toLowerCase();
-      const filtered = all.filter((c) => {
-        if (excludeId && c.collectiveId === excludeId) return false;
-        if (stageFilter && c.stage !== stageFilter) return false;
-        if (query === '') return true;
-        return `${c.collectiveId} ${c.name}`.toLowerCase().includes(query);
-      });
+    let showDone = false;
 
-      listEl.innerHTML = '';
-      // "+ Создать новую" — всегда первой строкой в режиме allowCreate, даже
-      // если фильтр по этапу ничего не нашёл (тогда это единственный способ
-      // продолжить, эмптик ниже не должен блокировать создание).
-      if (allowCreate) {
-        const createRow = document.createElement('div');
-        createRow.className = 'p-3 border border-dashed border-indigo-300 rounded-xl cursor-pointer active:bg-indigo-50 flex items-center gap-2 text-indigo-600';
-        createRow.innerHTML = `<i data-lucide="plus" class="w-4 h-4 shrink-0"></i><span class="text-sm font-medium">Создать новую${stageFilter ? ` («${escapeHtmlClient(stageFilter)}»)` : ''}</span>`;
-        createRow.addEventListener('click', showCreateForm);
-        listEl.appendChild(createRow);
-      }
-      emptyEl.classList.toggle('hidden', filtered.length > 0 || allowCreate);
-
-      filtered.forEach((c) => {
-        const row = document.createElement('div');
-        row.className = 'p-3 border border-gray-200 rounded-xl cursor-pointer active:bg-gray-50 flex items-center justify-between gap-2';
-        row.innerHTML = `
+    function rowHtml(c) {
+      const stageLabel = (typeof collectiveStageLabel === 'function') ? collectiveStageLabel(c.stage) : c.stage;
+      const date = c.sentAtDisplay ? `отправлена ${c.sentAtDisplay}` : (c.createdAt ? `создана ${c.createdAt}` : '');
+      const meta = [c.status, stageLabel, c.trackNumber ? `трек ${c.trackNumber}` : '', `заказов: ${c.orderCount}`, date].filter(Boolean);
+      return `
           <div class="min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(c.name || ('ID ' + c.collectiveId))}</div>
-            <div class="text-[11px] text-gray-400">ID ${escapeHtmlClient(c.collectiveId)} · ${escapeHtmlClient(c.status)} · заказов: ${c.orderCount}</div>
+            <div class="text-sm font-medium text-gray-900 break-words">${escapeHtmlClient(c.name || ('ID ' + c.collectiveId))}</div>
+            <div class="text-[11px] text-gray-500">${meta.map(escapeHtmlClient).join(' · ')}</div>
+            ${c.name ? `<div class="text-[10px] text-gray-400">ID ${escapeHtmlClient(c.collectiveId)}</div>` : ''}
           </div>
           <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 shrink-0"></i>
         `;
-        row.addEventListener('click', () => {
-          close();
-          onPicked(c);
-        });
-        listEl.appendChild(row);
+    }
+
+    function appendRow(c) {
+      const row = document.createElement('div');
+      row.className = 'p-3 border border-gray-200 rounded-xl cursor-pointer active:bg-gray-50 flex items-center justify-between gap-2';
+      row.dataset.pickCollective = c.collectiveId;
+      row.innerHTML = rowHtml(c);
+      row.addEventListener('click', () => {
+        close();
+        onPicked(c);
       });
+      listEl.appendChild(row);
+    }
+
+    function render() {
+      const query = searchInput.value.trim().toLowerCase();
+      const matched = all.filter((c) => {
+        if (excludeId && c.collectiveId === excludeId) return false;
+        if (stageFilter && c.stage !== stageFilter) return false;
+        if (query === '') return true;
+        return `${c.collectiveId} ${c.name} ${c.trackNumber || ''}`.toLowerCase().includes(query);
+      });
+      const sorted = typeof sortCollectives === 'function' ? sortCollectives(matched, 'smart') : matched;
+      const isDone = (c) => !!(c.progress && c.progress.done);
+      const active = sorted.filter((c) => !isDone(c));
+      const done = sorted.filter(isDone);
+
+      listEl.innerHTML = '';
+      // "+ Создать новую" — всегда первой строкой в режиме allowCreate, даже
+      // если фильтр по этапу ничего не нашёл.
+      if (allowCreate) {
+        const createRow = document.createElement('div');
+        createRow.id = 'collective-picker-create-row';
+        createRow.className = 'p-3 border border-dashed border-indigo-300 rounded-xl cursor-pointer active:bg-indigo-50 flex items-center gap-2 text-indigo-600';
+        const stageLabel = stageFilter && typeof collectiveStageLabel === 'function' ? collectiveStageLabel(stageFilter) : stageFilter;
+        createRow.innerHTML = `<i data-lucide="plus" class="w-4 h-4 shrink-0"></i><span class="text-sm font-medium">Создать новую коллективку${stageFilter && stageFilter !== 'КЗ→РФ' ? ` («${escapeHtmlClient(stageLabel)}»)` : ''}</span>`;
+        createRow.addEventListener('click', showCreateForm);
+        listEl.appendChild(createRow);
+      }
+      emptyEl.classList.toggle('hidden', sorted.length > 0 || allowCreate);
+
+      active.forEach(appendRow);
+      // Завершённые (все шаги закрыты) свёрнуты: в них обычно не добавляют;
+      // при поиске показываем сразу — раз искали, значит нужна.
+      if (done.length > 0) {
+        if (showDone || query !== '') {
+          const sep = document.createElement('div');
+          sep.className = 'text-[11px] text-gray-400 pt-2 px-1';
+          sep.textContent = `Завершённые: ${done.length}`;
+          listEl.appendChild(sep);
+          done.forEach(appendRow);
+        } else {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.id = 'collective-picker-show-done';
+          more.className = 'w-full py-2 text-[12px] font-medium text-indigo-600';
+          more.textContent = `Показать завершённые (${done.length})`;
+          more.addEventListener('click', () => { showDone = true; render(); });
+          listEl.appendChild(more);
+        }
+      }
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -175,6 +217,8 @@ window.CollectivePickerModal = {
       stageFilter = (opts && opts.stageFilter) || null;
       allowCreate = !!(opts && opts.allowCreate);
       createStage = stageFilter;
+      showDone = false;
+      document.getElementById('collective-picker-title').textContent = (opts && opts.title) || 'Выбрать коллективку';
       searchInput.value = '';
       listEl.innerHTML = '';
       hideCreateForm();
@@ -184,7 +228,7 @@ window.CollectivePickerModal = {
       modal.classList.add('flex');
 
       try {
-        all = await callServer('getCollectivesList');
+        all = await callServer('getCollectivesList', { progress: true });
         loadingEl.classList.add('hidden');
         render();
       } catch (error) {

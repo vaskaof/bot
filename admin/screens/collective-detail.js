@@ -124,7 +124,7 @@ window.Screens.collectiveDetail = {
               </div>
               <div>
                 <div class="text-base font-semibold text-gray-900" id="summary-paid-count">0</div>
-                <div class="text-[10px] text-gray-400">оплатили плечо</div>
+                <div class="text-[10px] text-gray-400">оплатили доставку</div>
               </div>
             </div>
           </div>
@@ -288,7 +288,7 @@ window.Screens.collectiveDetail = {
       const sentCaption = document.getElementById('detail-sent-caption');
       sentCaption.textContent = details.sentAtDisplay ? `Отправлено: ${details.sentAtDisplay}` : '';
       sentCaption.classList.toggle('hidden', !details.sentAtDisplay);
-      document.getElementById('stage-chip').textContent = details.stage;
+      document.getElementById('stage-chip').textContent = typeof collectiveStageLabel === 'function' ? collectiveStageLabel(details.stage) : details.stage;
       renderStatusOptions(details.status);
       renderSummary();
       // Аудит коллективок, п.6Б — "продолжить как По РФ" осмысленно только
@@ -941,7 +941,7 @@ window.Screens.collectiveDetail = {
             <div class="flex flex-wrap gap-1.5 mt-1.5">
               ${o.statusOrder ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">${escapeHtmlClient(o.statusOrder)}</span>` : ''}
               ${o.statusDelivery ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">${escapeHtmlClient(o.statusDelivery)}</span>` : ''}
-              ${o.ownLegPaid ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">плечо оплачено</span>` : ''}
+              ${o.ownLegPaid ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">доставка оплачена</span>` : ''}
               <!-- Фича «Лот»/«Корзина» (delegated-spinning-rabbit.md, 02.09.2026),
                    ОБНОВЛЕНО Этапом 4 плана "Лоты/ИИ" (15.09.2026) — бейдж сам
                    по себе не пишет ничего (клик открывает карточку лота, не
@@ -962,7 +962,7 @@ window.Screens.collectiveDetail = {
 
             <div class="mt-2 pt-2 border-t border-gray-50" data-slider-block>
               <div class="flex items-center justify-between text-[11px] text-gray-500">
-                <span class="inline-flex items-center gap-0.5">Доля логистики${helpIcon('Как работает доля логистики', '<p><b>1</b> — обычный заказ, все заказы наравне между собой. <b>2</b> — вдвое тяжелее/дороже обычного, получит примерно вдвое больше доли общего расхода. <b>0</b> — заказ вообще не участвует в раскладке (мелочь бесплатно).</p><p>Это вес ЗАКАЗА ОТНОСИТЕЛЬНО ДРУГИХ заказов в этой же коллективке, а не фиксированная доля в рублях — если поменять вес у нескольких заказов сразу, доли пересчитаются у всех.</p>')}</span>
+                <span class="inline-flex items-center gap-0.5">Доля логистики${helpIcon('Как работает доля логистики', '<p>Доля — во сколько раз заказ тяжелее обычного.</p><p><b>1</b> — обычный заказ, все заказы наравне между собой. <b>2</b> — вдвое тяжелее/дороже обычного, получит примерно вдвое больше доли общего расхода. <b>0</b> — заказ вообще не участвует в раскладке (мелочь бесплатно).</p><p>Это вес ЗАКАЗА ОТНОСИТЕЛЬНО ДРУГИХ заказов в этой же коллективке, а не фиксированная доля в рублях — если поменять вес у нескольких заказов сразу, доли пересчитаются у всех.</p>')}</span>
                 <span class="units-fraction-label font-semibold text-indigo-600">${unitsFraction(o.currentUnits)}</span>
               </div>
               <input type="range" min="0" max="2" step="0.25" value="${o.currentUnits}" list="units-ticks" class="units-slider w-full mt-1.5">

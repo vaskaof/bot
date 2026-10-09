@@ -808,7 +808,9 @@ window.Screens.orders = {
 
     bulkAssignBtn.addEventListener('click', () => {
       if (selectedIds.size === 0) return;
-      collectivePicker.open();
+      // Коллективки 2.0 (10.10.2026, запрос менеджеров) — создать новую прямо
+      // в окне выбора; кнопка «Создать коллективку» в панели тоже остаётся.
+      collectivePicker.open({ allowCreate: true });
     });
 
     bulkCreateBtn.addEventListener('click', async () => {
