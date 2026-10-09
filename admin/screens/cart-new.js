@@ -2122,7 +2122,8 @@ window.Screens.cartNew = {
         if (p.productOriginal) {
           item.productSearchEl.value = p.productShort || p.productOriginal;
           item.productOriginal = p.productOriginal;
-          item.productFromCatalog = true;
+          // Б1: позиция из брони без позиции каталога — просто название (не «из каталога»).
+          item.productFromCatalog = p.productFromCatalog !== false;
         }
         if (p.priceHint) item.amountInputEl.placeholder = p.priceHint;
         if (p.amount) {
