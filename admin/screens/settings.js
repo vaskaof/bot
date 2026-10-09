@@ -328,6 +328,13 @@ window.Screens.settings = {
       { value: 'account', label: 'Аккаунт' }
     ];
     const ROLE_LABELS_RU = { admin: 'администратор приложения', manager: 'менеджер' };
+    // Как бот подпишет сотрудника клиенту (тот же приём, что sellerCheck.staffLabel на сервере): цифра в
+    // конце имени — пометка второго аккаунта того же человека («Милена1», «Милена2»), клиенту не нужна.
+    function clientLabel(m) {
+      const person = String(m.name || '').replace(/\s*\d+$/, '').trim();
+      const role = ROLE_LABELS_RU[m.role] || 'сотрудник';
+      return person ? `${person}, ${role}` : role;
+    }
 
     /**
      * Блокеры продажи, Б2 — «Официальные аккаунты»: кого бот называет клиенту официальным на «Проверить
@@ -351,6 +358,7 @@ window.Screens.settings = {
           <span class="text-sm text-gray-800">${escapeHtmlClient(m.name || m.telegramId)}
             <span class="text-gray-400">· ${escapeHtmlClient(ROLE_LABELS_RU[m.role] || m.role)}</span>
             <span class="block text-[11px] ${m.username ? 'text-gray-500' : 'text-amber-600'}">${m.username ? '@' + escapeHtmlClient(m.username) : 'Ник ещё неизвестен — проверка по аккаунту всё равно работает'}</span>
+            <span class="block text-[11px] text-gray-400">Клиент увидит: «${escapeHtmlClient(clientLabel(m))}»</span>
           </span>
         </label>`).join('');
 
