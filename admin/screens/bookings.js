@@ -38,6 +38,25 @@ const BookingUi = {
     const [text, cls] = map[post.status] || ['', ''];
     return `<span class="text-[10px] px-1.5 py-0.5 rounded-full ${cls}">${escapeHtmlClient(text)}</span>`;
   },
+  /** Условия брони простыми фразами — что видит клиент и что будет с заказом (VASY 10.10: «понятнее»). */
+  terms(post) {
+    const lines = [];
+    lines.push(post.productOriginal ? `Позиция каталога: ${post.productOriginal}` : 'Позиция каталога не выбрана — в заказ пойдёт название брони.');
+    lines.push(post.seatsTotal === null ? 'Мест: без лимита.' : `Мест: ${post.seatsTotal}.`);
+    lines.push(post.perClient > 1 ? `Одному клиенту — до ${post.perClient} мест (второе — через бота).` : 'Одному клиенту — одно место.');
+    lines.push(post.waitlist ? 'Лист ожидания включён: освободившееся место сразу получает следующий.' : 'Листа ожидания нет: когда места кончатся, кнопка покажет «Мест нет».');
+    if (post.mode === 'prepay') {
+      lines.push(`Клиент платит бронь ${BookingUi.rub(post.bookingRub)} в течение ${post.payHours} ч после того, как занял место.`);
+      lines.push(post.clientTotalRub
+        ? `В заказе «Осталось» = ${BookingUi.rub(post.clientTotalRub)} (полная сумма, бронь входит в неё).`
+        : 'В заказе пока только бронь — полную сумму впишете после выкупа.');
+      lines.push(post.refundable ? 'Бронь возвратная (так написано клиенту в правилах).' : 'Бронь невозвратная (так написано клиенту в правилах).');
+    } else {
+      lines.push('Денег сейчас не берём — после выкупа «Оформить заказы» соберёт корзину по броням.');
+    }
+    if (post.priceAmount) lines.push(`Цена выкупа: ${post.priceAmount} ${post.priceCurrency}.`);
+    return lines;
+  },
   header(title, actionsHtml) {
     document.getElementById('header-left').innerHTML = `<h1 class="text-lg font-semibold text-gray-900 tracking-tight">${escapeHtmlClient(title)}</h1>`;
     document.getElementById('header-actions').innerHTML = actionsHtml || '';
@@ -236,142 +255,243 @@ window.Screens.bookings = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Повесить бронь на пост
+// Форма брони: «Новая бронь» и «Изменить бронь»
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Общая форма (10.10.2026, VASY: бронь должна редактироваться; позиция — из каталога, чтобы «Оформить
+ * заказы» собирало корзину сразу по каталогу; данные брони — понятнее). Каждое поле — с пояснением, что с
+ * ним станет у клиента и в заказе.
+ * @param {HTMLElement} root
+ * @param {{mode:'new'|'edit', post?:Object, channel?:Object, channels:Array, params?:Object, hasSeats?:boolean}} o
+ */
+function renderBookingForm(root, o) {
+  const p = o.post || {};
+  const isEdit = o.mode === 'edit';
+  const fromForward = !isEdit && o.params && o.params.channelId && o.params.messageId;
+  const channel = o.channel;
+  const mode = p.mode || (channel ? channel.defaultMode : 'queue');
+  const hint = (text) => `<span class="block text-[11px] text-gray-400 mt-1 font-normal">${text}</span>`;
+  const val = (v) => (v === null || v === undefined ? '' : escapeHtmlClient(String(v)));
+  const toLocalInput = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  root.innerHTML = `
+    <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
+      ${!isEdit && o.channels.length === 0 ? '<div class="bg-amber-50 text-amber-800 rounded-2xl p-4 text-sm">Нет подключённых каналов. Подключите канал во вкладке «Каналы» раздела «Брони».</div>' : ''}
+
+      <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+        <div class="text-sm font-medium text-gray-900">Пост и что бронируют</div>
+        ${isEdit ? `<div class="text-xs text-gray-500">Пост: <a href="${escapeHtmlClient(p.link)}" target="_blank" class="text-indigo-600 underline">открыть в канале</a></div>`
+          : fromForward
+            ? `<div class="text-sm text-gray-700">Пост №${escapeHtmlClient(o.params.messageId)} из «${escapeHtmlClient(channel ? channel.title : 'канала')}»${o.params.album ? ' (альбом)' : ''}</div>`
+            : `<label class="block text-xs font-medium text-gray-500">Ссылка на пост *
+                 <input id="bf-link" type="url" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="https://t.me/канал/123">
+                 ${hint('В канале: нажмите на пост → «Копировать ссылку». Или просто перешлите пост боту — он откроет эту форму сам.')}
+               </label>
+               <label class="flex items-center gap-2 text-xs text-gray-600"><input id="bf-album" type="checkbox"> Пост — альбом из нескольких фото</label>
+               ${hint('Под альбом Telegram не даёт поставить кнопку — бот опубликует под ним отдельное сообщение с кнопкой.')}`}
+        <div class="relative">
+          <label class="block text-xs font-medium text-gray-500">Позиция из каталога
+            <input id="bf-sku-search" type="text" autocomplete="off" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Начните вводить название куклы…" value="${p.productOriginal ? val(p.productOriginal) : ''}">
+          </label>
+          <ul id="bf-sku-dropdown" class="hidden absolute left-0 right-0 z-30 bg-white border border-gray-100 rounded-xl shadow-lg max-h-60 overflow-y-auto mt-1"></ul>
+          <div id="bf-sku-chosen" class="text-[11px] mt-1 ${p.productOriginal ? 'text-green-700' : 'text-gray-400'}">${p.productOriginal ? '✅ Связано с каталогом' : 'Необязательно, но удобно: заказы по брони сразу будут с этой позицией каталога.'}</div>
+        </div>
+        <label class="block text-xs font-medium text-gray-500">Название для клиента *
+          <input id="bf-title" type="text" maxlength="200" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Например: Draculaura G3 Core" value="${val(p.productTitle)}">
+          ${hint('Так бронь будет называться в чате с ботом, в «Моих бронях» и в списке менеджера.')}
+        </label>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+        <div class="text-sm font-medium text-gray-900">Как работает бронь</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <label class="border rounded-xl p-3 text-xs cursor-pointer"><input type="radio" name="bf-mode" value="queue" ${mode === 'queue' ? 'checked' : ''} ${isEdit && o.hasSeats ? 'disabled' : ''}>
+            <b>Место в очереди</b><br><span class="text-gray-500">Клиент нажал — занял место. Денег сейчас не берём. После выкупа вы нажимаете «Оформить заказы» — откроется корзина, заполненная по броням.</span></label>
+          <label class="border rounded-xl p-3 text-xs cursor-pointer"><input type="radio" name="bf-mode" value="prepay" ${mode === 'prepay' ? 'checked' : ''} ${isEdit && o.hasSeats ? 'disabled' : ''}>
+            <b>Предоплата брони</b><br><span class="text-gray-500">Клиент нажал — бот сразу заводит заказ «Ожидает выкупа» и просит оплатить бронь до срока. Оплата — обычным «Я оплатил(а)».</span></label>
+        </div>
+        ${isEdit && o.hasSeats ? hint('Тип брони не меняется, когда уже есть брони.') : ''}
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-gray-500">Сколько мест
+            <input id="bf-seats" type="number" min="1" max="10000" value="${p.seatsTotal === null && isEdit ? '' : val(p.seatsTotal || 50)}" ${p.seatsTotal === null && isEdit ? 'disabled' : ''} class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          </label>
+          <label class="flex items-center gap-2 text-xs text-gray-600 mt-5"><input id="bf-unlimited" type="checkbox" ${p.seatsTotal === null && isEdit ? 'checked' : ''}> Без лимита</label>
+          <label class="text-xs text-gray-500">Мест на одного клиента
+            <input id="bf-per-client" type="number" min="1" max="50" value="${val(p.perClient || 1)}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          </label>
+          <label class="flex items-center gap-2 text-xs text-gray-600 mt-5"><input id="bf-waitlist" type="checkbox" ${p.waitlist === false ? '' : 'checked'}> Лист ожидания</label>
+        </div>
+        ${hint('Когда места кончатся, следующие нажавшие встают в лист ожидания. Освободилось место — его сразу получает первый из листа, бот ему пишет. Второе место одному клиенту можно взять только через бота — случайный двойной тап его не займёт.')}
+      </div>
+
+      <div id="bf-prepay" class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+        <div class="text-sm font-medium text-gray-900">Деньги по предоплате</div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-gray-500">Сумма брони, ₽ *
+            <input id="bf-booking" type="number" min="1" value="${val(p.bookingRub)}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          </label>
+          <label class="text-xs text-gray-500">Срок оплаты, часов
+            <input id="bf-hours" type="number" min="1" max="720" value="${val(p.payHours || (channel ? channel.defaultPayHours : 24))}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          </label>
+        </div>
+        ${hint('Сумма брони — сколько клиент платит сейчас; в заказе она пишется в «Бронь/комиссия». Срок считается с момента, когда клиент занял место. Не оплатил к сроку — придёт сводка «не оплатили в срок», снять место вы решаете сами (или автоматически — настройка канала).')}
+        <label class="block text-xs text-gray-500">Итого для клиента, ₽ (необязательно)
+          <input id="bf-total" type="number" min="1" value="${val(p.clientTotalRub)}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          ${hint('Полная цена для клиента вместе с бронью — она станет «Осталось» в заказе, клиент сразу увидит всю сумму. Не указали — в заказе будет только бронь, полную сумму впишете в заказ после выкупа. Не меньше суммы брони.')}
+        </label>
+        <label class="flex items-center gap-2 text-xs text-gray-600"><input id="bf-refundable" type="checkbox" ${p.refundable ? 'checked' : ''}> Бронь возвратная</label>
+        ${hint('Это только текст для клиента в правилах брони — сами деньги бот никуда не возвращает.')}
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+        <div class="text-sm font-medium text-gray-900">Цена, время и правила</div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-gray-500">Цена в валюте (необязательно)
+            <input id="bf-price" type="number" min="0" step="0.01" value="${val(p.priceAmount)}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          </label>
+          <label class="text-xs text-gray-500">Валюта
+            <select id="bf-currency" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+              ${['', 'USD', 'EUR', 'KZT', 'RUB', 'CNY', 'JPY'].map((c) => `<option value="${c}" ${(p.priceCurrency || '') === c ? 'selected' : ''}>${c || '—'}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+        ${hint('Цена выкупа — подставится в заказ (и в корзину при «Оформить заказы»). Можно не заполнять, если цена ещё неизвестна.')}
+        ${!isEdit || p.status === 'scheduled' ? `
+        <label class="block text-xs text-gray-500">Открыть бронь позже (необязательно)
+          <input id="bf-opens" type="datetime-local" value="${toLocalInput(p.opensAt)}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+          ${hint('До этого времени на кнопке будет «🔒 Бронь откроется …», нажатия не принимаются. Удобно объявить время заранее — клиенты поставят будильник.')}
+        </label>` : ''}
+        <label class="block text-xs text-gray-500">Правила брони для клиента
+          <textarea id="bf-rules" rows="3" maxlength="1000" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" placeholder="Например: не ответили 24 часа — бронь аннулируется">${val(isEdit ? p.rulesText : (channel ? channel.rulesText : ''))}</textarea>
+          ${hint('Клиент увидит их в сообщении бота сразу после брони и в «Моих бронях». По умолчанию — правила канала.')}
+        </label>
+      </div>
+
+      <button id="bf-save" type="button" class="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium">${isEdit ? 'Сохранить' : 'Повесить бронь'}</button>
+    </main>`;
+
+  const prepayBox = document.getElementById('bf-prepay');
+  const currentMode = () => root.querySelector('input[name="bf-mode"]:checked').value;
+  const syncMode = () => prepayBox.classList.toggle('hidden', currentMode() !== 'prepay');
+  root.querySelectorAll('input[name="bf-mode"]').forEach((r) => r.addEventListener('change', syncMode));
+  syncMode();
+  const seatsEl = document.getElementById('bf-seats');
+  document.getElementById('bf-unlimited').addEventListener('change', (e) => {
+    seatsEl.disabled = e.target.checked;
+    if (!e.target.checked && !seatsEl.value) seatsEl.value = 50;
+  });
+
+  // Позиция каталога: поиск тем же searchSku, что «Корзина»; выбор — название подставляется, его можно поправить.
+  let productOriginal = p.productOriginal || '';
+  const skuInput = document.getElementById('bf-sku-search');
+  const skuDropdown = document.getElementById('bf-sku-dropdown');
+  const skuChosen = document.getElementById('bf-sku-chosen');
+  const titleInput = document.getElementById('bf-title');
+  let searchTimer = null;
+  skuInput.addEventListener('input', () => {
+    productOriginal = '';
+    skuChosen.className = 'text-[11px] mt-1 text-gray-400';
+    skuChosen.textContent = 'Выберите позицию из списка — или оставьте пустым, если её нет в каталоге.';
+    clearTimeout(searchTimer);
+    const query = skuInput.value.trim();
+    if (query.length < 2) { skuDropdown.classList.add('hidden'); return; }
+    searchTimer = setTimeout(async () => {
+      let results = [];
+      try { results = await callServer('searchSku', query); } catch (_e) { results = []; }
+      skuDropdown.innerHTML = results.length === 0
+        ? '<li class="p-3 text-sm text-gray-500 text-center">В каталоге не нашлось — можно оставить только название</li>'
+        : results.slice(0, 20).map((r) => `<li data-value="${escapeHtmlClient(r.value)}" data-label="${escapeHtmlClient(r.label)}" class="p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 text-sm last:border-0">${escapeHtmlClient(r.label)}</li>`).join('');
+      skuDropdown.classList.remove('hidden');
+      skuDropdown.querySelectorAll('li[data-value]').forEach((li) => li.addEventListener('mousedown', () => {
+        productOriginal = li.dataset.value;
+        skuInput.value = li.dataset.value;
+        if (!titleInput.value.trim()) titleInput.value = li.dataset.label;
+        skuChosen.className = 'text-[11px] mt-1 text-green-700';
+        skuChosen.textContent = '✅ Связано с каталогом';
+        skuDropdown.classList.add('hidden');
+      }));
+    }, 300);
+  });
+  skuInput.addEventListener('blur', () => setTimeout(() => skuDropdown.classList.add('hidden'), 150));
+
+  document.getElementById('bf-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const m = currentMode();
+    const opensEl = document.getElementById('bf-opens');
+    const input = {
+      productTitle: titleInput.value,
+      productOriginal,
+      seatsTotal: document.getElementById('bf-unlimited').checked ? null : seatsEl.value,
+      perClient: document.getElementById('bf-per-client').value,
+      waitlist: document.getElementById('bf-waitlist').checked,
+      bookingRub: m === 'prepay' ? document.getElementById('bf-booking').value : '',
+      clientTotalRub: m === 'prepay' ? document.getElementById('bf-total').value : '',
+      payHours: m === 'prepay' ? document.getElementById('bf-hours').value : '',
+      refundable: m === 'prepay' && document.getElementById('bf-refundable').checked,
+      priceAmount: document.getElementById('bf-price').value,
+      priceCurrency: document.getElementById('bf-currency').value,
+      rulesText: document.getElementById('bf-rules').value
+    };
+    if (!(isEdit && o.hasSeats)) input.mode = m;
+    if (opensEl) input.opensAt = opensEl.value ? new Date(opensEl.value).toISOString() : '';
+    btn.disabled = true;
+    try {
+      if (isEdit) {
+        await callServer('updateBookingPost', p.id, input);
+        showSaveToast(true, 'Бронь сохранена — кнопка под постом обновится через пару секунд');
+        navigateTo(`booking/${p.id}`);
+      } else {
+        if (fromForward) {
+          input.channelId = Number(o.params.channelId);
+          input.messageId = Number(o.params.messageId);
+          input.album = Boolean(o.params.album);
+        } else {
+          input.link = document.getElementById('bf-link').value;
+          input.album = document.getElementById('bf-album').checked;
+        }
+        const res = await callServer('createBookingPost', input);
+        showSaveToast(true, 'Бронь повешена — кнопка уже под постом');
+        navigateTo(`booking/${res.post.id}`);
+      }
+    } catch (error) {
+      showSaveToast(false, error.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 window.Screens.bookingNew = {
   async render(root, _dictionaries, params) {
-    const fromForward = params && params.channelId && params.messageId;
     BookingUi.header('Новая бронь');
-
     let channels = [];
     try {
       channels = (await callServer('getBookingChannels')).channels.filter((c) => c.status === 'active');
     } catch (error) {
       showSaveToast(false, error.message);
     }
+    const fromForward = params && params.channelId;
     const channel = fromForward ? channels.find((c) => String(c.id) === String(params.channelId)) : channels[0];
-    const defMode = channel ? channel.defaultMode : 'queue';
+    renderBookingForm(root, { mode: 'new', channel, channels, params });
+  }
+};
 
-    root.innerHTML = `
-      <main class="pt-16 pb-24 px-4 md:px-0 max-w-2xl mx-auto space-y-3">
-        ${channels.length === 0 ? `<div class="bg-amber-50 text-amber-800 rounded-2xl p-4 text-sm">Нет подключённых каналов. Подключите канал во вкладке «Каналы» раздела «Брони».</div>` : ''}
-        <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-          ${fromForward
-            ? `<div class="text-sm text-gray-700">Пост №${escapeHtmlClient(params.messageId)} из «${escapeHtmlClient(channel ? channel.title : 'канала')}»${params.album ? ' (альбом)' : ''}</div>`
-            : `<label class="block text-xs font-medium text-gray-500">Ссылка на пост *
-                 <input id="bn-link" type="url" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="https://t.me/канал/123">
-                 <span class="block text-[11px] text-gray-400 mt-1">В канале: нажмите на пост → «Копировать ссылку». Или просто перешлите пост боту.</span>
-               </label>
-               <label class="flex items-center gap-2 text-xs text-gray-600"><input id="bn-album" type="checkbox"> Пост — альбом из нескольких фото (кнопку поставлю отдельным сообщением под ним)</label>`}
-          <label class="block text-xs font-medium text-gray-500">Что бронируют *
-            <input id="bn-title" type="text" maxlength="200" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Например: Draculaura G3 Core">
-          </label>
-        </div>
-
-        <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-          <div class="text-xs font-medium text-gray-500">Тип брони</div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="border rounded-xl p-3 text-xs cursor-pointer"><input type="radio" name="bn-mode" value="queue" ${defMode === 'queue' ? 'checked' : ''}> <b>Место в очереди</b><br><span class="text-gray-400">Нажал — место. Деньги потом, после выкупа, обычными этапами.</span></label>
-            <label class="border rounded-xl p-3 text-xs cursor-pointer"><input type="radio" name="bn-mode" value="prepay" ${defMode === 'prepay' ? 'checked' : ''}> <b>Предоплата брони</b><br><span class="text-gray-400">Нажал — заказ «Ожидает выкупа», клиент оплачивает бронь до срока.</span></label>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="text-xs text-gray-500">Мест
-              <input id="bn-seats" type="number" min="1" max="10000" value="50" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            </label>
-            <label class="flex items-center gap-2 text-xs text-gray-600 mt-5"><input id="bn-unlimited" type="checkbox"> Без лимита</label>
-            <label class="text-xs text-gray-500">Мест на одного клиента
-              <input id="bn-per-client" type="number" min="1" max="50" value="1" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            </label>
-            <label class="flex items-center gap-2 text-xs text-gray-600 mt-5"><input id="bn-waitlist" type="checkbox" checked> Лист ожидания, когда места кончатся</label>
-          </div>
-          <div id="bn-prepay" class="space-y-2">
-            <div class="grid grid-cols-2 gap-2">
-              <label class="text-xs text-gray-500">Сумма брони, ₽ *
-                <input id="bn-booking" type="number" min="1" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              </label>
-              <label class="text-xs text-gray-500">Срок оплаты, часов
-                <input id="bn-hours" type="number" min="1" max="720" value="${channel ? channel.defaultPayHours : 24}" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              </label>
-            </div>
-            <label class="block text-xs text-gray-500">Итого для клиента, ₽ (необязательно)
-              <input id="bn-total" type="number" min="1" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              <span class="block text-[11px] text-gray-400 mt-1">Указали — в заказе сразу будет полная сумма. Нет — в заказе только бронь, полную сумму впишете после выкупа.</span>
-            </label>
-            <label class="flex items-center gap-2 text-xs text-gray-600"><input id="bn-refundable" type="checkbox"> Бронь возвратная</label>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="text-xs text-gray-500">Цена (необязательно)
-              <input id="bn-price" type="number" min="0" step="0.01" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            </label>
-            <label class="text-xs text-gray-500">Валюта
-              <select id="bn-currency" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                <option value="">—</option><option>USD</option><option>EUR</option><option>KZT</option><option>RUB</option><option>CNY</option><option>JPY</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-          <label class="block text-xs text-gray-500">Открыть бронь позже (необязательно)
-            <input id="bn-opens" type="datetime-local" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            <span class="block text-[11px] text-gray-400 mt-1">До этого времени на кнопке будет «🔒 Бронь откроется …» — удобно объявить время заранее.</span>
-          </label>
-          <label class="block text-xs text-gray-500">Правила брони для клиента
-            <textarea id="bn-rules" rows="3" maxlength="1000" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" placeholder="По умолчанию — правила канала">${escapeHtmlClient(channel ? channel.rulesText : '')}</textarea>
-          </label>
-        </div>
-
-        <button id="bn-save" type="button" class="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium">Повесить бронь</button>
-      </main>`;
-
-    const prepayBox = document.getElementById('bn-prepay');
-    const syncMode = () => {
-      const mode = root.querySelector('input[name="bn-mode"]:checked').value;
-      prepayBox.classList.toggle('hidden', mode !== 'prepay');
-    };
-    root.querySelectorAll('input[name="bn-mode"]').forEach((r) => r.addEventListener('change', syncMode));
-    syncMode();
-    const seatsEl = document.getElementById('bn-seats');
-    document.getElementById('bn-unlimited').addEventListener('change', (e) => { seatsEl.disabled = e.target.checked; });
-
-    document.getElementById('bn-save').addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      const mode = root.querySelector('input[name="bn-mode"]:checked').value;
-      const opens = document.getElementById('bn-opens').value;
-      const input = {
-        productTitle: document.getElementById('bn-title').value,
-        mode,
-        seatsTotal: document.getElementById('bn-unlimited').checked ? null : seatsEl.value,
-        perClient: document.getElementById('bn-per-client').value,
-        waitlist: document.getElementById('bn-waitlist').checked,
-        bookingRub: mode === 'prepay' ? document.getElementById('bn-booking').value : '',
-        clientTotalRub: mode === 'prepay' ? document.getElementById('bn-total').value : '',
-        payHours: mode === 'prepay' ? document.getElementById('bn-hours').value : '',
-        refundable: mode === 'prepay' && document.getElementById('bn-refundable').checked,
-        priceAmount: document.getElementById('bn-price').value,
-        priceCurrency: document.getElementById('bn-currency').value,
-        rulesText: document.getElementById('bn-rules').value,
-        opensAt: opens ? new Date(opens).toISOString() : ''
-      };
-      if (fromForward) {
-        input.channelId = Number(params.channelId);
-        input.messageId = Number(params.messageId);
-        input.album = Boolean(params.album);
-      } else {
-        input.link = document.getElementById('bn-link').value;
-        input.album = document.getElementById('bn-album').checked;
-      }
-      btn.disabled = true;
-      try {
-        const res = await callServer('createBookingPost', input);
-        showSaveToast(true, 'Бронь повешена — кнопка уже под постом');
-        navigateTo(`booking/${res.post.id}`);
-      } catch (error) {
-        showSaveToast(false, error.message);
-      } finally {
-        btn.disabled = false;
-      }
-    });
+window.Screens.bookingEdit = {
+  async render(root, _dictionaries, params) {
+    BookingUi.header('Изменить бронь');
+    try {
+      const { post, seats } = await callServer('getBookingPost', params.postId);
+      const hasSeats = seats.some((s) => s.state === 'active' || s.state === 'waitlist');
+      renderBookingForm(root, { mode: 'edit', post, channels: [], hasSeats });
+    } catch (error) {
+      showSaveToast(false, error.message);
+    }
   }
 };
 
@@ -437,10 +557,12 @@ window.Screens.bookingDetail = {
             </div>
             ${BookingUi.statusChip(post)}
           </div>
+          <div class="text-xs text-gray-600 bg-gray-50 rounded-xl p-3 space-y-1">${BookingUi.terms(post).map((l) => `<div>${escapeHtmlClient(l)}</div>`).join('')}</div>
           <a href="${escapeHtmlClient(post.link)}" target="_blank" class="text-xs text-indigo-600 underline">Открыть пост</a>
           <div class="flex flex-wrap gap-2 pt-2">
             ${post.status === 'open' ? '<button type="button" id="bd-close" class="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-700">Закрыть бронь</button>' : ''}
             ${post.status === 'closed' || post.status === 'scheduled' ? '<button type="button" id="bd-open" class="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-700">Открыть сейчас</button>' : ''}
+            ${post.status !== 'cancelled' ? '<button type="button" id="bd-edit" class="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-700">Изменить</button>' : ''}
             ${post.status !== 'cancelled' ? '<button type="button" id="bd-add" class="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-700">Добавить вручную</button>' : ''}
             ${canOrder ? '<button type="button" id="bd-order" class="text-xs px-3 py-2 rounded-xl bg-indigo-600 text-white">Оформить заказы</button>' : ''}
           </div>
@@ -467,6 +589,7 @@ window.Screens.bookingDetail = {
       bind('bd-close', () => setStatus('closed'));
       bind('bd-open', () => setStatus('open'));
       bind('bd-add', addManual);
+      bind('bd-edit', () => navigateTo(`booking/${postId}/edit`));
       bind('bd-order', makeOrders);
       main.querySelectorAll('[data-release]').forEach((b) => b.addEventListener('click', () => release(Number(b.dataset.release))));
       main.querySelectorAll('[data-retry]').forEach((b) => b.addEventListener('click', () => retry(Number(b.dataset.retry))));

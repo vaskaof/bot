@@ -202,6 +202,10 @@ function matchRoute(hash) {
   }
 
   // Б1 — карточка брони и «Новая бронь» (из пересланного боту поста: booking-new/<канал>/<пост>[/album]).
+  const bookingEditMatch = clean.match(/^booking\/([^/]+)\/edit$/);
+  if (bookingEditMatch) {
+    return { screen: 'bookingEdit', navKey: 'bookings', showNav: true, params: { postId: decodeURIComponent(bookingEditMatch[1]) } };
+  }
   const bookingMatch = clean.match(/^booking\/([^/]+)$/);
   if (bookingMatch) {
     return { screen: 'bookingDetail', navKey: 'bookings', showNav: true, params: { postId: decodeURIComponent(bookingMatch[1]) } };
