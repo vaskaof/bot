@@ -238,6 +238,9 @@ window.Screens.settings = {
       <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
         <!-- В3 плана SaaS: «Тариф и модули» — только админ посредника (у основного канала блока нет). -->
         <div id="plan-modules-block"></div>
+        <!-- Блокеры продажи (09.10.2026): «Проверить продавца» и выгрузка данных — только админ, и у DD тоже. -->
+        <div id="official-accounts-block"></div>
+        <div id="data-export-block"></div>
         <!-- Широкий экран (04.10.2026): разделы — в две колонки (app.html, .wide-columns). -->
         <div id="settings-body" class="wide-columns text-center text-sm text-gray-400 py-10">Загрузка...</div>
       </main>
@@ -254,6 +257,8 @@ window.Screens.settings = {
 
     load();
     loadPlanModules();
+    loadOfficialAccounts();
+    renderDataExport();
 
     /**
      * В3 плана SaaS — «Тариф и модули»: свой тариф, дневной предел ИИ и модули тарифа с переключателем
@@ -281,7 +286,8 @@ window.Screens.settings = {
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Тариф и модули</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <div class="text-sm text-gray-900 mb-1">Тариф: <b>${escapeHtmlClient(plan.planLabel)}</b></div>
-            <div class="text-[12px] text-gray-500 mb-3">ИИ сегодня: ${Number(plan.aiUsedToday) || 0} из ${plan.aiDailyLimit === null ? '—' : Number(plan.aiDailyLimit)} запросов. Подключить то, чего нет в тарифе, — напишите в Кнопку.</div>
+            <div class="text-[12px] text-gray-500 mb-1">ИИ сегодня: ${Number(plan.aiUsedToday) || 0} из ${plan.aiDailyLimit === null ? '—' : Number(plan.aiDailyLimit)} запросов. Подключить то, чего нет в тарифе, — напишите в Кнопку.</div>
+            <div class="text-[12px] mb-3 ${plan.aiKeys && plan.aiKeys.main ? 'text-gray-500' : 'text-amber-600'}">${aiKeysLine(plan.aiKeys)}</div>
             <div>${rows}</div>
           </div>
         </section>`;
@@ -304,6 +310,144 @@ window.Screens.settings = {
             showSaveToast(false, error.message);
           }
         });
+      });
+    }
+
+    /** Б4: какие ключи ИИ подключены у канала (сами ключи на фронт не приходят). */
+    function aiKeysLine(keys) {
+      if (!keys) return '';
+      if (!keys.main) return 'ИИ не подключён: распознавание фото и лотов выключено. Ключ ИИ подключается при настройке канала — напишите в Кнопку.';
+      return keys.paid
+        ? 'Ключи ИИ подключены, помощник менеджеров работает.'
+        : 'Ключ ИИ подключён. Помощник менеджеров работает с платным ключом — его можно подключить через Кнопку.';
+    }
+
+    const OFFICIAL_KIND_OPTIONS = [
+      { value: 'channel', label: 'Канал' },
+      { value: 'chat', label: 'Чат' },
+      { value: 'account', label: 'Аккаунт' }
+    ];
+    const ROLE_LABELS_RU = { admin: 'администратор', manager: 'менеджер' };
+
+    /**
+     * Блокеры продажи, Б2 — «Официальные аккаунты»: кого бот называет клиенту официальным на «Проверить
+     * продавца». Сотрудники — флажком, канал/чат/запасной аккаунт — списком. Независимый блок.
+     */
+    async function loadOfficialAccounts() {
+      const block = document.getElementById('official-accounts-block');
+      if (!block || window.CURRENT_ACCESS_ROLE !== 'admin') return;
+      let data;
+      try {
+        data = await callServer('getOfficialAccounts');
+      } catch (_error) {
+        return;
+      }
+      if (!block.isConnected) return;
+      let accounts = data.accounts.map((a) => ({ kind: a.kind, username: a.username ? '@' + a.username : (a.telegramId || ''), title: a.title }));
+
+      const staffRows = data.staff.map((m) => `
+        <label class="flex items-start gap-3 py-2 border-t border-gray-50 first:border-t-0">
+          <input type="checkbox" data-official-staff="${escapeHtmlClient(m.telegramId)}" ${m.showAsOfficial ? 'checked' : ''} class="mt-0.5 w-4 h-4 accent-indigo-600">
+          <span class="text-sm text-gray-800">${escapeHtmlClient(m.name || m.telegramId)}
+            <span class="text-gray-400">· ${escapeHtmlClient(ROLE_LABELS_RU[m.role] || m.role)}</span>
+            <span class="block text-[11px] ${m.username ? 'text-gray-500' : 'text-amber-600'}">${m.username ? '@' + escapeHtmlClient(m.username) : 'Ник ещё неизвестен — проверка по аккаунту всё равно работает'}</span>
+          </span>
+        </label>`).join('');
+
+      function accountRowsHtml() {
+        if (accounts.length === 0) return '<div class="text-[12px] text-gray-400 py-1">Пока нет — добавьте канал и запасные аккаунты, через которые вы принимаете оплату.</div>';
+        return accounts.map((a, i) => `
+          <div class="flex flex-wrap items-center gap-2 py-1.5">
+            <select data-acc-kind="${i}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white">
+              ${OFFICIAL_KIND_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === a.kind ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+            <input data-acc-username="${i}" value="${escapeHtmlClient(a.username)}" placeholder="@ник или ссылка t.me/…" class="flex-1 min-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+            <input data-acc-title="${i}" value="${escapeHtmlClient(a.title)}" placeholder="Подпись, например «Канал»" maxlength="60" class="flex-1 min-w-[120px] border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+            <button type="button" data-acc-remove="${i}" class="text-sm text-red-500 px-2 py-1">Убрать</button>
+          </div>`).join('');
+      }
+
+      function readAccountInputs() {
+        accounts = accounts.map((a, i) => ({
+          kind: block.querySelector(`[data-acc-kind="${i}"]`).value,
+          username: block.querySelector(`[data-acc-username="${i}"]`).value.trim(),
+          title: block.querySelector(`[data-acc-title="${i}"]`).value.trim()
+        }));
+      }
+
+      function render() {
+        block.innerHTML = `
+          <section class="mb-5">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Официальные аккаунты</div>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+              <div class="text-[12px] text-gray-500 mb-3">Клиент может проверить в боте, правда ли ему пишет ваш менеджер («🛡 Проверить продавца»). Аккаунты не из этого списка бот называет неофициальными и советует не переводить им деньги.</div>
+              <div class="text-sm font-medium text-gray-800 mb-1">Сотрудники — показывать клиентам как официальных</div>
+              <div class="mb-3">${staffRows || '<div class="text-[12px] text-gray-400">Сотрудников пока нет.</div>'}</div>
+              <div class="text-sm font-medium text-gray-800 mb-1">Канал, чаты и другие аккаунты</div>
+              <div id="official-accounts-rows">${accountRowsHtml()}</div>
+              <button type="button" id="official-add" class="text-sm text-indigo-600 py-1.5">+ Добавить</button>
+              ${data.botUsername ? `<div class="text-[12px] text-gray-500 mt-2">Бот @${escapeHtmlClient(data.botUsername)} считается официальным всегда.</div>` : ''}
+              <button type="button" id="official-save" class="mt-3 w-full bg-indigo-600 text-white text-sm font-medium rounded-xl py-2.5">Сохранить</button>
+            </div>
+          </section>`;
+        block.querySelector('#official-add').addEventListener('click', () => {
+          readAccountInputs();
+          accounts.push({ kind: 'account', username: '', title: '' });
+          render();
+        });
+        block.querySelectorAll('[data-acc-remove]').forEach((btn) => btn.addEventListener('click', () => {
+          readAccountInputs();
+          accounts.splice(Number(btn.dataset.accRemove), 1);
+          render();
+        }));
+        block.querySelector('#official-save').addEventListener('click', async (event) => {
+          readAccountInputs();
+          const button = event.currentTarget;
+          button.disabled = true;
+          const payload = {
+            staff: [...block.querySelectorAll('[data-official-staff]')].map((box) => ({ telegramId: box.dataset.officialStaff, showAsOfficial: box.checked })),
+            accounts: accounts.filter((a) => a.username !== '').map((a) => {
+              const isId = /^-?\d+$/.test(a.username);
+              return { kind: a.kind, username: isId ? '' : a.username, telegramId: isId ? a.username : '', title: a.title };
+            })
+          };
+          try {
+            await callServer('saveOfficialAccounts', payload);
+            showSaveToast(true, 'Сохранено — бот уже проверяет по новому списку');
+            loadOfficialAccounts();
+          } catch (error) {
+            button.disabled = false;
+            showSaveToast(false, error.message);
+          }
+        });
+      }
+      render();
+    }
+
+    /** Блокеры продажи, Б3 — выгрузка всех данных канала одним файлом (приходит в чат с ботом). */
+    function renderDataExport() {
+      const block = document.getElementById('data-export-block');
+      if (!block || window.CURRENT_ACCESS_ROLE !== 'admin') return;
+      block.innerHTML = `
+        <section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Ваши данные</div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="text-[12px] text-gray-500 mb-3">Все данные канала одним файлом Excel: клиенты, заказы, этапы и оплаты, заявки «Я оплатил», коллективки, корзины, вишлисты, вопросы. Файл придёт вам в чат с ботом. Можно скачивать в любой момент — раз в 15 минут.</div>
+            <button type="button" id="data-export-btn" class="w-full border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl py-2.5">📦 Выгрузить все данные</button>
+          </div>
+        </section>`;
+      block.querySelector('#data-export-btn').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        if (!(await showConfirmModal('В файле будут персональные данные всех ваших клиентов. Он придёт вам в личный чат с ботом, а другим администраторам канала придёт сообщение, что вы скачали выгрузку. Продолжить?', { confirmLabel: 'Выгрузить' }))) return;
+        button.disabled = true;
+        try {
+          const res = await callServer('requestDataExport');
+          showSaveToast(true, res.message || 'Файл придёт в чат с ботом');
+        } catch (error) {
+          showSaveToast(false, error.message);
+        } finally {
+          button.disabled = false;
+        }
       });
     }
 
