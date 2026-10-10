@@ -113,6 +113,22 @@
   const costsCard = () => { const g = document.getElementById('cost-fields-grid'); return g ? g.closest('.rounded-2xl') : null; };
   const sdekToggleIs = (sign) => { const b = document.querySelector('#cost-fields-grid .currency-toggle-btn[data-field="sdekCost"]'); return !!b && b.textContent.trim() === sign; };
   /** Учебный чек: поле СДЭК → ₸, 24 000 (сохранять не будем). */
+  // Раскрыть свёрнутый блок карточки заказа, не трогая запомненный выбор
+  // менеджера (orderCardBlocksExpanded): ждём, пока карточка загрузится.
+  async function expandOrderBlock(key) {
+    for (let i = 0; i < 60; i++) {
+      const section = document.querySelector(`section[data-block="${key}"]`);
+      const body = section && section.querySelector('.order-block-body');
+      if (body) {
+        body.classList.remove('hidden');
+        const chevron = section.querySelector('.order-block-chevron');
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
   async function fillTrainingCheck() {
     if (!sdekToggleIs('₸')) document.querySelector('#cost-fields-grid .currency-toggle-btn[data-field="sdekCost"]').click();
     fillValue('cost-1', 24000);
@@ -317,7 +333,9 @@
           text: 'Нажми на Клодин Кати (№ TRN105) — посмотрим, как посылка видна в карточке заказа.'
         },
         {
-          target: '#collective-box-stage1', title: 'Посылка в заказе', wait: 12000,
+          // Блок «Доставка» в карточке заказа по умолчанию свёрнут — урок не
+          // находил посылку (отзыв VASY 10.10.2026, шаг 16): раскрываем сами.
+          target: '#collective-box-stage1', title: 'Посылка в заказе', wait: 12000, onEnter: () => expandOrderBlock('delivery'),
           text: 'В карточке заказа видно, в какой он посылке: название, статус, сколько заказов, дата. <b>«Сменить»</b> — перенести в другую (спросит «из «А» в «Б»?»), <b>«Отвязать»</b> — вернуть в «Без коллективки».'
         },
         { target: '#collective-box-stage1 .collective-open-btn', title: '«Открыть»', text: 'Нажми «Открыть» — вернёмся в посылку.', advance: 'click' },
