@@ -445,7 +445,14 @@ window.Screens.payments = {
     // renderClientView() подхватывает и подсвечивает/скроллит один раз, см.
     // scrollToAndHighlightOrder ниже.
     let highlightOrderId = params && params.orderId ? params.orderId : null;
-    let pendingDeepLinkAction = params && params.openPay ? { kind: 'pay', orderId: params.orderId || null }
+    // prefill/prefillNote (Коллективки 2.0 э2, 10.10.2026) — «Занести» из блока
+    // «Оплата СДЭК» коллективки: окно сразу с этапами и суммами (CollectiveSdek.parsePrefill).
+    let pendingDeepLinkAction = params && params.openPay ? {
+      kind: 'pay', orderId: params.orderId || null,
+      preset: params.prefill && window.CollectiveSdek
+        ? { allocations: window.CollectiveSdek.parsePrefill(params.prefill), note: params.prefillNote || '' }
+        : undefined
+    }
       : (params && params.remind ? { kind: 'remind' } : null);
     if (params && params.telegramId) {
       const openClient = (name, username) => {
@@ -899,7 +906,7 @@ window.Screens.payments = {
       if (pendingDeepLinkAction) {
         const action = pendingDeepLinkAction;
         pendingDeepLinkAction = null;
-        if (action.kind === 'pay') openRecordPaymentModal(action.orderId || null);
+        if (action.kind === 'pay') openRecordPaymentModal(action.orderId || null, action.preset);
         else if (action.kind === 'remind') openReminderModal();
       }
     }
@@ -1538,6 +1545,29 @@ window.Screens.payments = {
         rpAmount.value = preset.amount.toFixed(2);
         redistributeAuto();
         renderAllocRows();
+      }
+      // Коллективки 2.0 э2 — пришли из «Оплата СДЭК»: этапы и суммы уже выбраны
+      // (не больше свободного остатка этапа), менеджер проверяет и сохраняет.
+      if (preset && preset.allocations) {
+        const rows = [];
+        for (const a of preset.allocations) {
+          const opt = rpOptions.find((o) => o.orderId === a.orderId && o.stage === a.stage);
+          if (opt) rows.push({ key: optionKey(opt), amount: Math.round(Math.min(a.amount, opt.free) * 100) / 100, manual: false });
+        }
+        if (rows.length > 0) {
+          // Не «ручные»: поправил сумму (клиент прислал меньше) — строки
+          // разложатся заново по очереди, остаток этапов останется открытым.
+          rpAllocs = rows;
+          rpAmount.value = rows.reduce((sum, r) => sum + r.amount, 0).toFixed(2);
+          redistributeAuto();
+          renderAllocRows();
+        }
+        if (preset.note) rpNote.value = preset.note;
+        const missed = preset.allocations.length - rows.length;
+        if (missed > 0) {
+          rpError.textContent = `Часть этапов уже оплачена или цена изменилась — не подставлено: ${missed}. Проверьте суммы.`;
+          rpError.classList.remove('hidden');
+        }
       }
       rpModal.classList.remove('hidden');
       rpModal.classList.add('flex');

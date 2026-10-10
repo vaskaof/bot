@@ -83,6 +83,16 @@ window.Screens.collectiveDetail = {
         <div id="load-error" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-2xl p-4"></div>
 
         <div id="screen-body" class="hidden space-y-3">
+          <!-- Коллективки 2.0 э2 (10.10.2026): «Что осталось сделать» — 7 шагов,
+               у каждого галочка/число и кнопка к действию (CollectiveSdek.checklistSteps). -->
+          <div id="todo-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-gray-900">Что осталось сделать</span>
+              <span id="todo-progress" class="text-[11px] text-gray-400"></span>
+            </div>
+            <div id="todo-steps" class="mt-1 divide-y divide-gray-50"></div>
+          </div>
+
           <!-- Детали + итоги в шапке -->
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <div class="flex items-center justify-between mb-1">
@@ -146,6 +156,19 @@ window.Screens.collectiveDetail = {
             <button type="button" id="apply-costs-btn" disabled class="w-full mt-2 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Применить расход в заказы${helpIcon('Что это делает', '<p>Берёт факт. расход, посчитанный по коэффициентам (долям) заказов, и записывает его прямо в поле «Стоимость доставки» каждого заказа — даже там, где предварительной стоимости ещё не было.</p><p>Это МЕНЯЕТ сумму к оплате клиентом за это плечо доставки, даже если поле уже было заполнено раньше — расчёт с клиентом пересматривается по факту.</p>')}</button>
           </div>
 
+          <!-- Коллективки 2.0 э2: «Оплата СДЭК» по клиентам — только чтение +
+               переходы («Занести»/«Напомнить» — в «Оплаты»), «Внести цену» и
+               «Без СДЭК» — только открытым заказам без цены. -->
+          <div id="sdek-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 transition-shadow">
+            <div class="flex items-center gap-1">
+              <span class="text-sm font-semibold text-gray-900" id="sdek-title">Оплата СДЭК</span>${helpIcon('Оплата СДЭК', '<p>Сколько каждый клиент должен за доставку этой посылки, сколько уже внёс и сколько осталось. Считается только выставленная цена — прогноз ещё не долг.</p><p><b>Занести</b> — откроет «Оплаты» с уже заполненным окном: клиент, сумма и СДЭК его заказов. Проверьте и сохраните.</p><p><b>Внести цену по чеку</b> — разложит чек коллективки по долям только на заказы без цены. Уже выставленные и оплаченные цены не меняются.</p><p><b>Без СДЭК</b> — цена 0 ₽, если заказ правда едет без СДЭК. Клиентские заказы платят СДЭК по весу — это исключение.</p>')}
+            </div>
+            <div id="sdek-totals" class="grid grid-cols-3 gap-2 mt-2 text-center"></div>
+            <div id="sdek-unpriced" class="hidden mt-3 rounded-xl bg-amber-50 border border-amber-100 p-3"></div>
+            <div id="sdek-clients" class="mt-3 space-y-2"></div>
+            <button type="button" id="sdek-show-rest" class="hidden w-full mt-2 py-2 text-xs font-medium text-gray-500"></button>
+          </div>
+
           <!-- Добавить заказ -->
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <label class="text-xs font-medium text-gray-500">Добавить заказ</label>
@@ -195,11 +218,12 @@ window.Screens.collectiveDetail = {
       <div id="apply-costs-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-            <h2 class="text-base font-semibold text-gray-900">Применить расход в заказы</h2>
+            <h2 class="text-base font-semibold text-gray-900" id="apply-costs-title">Применить расход в заказы</h2>
             <button type="button" id="apply-costs-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
+          <div id="apply-costs-hint" class="hidden px-4 pt-3 text-[12px] text-gray-500"></div>
           <div class="p-4 overflow-y-auto custom-scrollbar" id="apply-costs-list"></div>
           <div class="p-4 border-t border-gray-100 space-y-2 shrink-0">
             <label class="flex items-center gap-2 text-sm text-gray-600">
@@ -210,6 +234,34 @@ window.Screens.collectiveDetail = {
             <div class="flex gap-2">
               <button type="button" id="apply-costs-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
               <button type="button" id="apply-costs-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Коллективки 2.0 э2: заказы ещё не у посредника — уехали / вернуть в пул -->
+      <div id="send-check-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900" id="send-check-title">Не все заказы у посредника</h2>
+            <button type="button" id="send-check-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div class="p-4 overflow-y-auto custom-scrollbar">
+            <p id="send-check-text" class="text-sm text-gray-600"></p>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+              <button type="button" id="send-check-all-went" class="py-2 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-medium"></button>
+              <button type="button" id="send-check-all-pool" class="py-2 rounded-xl border border-amber-200 text-amber-700 text-xs font-medium">Все — в пул</button>
+            </div>
+            <div id="send-check-list" class="mt-3 divide-y divide-gray-100"></div>
+            <div id="send-check-money" class="hidden mt-3 text-xs text-amber-800 bg-amber-50 rounded-lg p-2.5"></div>
+          </div>
+          <div class="p-4 border-t border-gray-100 space-y-2 shrink-0">
+            <div id="send-check-hint" class="text-[11px] text-gray-400"></div>
+            <div class="flex gap-2">
+              <button type="button" id="send-check-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+              <button type="button" id="send-check-confirm" disabled class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40">Продолжить</button>
             </div>
           </div>
         </div>
@@ -249,11 +301,14 @@ window.Screens.collectiveDetail = {
 
     async function loadAll() {
       try {
-        const [d, logistics] = await Promise.all([
+        const [d, logistics, sdek] = await Promise.all([
           callServer('getCollectiveDetails', collectiveId),
-          callServer('getCollectiveLogisticsContext', collectiveId)
+          callServer('getCollectiveLogisticsContext', collectiveId),
+          // Коллективки 2.0 э2 — сбой не роняет экран, блоки просто скрыты.
+          callServer('getCollectiveSdekPayments', collectiveId).catch(() => null)
         ]);
         details = d;
+        sdekData = sdek;
         actualCosts = logistics.actualLogisticsCosts || { sdekCost: 0, taxiKzCost: 0, taxiRfCost: 0 };
         // logistics.orders — те же объекты, что details.orders, плюс
         // alreadyEstimated/units (см. financeService.getCollectiveLogisticsContext) —
@@ -264,6 +319,8 @@ window.Screens.collectiveDetail = {
         renderDetailsCard();
         await renderCostFields();
         renderOrderList();
+        renderTodo();
+        renderSdek();
         loadErrorEl.classList.add('hidden');
         bodyEl.classList.remove('hidden');
         if (window.lucide) window.lucide.createIcons();
@@ -273,6 +330,344 @@ window.Screens.collectiveDetail = {
         bodyEl.classList.add('hidden');
       }
     }
+
+    // --- Коллективки 2.0 э2 (10.10.2026): «Что осталось сделать» + «Оплата СДЭК» ---
+
+    let sdekData = null; // getCollectiveSdekPayments; null — не загрузилось, блоки скрыты
+
+    async function refreshSdek() {
+      try {
+        sdekData = await callServer('getCollectiveSdekPayments', collectiveId);
+      } catch (error) {
+        sdekData = null;
+      }
+      renderTodo();
+      renderSdek();
+    }
+
+    function renderTodo() {
+      const card = document.getElementById('todo-card');
+      if (!sdekData || !details) { card.classList.add('hidden'); return; }
+      const steps = CollectiveSdek.checklistSteps(sdekData.progress, {
+        stage: details.stage, status: details.status, trackNumber: details.trackNumber, sentAt: details.sentAt
+      });
+      const doneCount = steps.filter((st) => st.done).length;
+      document.getElementById('todo-progress').textContent = `сделано ${doneCount} из ${steps.length}`;
+      document.getElementById('todo-steps').innerHTML = steps.map((st) => `
+        <div class="flex items-center gap-2 py-1.5" data-todo-step="${st.key}" data-done="${st.done ? '1' : '0'}">
+          <i data-lucide="${st.done ? 'check-circle-2' : 'circle'}" class="w-4 h-4 shrink-0 ${st.done ? 'text-emerald-500' : 'text-amber-500'}"></i>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm ${st.done ? 'text-gray-400' : 'text-gray-800'}">${escapeHtmlClient(st.label)}</div>
+            ${st.detail ? `<div class="text-[11px] ${st.done ? 'text-gray-400' : 'text-amber-700'}">${escapeHtmlClient(st.detail)}</div>` : ''}
+          </div>
+          ${st.action ? `<button type="button" data-todo-action="${st.action}" class="shrink-0 text-[11px] font-medium text-indigo-600 px-2.5 py-1.5 rounded-lg border border-indigo-100">${escapeHtmlClient(st.actionLabel)}</button>` : ''}
+        </div>`).join('');
+      card.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function flashEl(el) {
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-amber-300');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-amber-300'), 1600);
+    }
+
+    function focusInput(el) {
+      flashEl(el);
+      const input = el && (el.matches('input,select') ? el : el.querySelector('input,select'));
+      if (input) input.focus({ preventScroll: true });
+    }
+
+    const statusIndex = (status) => (CollectiveSdek.STATUSES_BY_STAGE[details.stage] || CollectiveSdek.STATUSES_BY_STAGE['КЗ→РФ']).indexOf(status);
+
+    async function mappedDeliveryStatus(collectiveStatus) {
+      try {
+        const config = await ensureAutomationConfig();
+        const rule = config.statusMap.find((r) => r.stage === details.stage && r.collectiveStatus === collectiveStatus);
+        return rule ? rule.deliveryStatus : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    async function returnToPool(ids) {
+      const result = await callServer('unassignOrdersFromCollective', ids, details.stage);
+      if (result.failed.length > 0) showSaveToast(false, `Вернули в пул: ${result.removed.length}, не получилось: ${result.failed.length} — ${result.failed[0].reason}`);
+      else showSaveToast(true, `Вернули в пул: ${result.removed.length}. Они во вкладке «Без коллективки».`);
+      return result;
+    }
+
+    document.getElementById('todo-steps').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-todo-action]');
+      if (!btn || btn.disabled) return;
+      const action = btn.dataset.todoAction;
+      if (action === 'focus-sent') focusInput(document.getElementById(details.trackNumber ? 'detail-sent-at' : 'detail-track'));
+      else if (action === 'focus-status') focusInput(document.getElementById('detail-status'));
+      else if (action === 'focus-costs') focusInput(document.getElementById('cost-fields-grid'));
+      else if (action === 'to-sdek') flashEl(document.getElementById('sdek-card'));
+      else if (action === 'catch-up') {
+        const behind = sdekData.behindOrders || [];
+        if (behind.length === 0 || !(await guardUnsavedBeforeReload())) return;
+        const target = behind[0].targetStatus;
+        deliveryStatusModal.open(behind.map((b) => b.orderId), {
+          presetStatus: target,
+          presetNotify: false,
+          autoNote: `Догнать коллективку: заказов ${behind.length} → «${target}». Клиентам по умолчанию не сообщаем.`
+        });
+      } else if (action === 'not-at-broker') {
+        const list = sdekData.notAtBrokerOrders || [];
+        if (list.length === 0 || !(await guardUnsavedBeforeReload())) return;
+        const choice = await openSendCheck(list, { mode: statusIndex(details.status) >= 1 ? 'sent' : 'forming' });
+        if (!choice) return;
+        btn.disabled = true;
+        try {
+          if (choice.pool.length > 0) await returnToPool(choice.pool);
+          if (choice.went.length > 0 && statusIndex(details.status) >= 1) {
+            const target = await mappedDeliveryStatus(details.status);
+            if (target) {
+              deliveryStatusModal.open(choice.went, {
+                presetStatus: target,
+                presetNotify: false,
+                autoNote: `Уехали с коллективкой: заказов ${choice.went.length} → «${target}». Клиентам по умолчанию не сообщаем.`
+              });
+            }
+          }
+          await loadAll();
+        } catch (error) {
+          showSaveToast(false, 'Не удалось вернуть в пул: ' + error.message);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    });
+
+    // Окно «ещё не у посредника»: по каждому заказу «уехал/оставить» или «в
+    // пул», «Продолжить» — когда выбрано по всем. mode: 'send' — сейчас
+    // отправляют, 'sent' — уже отправлена, 'forming' — ещё формируется.
+    // Возвращает {went, pool} или null (отмена).
+    function openSendCheck(list, { mode }) {
+      const modal = document.getElementById('send-check-modal');
+      const listEl = document.getElementById('send-check-list');
+      const confirmBtn = document.getElementById('send-check-confirm');
+      const moneyEl = document.getElementById('send-check-money');
+      const stayLabel = mode === 'forming' ? 'Оставить' : 'Уехал';
+      const choices = new Map(); // orderId -> 'went'|'pool'
+
+      document.getElementById('send-check-title').textContent = `Ещё не у посредника: ${list.length}`;
+      document.getElementById('send-check-text').textContent = mode === 'forming'
+        ? 'По статусу эти заказы ещё не у посредника. Оставить их в коллективке или вернуть в пул до следующей посылки?'
+        : (mode === 'send'
+          ? 'Коллективка уезжает, а эти заказы по статусу ещё не у посредника. Они уехали этой посылкой или ждут следующей?'
+          : 'Коллективка уже отправлена, а эти заказы по статусу ещё не у посредника. Они уехали этой посылкой или ждут следующей?');
+      document.getElementById('send-check-all-went').textContent = mode === 'forming' ? 'Все оставить' : 'Все уехали';
+      document.getElementById('send-check-hint').textContent = '«В пул» — заказ уходит из коллективки во вкладку «Без коллективки», деньги и статус не меняются.';
+
+      function renderRows() {
+        listEl.innerHTML = list.map((o) => {
+          const c = choices.get(o.orderId);
+          const chip = (value, label, active) => `<button type="button" data-send-choice="${value}" data-order-id="${escapeHtmlClient(o.orderId)}" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border ${active ? (value === 'pool' ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-indigo-100 border-indigo-300 text-indigo-700') : 'border-gray-200 text-gray-500'}">${label}</button>`;
+          return `
+            <div class="flex items-center gap-2 py-2" data-send-row="${escapeHtmlClient(o.orderId)}">
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-gray-800 truncate">${escapeHtmlClient(o.productDisplay)} <span class="text-gray-400 text-[11px]">№ ${escapeHtmlClient(o.orderId)}</span></div>
+                <div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(o.clientDisplay || '')} · ${escapeHtmlClient(o.statusDelivery || '')}</div>
+              </div>
+              ${chip('went', stayLabel, c === 'went')}${chip('pool', 'В пул', c === 'pool')}
+            </div>`;
+        }).join('');
+        confirmBtn.disabled = choices.size < list.length;
+        // Сбор на плечо не записан — предупреждение, не запрет (только при отправке).
+        if (mode === 'send' && sdekData) {
+          const pooled = new Set([...choices.entries()].filter(([, v]) => v === 'pool').map(([k]) => k));
+          const staying = new Set(orders.map((o) => o.orderId).filter((id) => !pooled.has(id)));
+          const names = CollectiveSdek.clientsWithoutSdekMoney(sdekData, staying);
+          moneyEl.classList.toggle('hidden', names.length === 0);
+          moneyEl.textContent = names.length === 0 ? '' : `На ${CollectiveSdek.legLabel(details.stage)} ещё ничего не внесено — клиентов: ${names.length} (${names.slice(0, 5).join(', ')}${names.length > 5 ? ' и другие' : ''}). Это не запрет — просто проверьте, собраны ли деньги.`;
+        } else {
+          moneyEl.classList.add('hidden');
+        }
+      }
+
+      return new Promise((resolve) => {
+        const close = (result) => {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+          listEl.removeEventListener('click', onListClick);
+          document.getElementById('send-check-all-went').onclick = null;
+          document.getElementById('send-check-all-pool').onclick = null;
+          document.getElementById('send-check-close').onclick = null;
+          document.getElementById('send-check-cancel').onclick = null;
+          confirmBtn.onclick = null;
+          resolve(result);
+        };
+        const onListClick = (e) => {
+          const b = e.target.closest('[data-send-choice]');
+          if (!b) return;
+          choices.set(b.dataset.orderId, b.dataset.sendChoice);
+          renderRows();
+        };
+        listEl.addEventListener('click', onListClick);
+        document.getElementById('send-check-all-went').onclick = () => { list.forEach((o) => choices.set(o.orderId, 'went')); renderRows(); };
+        document.getElementById('send-check-all-pool').onclick = () => { list.forEach((o) => choices.set(o.orderId, 'pool')); renderRows(); };
+        document.getElementById('send-check-close').onclick = () => close(null);
+        document.getElementById('send-check-cancel').onclick = () => close(null);
+        confirmBtn.onclick = () => {
+          if (confirmBtn.disabled) return;
+          const went = [];
+          const pool = [];
+          for (const o of list) (choices.get(o.orderId) === 'pool' ? pool : went).push(o.orderId);
+          close({ went, pool });
+        };
+        renderRows();
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        if (window.lucide) window.lucide.createIcons();
+      });
+    }
+
+    let sdekShowRest = false;
+
+    function isUnpricedOpen(o) {
+      return !o.isClosed && (o.priceState === 'missing' || o.priceState === 'forecast');
+    }
+
+    function sdekOrderLine(o) {
+      const rub = CollectiveSdek.rub;
+      const paidPart = o.paid > 0.01 ? ` · внесено ${rub(o.paid)}` : '';
+      let state;
+      if (o.priceState === 'priced') {
+        state = o.remaining > 0.01
+          ? `${rub(o.target)} · внесено ${rub(o.paid)} · <span class="text-red-600">осталось ${rub(o.remaining)}</span>`
+          : `${rub(o.target)} · <span class="text-emerald-600">оплачено</span>`;
+      } else if (o.priceState === 'forecast') {
+        state = `<span class="text-amber-700">прогноз ${rub(o.target)}, цена не выставлена</span>${paidPart}`;
+      } else if (o.priceState === 'exempt') {
+        state = `<span class="text-gray-400">${o.statusDelivery === 'возврат средств' ? 'возврат средств' : 'получен без цены — не трогаем'}</span>`;
+      } else {
+        state = `<span class="text-amber-700">цена не выставлена</span>${paidPart}`;
+      }
+      const noSdekBtn = isUnpricedOpen(o) && details.stage === 'КЗ→РФ'
+        ? `<button type="button" data-sdek-action="no-sdek" data-order-id="${escapeHtmlClient(o.orderId)}" class="shrink-0 text-[11px] font-medium text-gray-500 px-2 py-1 rounded-lg border border-gray-200">Без СДЭК</button>`
+        : '';
+      return `
+        <div class="flex items-center gap-2 py-1 text-[12px]" data-sdek-order="${escapeHtmlClient(o.orderId)}">
+          <div class="min-w-0 flex-1">
+            <div class="text-gray-700 truncate">${escapeHtmlClient(o.productDisplay)} <span class="text-gray-400">№ ${escapeHtmlClient(o.orderId)}</span></div>
+            <div class="text-gray-500">${state}</div>
+          </div>
+          ${noSdekBtn}
+        </div>`;
+    }
+
+    function sdekClientCard(c, index) {
+      const rub = CollectiveSdek.rub;
+      const owes = c.remainingSum > 0.01;
+      const right = owes ? `<span class="text-red-600">${rub(c.remainingSum)}</span>`
+        : (c.priceMissingCount > 0 ? '<span class="text-amber-700">без цены</span>' : '<span class="text-emerald-600">оплачено</span>');
+      const actions = !owes ? ''
+        : (c.clientTelegramId
+          ? `<div class="flex gap-2 mt-2">
+              <button type="button" data-sdek-action="pay" data-client-index="${index}" class="flex-1 py-2 rounded-xl bg-indigo-50 text-xs font-medium text-indigo-600">Занести</button>
+              <button type="button" data-sdek-action="remind" data-client-index="${index}" class="flex-1 py-2 rounded-xl border border-indigo-100 text-xs font-medium text-indigo-600">Напомнить</button>
+            </div>`
+          : '<div class="text-[11px] text-gray-400 mt-2">Клиент без Telegram — оплату заносите в «Оплатах».</div>');
+      return `
+        <div class="rounded-xl border border-gray-100 p-3" data-sdek-client="${index}">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(c.clientDisplay)}</div>
+              <div class="text-[11px] text-gray-400">заказов: ${c.orders.length}${c.priceMissingCount > 0 ? ` · без цены: ${c.priceMissingCount}` : ''}</div>
+            </div>
+            <div class="shrink-0 text-sm font-semibold">${right}</div>
+          </div>
+          <div class="mt-1 divide-y divide-gray-50">${c.orders.map(sdekOrderLine).join('')}</div>
+          ${actions}
+        </div>`;
+    }
+
+    function renderSdek() {
+      const card = document.getElementById('sdek-card');
+      if (!sdekData || !details) { card.classList.add('hidden'); return; }
+      const rub = CollectiveSdek.rub;
+      const leg = CollectiveSdek.legLabel(details.stage);
+      document.getElementById('sdek-title').textContent = `Оплата ${leg}`;
+      const t = sdekData.totals;
+      document.getElementById('sdek-totals').innerHTML = `
+        <div><div class="text-sm font-semibold text-gray-900">${rub(t.targetSum)}</div><div class="text-[10px] text-gray-400">цена у клиентов</div></div>
+        <div><div class="text-sm font-semibold text-emerald-600">${rub(t.paidSum)}</div><div class="text-[10px] text-gray-400">внесено</div></div>
+        <div><div class="text-sm font-semibold ${t.remainingSum > 0.01 ? 'text-red-600' : 'text-gray-900'}">${rub(t.remainingSum)}</div><div class="text-[10px] text-gray-400">осталось</div></div>`;
+
+      const unpriced = sdekData.clients.flatMap((c) => c.orders).filter(isUnpricedOpen);
+      const unpricedEl = document.getElementById('sdek-unpriced');
+      unpricedEl.classList.toggle('hidden', unpriced.length === 0);
+      unpricedEl.innerHTML = unpriced.length === 0 ? '' : `
+        <div class="text-sm font-medium text-amber-900">Цена ${leg} не выставлена: ${unpriced.length}</div>
+        <div class="text-[11px] text-amber-800 mt-0.5">Клиентские заказы платят ${leg} по весу. «Внести цену по чеку» разложит чек коллективки по долям только на эти заказы — уже выставленные и оплаченные цены не меняются.</div>
+        <button type="button" data-sdek-action="price-unpriced" class="w-full mt-2 py-2 rounded-xl bg-white border border-amber-200 text-amber-900 text-xs font-medium">Внести цену по чеку</button>`;
+
+      const indexed = sdekData.clients.map((c, i) => ({ c, i }));
+      const attention = indexed.filter(({ c }) => c.remainingSum > 0.01 || c.priceMissingCount > 0);
+      const rest = indexed.filter(({ c }) => !(c.remainingSum > 0.01 || c.priceMissingCount > 0));
+      const shown = sdekShowRest ? attention.concat(rest) : attention;
+      document.getElementById('sdek-clients').innerHTML = shown.length > 0
+        ? shown.map(({ c, i }) => sdekClientCard(c, i)).join('')
+        : '<div class="text-xs text-gray-400 text-center py-2">Нечего собирать.</div>';
+      const restBtn = document.getElementById('sdek-show-rest');
+      restBtn.classList.toggle('hidden', rest.length === 0);
+      restBtn.textContent = sdekShowRest ? 'Скрыть оплативших' : `Показать оплативших — клиентов: ${rest.length}`;
+      card.classList.remove('hidden');
+    }
+
+    document.getElementById('sdek-show-rest').addEventListener('click', () => {
+      sdekShowRest = !sdekShowRest;
+      renderSdek();
+    });
+
+    document.getElementById('sdek-card').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-sdek-action]');
+      if (!btn || btn.disabled) return;
+      const action = btn.dataset.sdekAction;
+      if (action === 'pay' || action === 'remind') {
+        const c = sdekData.clients[parseInt(btn.dataset.clientIndex, 10)];
+        if (!c || !(await guardUnsavedBeforeReload())) return;
+        const base = { telegramId: c.clientTelegramId, name: c.clientName || '', username: c.clientUsername || '' };
+        if (action === 'remind') {
+          navigateTo('payments', { ...base, remind: '1' });
+        } else {
+          const allocs = CollectiveSdek.prefillForClient(c);
+          navigateTo('payments', {
+            ...base, openPay: '1', orderId: allocs.length > 0 ? allocs[0].orderId : '',
+            prefill: JSON.stringify(allocs),
+            prefillNote: `${CollectiveSdek.legLabel(details.stage)}, коллективка «${details.name || collectiveId}»`
+          });
+        }
+      } else if (action === 'price-unpriced') {
+        await openApplyCosts('unpriced', btn);
+      } else if (action === 'no-sdek') {
+        const orderId = btn.dataset.orderId;
+        const o = sdekData.clients.flatMap((c) => c.orders).find((x) => x.orderId === orderId);
+        if (!o) return;
+        const before = o.priceState === 'forecast' ? `прогноз ${CollectiveSdek.rub(o.target)}` : 'не выставлена';
+        const paidNote = o.paid > 0.01 ? `\n\nУже внесено на СДЭК ${CollectiveSdek.rub(o.paid)} — эти деньги вернутся в остаток клиента.` : '';
+        const ok = await showConfirmModal(
+          `Заказ № ${orderId} «${o.productDisplay}»\n\nЦена СДЭК: ${before} → станет 0 ₽ (подтверждённая).${paidNote}\n\nКлиентские заказы платят СДЭК по весу — «Без СДЭК» только если заказ правда едет без СДЭК.`,
+          { confirmLabel: 'Поставить 0 ₽' }
+        );
+        if (!ok) return;
+        btn.disabled = true;
+        try {
+          const result = await callServer('markCollectiveOrdersNoSdek', collectiveId, [orderId]);
+          if (result.failed.length > 0) showSaveToast(false, 'Не получилось: ' + result.failed[0].reason);
+          else showSaveToast(true, `Заказ № ${orderId}: СДЭК 0 ₽.`);
+          await loadAll();
+        } catch (error) {
+          showSaveToast(false, 'Не удалось записать: ' + error.message);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    });
 
     // --- Детали коллективки ---
 
@@ -378,6 +773,31 @@ window.Screens.collectiveDetail = {
         if (!confirmed) return null;
       }
 
+      // Коллективки 2.0 э2 — коллективка уезжает, а часть заказов по статусу
+      // ещё не у посредника: уехали этой посылкой или вернуть в пул.
+      let pooledIds = [];
+      if (status !== previousStatus && CollectiveSdek.isSendTransition(details.stage, previousStatus, status)) {
+        const notAtBroker = (sdekData && sdekData.notAtBrokerOrders) || [];
+        if (notAtBroker.length > 0) {
+          const choice = await openSendCheck(notAtBroker, { mode: 'send' });
+          if (!choice) {
+            document.getElementById('detail-status').value = previousStatus;
+            return null;
+          }
+          if (choice.pool.length > 0) {
+            try {
+              await returnToPool(choice.pool);
+            } catch (error) {
+              detailErrorText.textContent = 'Не удалось вернуть в пул: ' + error.message;
+              detailErrorText.classList.remove('hidden');
+              return false;
+            }
+            orders = orders.filter((o) => !choice.pool.includes(o.orderId));
+            pooledIds = choice.pool;
+          }
+        }
+      }
+
       try {
         await callServer('updateCollective', collectiveId, { name, trackNumber, status });
         details.name = name;
@@ -398,6 +818,8 @@ window.Screens.collectiveDetail = {
         }
 
         if (triggerAutomation && status !== previousStatus) await maybeTriggerStatusAutomation(status);
+        if (pooledIds.length > 0) await loadAll();
+        else refreshSdek();
         return true;
       } catch (error) {
         detailErrorText.textContent = error.message;
@@ -1234,6 +1656,32 @@ window.Screens.collectiveDetail = {
       return o ? `${o.productDisplay} (${o.orderId})` : orderId;
     }
 
+    // Коллективки 2.0 э2: 'all' — кнопка «Применить расход в заказы» (как было),
+    // 'unpriced' — «Внести цену по чеку» из «Оплаты СДЭК» (только открытые без цены).
+    let applyCostsMode = 'all';
+
+    async function openApplyCosts(mode, triggerBtn) {
+      if (!(await warnIfCostFieldsDirty())) return;
+      triggerBtn.disabled = true;
+      try {
+        const preview = await callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId, { onlyUnpriced: mode === 'unpriced' });
+        if (preview.length === 0) {
+          showSaveToast(true, mode === 'unpriced' ? 'Заказов без цены нет.' : 'Заказов нет.');
+          return;
+        }
+        applyCostsMode = mode;
+        document.getElementById('apply-costs-title').textContent = mode === 'unpriced' ? 'Внести цену по чеку' : 'Применить расход в заказы';
+        const hint = document.getElementById('apply-costs-hint');
+        hint.textContent = mode === 'unpriced' ? 'Только заказы без цены, которые ещё не у клиента. Остальные заказы не меняются.' : '';
+        hint.classList.toggle('hidden', mode !== 'unpriced');
+        openApplyCostsModal(preview);
+      } catch (error) {
+        showSaveToast(false, 'Не удалось построить предпросмотр: ' + error.message);
+      } finally {
+        triggerBtn.disabled = false;
+      }
+    }
+
     function openApplyCostsModal(preview) {
       applyCostsNotify.checked = false;
       applyCostsWarning.classList.add('hidden');
@@ -1253,19 +1701,7 @@ window.Screens.collectiveDetail = {
 
     applyCostsBtn.addEventListener('click', async () => {
       if (applyCostsBtn.disabled) return;
-      // Незасейвленные факт.-поля — предупредить, тот же гейт, что у любого
-      // другого действия, читающего СОХРАНЁННУЮ сверку (см. warnIfCostFieldsDirty).
-      if (!(await warnIfCostFieldsDirty())) return;
-
-      applyCostsBtn.disabled = true;
-      try {
-        const preview = await callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId);
-        openApplyCostsModal(preview);
-      } catch (error) {
-        showSaveToast(false, 'Не удалось построить предпросмотр: ' + error.message);
-      } finally {
-        applyCostsBtn.disabled = false;
-      }
+      await openApplyCosts('all', applyCostsBtn);
     });
 
     applyCostsConfirmBtn.addEventListener('click', async () => {
@@ -1273,10 +1709,13 @@ window.Screens.collectiveDetail = {
       applyCostsConfirmBtn.disabled = true;
       applyCostsWarning.classList.add('hidden');
       try {
-        const result = await callServer('applyCollectiveLogisticsSharesToOrders', collectiveId, { notifyClients: applyCostsNotify.checked });
+        const result = await callServer('applyCollectiveLogisticsSharesToOrders', collectiveId, {
+          notifyClients: applyCostsNotify.checked, onlyUnpriced: applyCostsMode === 'unpriced'
+        });
         closeApplyCostsModal();
         if (result.failed.length > 0) showSaveToast(false, `Применено к ${result.applied.length}, не удалось для ${result.failed.length}.`);
         else showSaveToast(true, `Применено к ${result.applied.length} заказ(ам).`);
+        refreshSdek();
       } catch (error) {
         applyCostsWarning.textContent = error.message;
         applyCostsWarning.classList.remove('hidden');

@@ -526,6 +526,51 @@
       return { orders: list, actualLogisticsCosts: { ...NO_COSTS }, summary: collectiveSummary(list) };
     },
     searchOrdersForCollective: () => [],
+    // Коллективки 2.0 э2 (10.10.2026) — «Что осталось сделать» и «Оплата СДЭК» учебной коллективки.
+    getCollectiveSdekPayments: (id) => {
+      const def = COLLECTIVE_DEFS.find((c) => c.id === id);
+      if (!def) return undefined;
+      const paymentStage = def.stage === 'По РФ' ? 'Доставка_РФ' : 'СДЭК';
+      const byClient = new Map();
+      for (const o of world.orders.filter((x) => x.def.collective === id)) {
+        const s = o.stagesBalance.find((x) => x.stage === paymentStage) || { target: 0, paid: 0, isForecast: null };
+        const priceState = s.isForecast === false ? 'priced' : (s.isForecast === true ? 'forecast' : 'missing');
+        const key = o.client.telegramId;
+        if (!byClient.has(key)) {
+          byClient.set(key, { clientTelegramId: key, clientName: o.client.name, clientUsername: o.client.username, clientDisplay: display(o.client), orders: [] });
+        }
+        byClient.get(key).orders.push({
+          orderId: o.def.id, productDisplay: o.def.short, statusDelivery: o.def.statusDelivery, position: null, stage: paymentStage,
+          priceState, isClosed: o.def.statusDelivery === 'Получено клиентом', target: s.target, paid: s.paid,
+          remaining: priceState === 'priced' ? Math.max(0, s.target - s.paid) : 0
+        });
+      }
+      const clients = [...byClient.values()].map((c) => {
+        const priced = c.orders.filter((o) => o.priceState === 'priced');
+        return {
+          ...c,
+          targetSum: priced.reduce((a, o) => a + o.target, 0),
+          paidSum: c.orders.reduce((a, o) => a + o.paid, 0),
+          remainingSum: priced.reduce((a, o) => a + o.remaining, 0),
+          priceMissingCount: c.orders.length - priced.length
+        };
+      });
+      const all = clients.flatMap((c) => c.orders);
+      const unpaid = all.filter((o) => o.remaining > 0.01);
+      const totals = {
+        targetSum: clients.reduce((a, c) => a + c.targetSum, 0), paidSum: clients.reduce((a, c) => a + c.paidSum, 0),
+        remainingSum: clients.reduce((a, c) => a + c.remainingSum, 0), unpaidClients: clients.filter((c) => c.remainingSum > 0.01).length,
+        priceMissingCount: clients.reduce((a, c) => a + c.priceMissingCount, 0)
+      };
+      return {
+        collectiveId: id, stage: def.stage, paymentStage, behindOrders: [], notAtBrokerOrders: [], clients, totals,
+        progress: {
+          orderCount: all.length, notAtBrokerCount: 0, sdekPriced: all.length - totals.priceMissingCount, sdekPriceMissing: totals.priceMissingCount,
+          sdekPriceExempt: 0, sdekUnpaid: unpaid.length, sdekUnpaidClients: totals.unpaidClients, sdekRemainingRub: totals.remainingSum,
+          behindCount: 0, reconciled: false, isTerminal: false, done: false
+        }
+      };
+    },
     // Коллективки 2.0 (10.10.2026) — «Без коллективки»: учебные заказы без коллективки.
     getCollectivePool: () => world.orders
       .filter((o) => !o.def.collective && o.def.statusDelivery !== 'Получено клиентом')

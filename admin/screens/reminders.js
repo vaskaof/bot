@@ -131,6 +131,7 @@ window.Screens.reminders = {
 
     let allCards = [];
     let stageTotals = {};
+    let collectiveSummaries = {}; // Коллективки 2.0 э2 — сводка группы коллективки (getTasksBoard)
     let activeTab = tasksBoardState.activeTab;
     let activeStageKey = tasksBoardState.activeStageKey; // вкладка стадии на телефоне; null — первая с задачами
     const expandedGroups = tasksBoardState.expandedGroups; // id коллективок, раскрытых на доске
@@ -250,6 +251,7 @@ window.Screens.reminders = {
         const board = await callServer('getTasksBoard');
         allCards = board.cards;
         stageTotals = board.stageTotals || {};
+        collectiveSummaries = board.collectiveSummaries || {};
         populateChannelFilter();
         render();
         if (restorePending) {
@@ -562,7 +564,7 @@ window.Screens.reminders = {
       const result = [];
       for (const card of filteredCards()) {
         const item = card.items.find(i => i.kind === 'behind_collective' && i.collectiveId === collectiveId);
-        if (item) result.push({ orderId: card.orderId, targetStatus: item.targetStatus });
+        if (item) result.push({ orderId: card.orderId, targetStatus: item.targetStatus, statusPosition: card.statusPosition });
       }
       return result;
     }
@@ -599,25 +601,77 @@ window.Screens.reminders = {
         <div class="mt-2 space-y-0.5 text-[12px] text-gray-700">
           ${[...counts.entries()].map(([label, n]) => `<div>• ${escapeHtmlClient(label)}${n > 1 ? ` <span class="text-gray-400">×${n}</span>` : ''}</div>`).join('')}
         </div>
-        <div class="mt-3 flex items-center gap-2" data-group-actions></div>
+        <div data-group-explain></div>
+        <div class="mt-3 flex flex-wrap items-center gap-2" data-group-actions></div>
         <div data-group-cards class="${expanded ? '' : 'hidden'} mt-3"></div>
       `;
 
       const actionsEl = el.querySelector('[data-group-actions]');
       const behind = behindOrdersOf(collective.id);
+      // Коллективки 2.0 э2 (10.10.2026) — отставание словами + «не уехали — в пул»
+      // + «Оплата СДЭК → открыть». Сводка — только справочно (getTasksBoard).
+      const summary = collectiveSummaries[collective.id] || null;
+      const notAtBroker = behind.filter(b => b.statusPosition !== null && b.statusPosition !== undefined && b.statusPosition < 8);
+      const explain = [];
+      if (behind.length > 0) {
+        const sent = summary && summary.sentAt ? `отправлена ${new Date(summary.sentAt).toLocaleDateString('ru-RU')}` : 'отправлена';
+        explain.push(`Коллективка ${sent}${summary ? `, сейчас «${escapeHtmlClient(summary.status)}»` : ''}, а заказы по статусу отстали: ${behind.length}. Если уехали этой посылкой — догоните статусы.`);
+        if (notAtBroker.length > 0) explain.push(`Ещё не у посредника: ${notAtBroker.length} — если они не уехали, верните их в пул.`);
+      }
+      if (summary && summary.sdekUnpaidClients > 0) {
+        explain.push(`Не оплатили СДЭК — клиентов: ${summary.sdekUnpaidClients}, ${summary.sdekRemainingRub.toLocaleString('ru-RU')} ₽.`);
+      }
+      if (explain.length > 0) {
+        el.querySelector('[data-group-explain]').innerHTML = `<div class="mt-2 rounded-lg bg-violet-50 p-2.5 text-[12px] text-violet-900 space-y-1">${explain.map(t => `<div>${t}</div>`).join('')}</div>`;
+      }
       if (behind.length > 0) {
         const catchUpBtn = document.createElement('button');
         catchUpBtn.type = 'button';
-        catchUpBtn.className = 'catch-up-btn flex-1 py-2 rounded-xl bg-violet-50 text-xs font-medium text-violet-700';
-        catchUpBtn.textContent = `Перевести отставших (${behind.length})`;
+        catchUpBtn.className = 'catch-up-btn flex-1 min-w-[45%] py-2 rounded-xl bg-violet-50 text-xs font-medium text-violet-700';
+        catchUpBtn.textContent = `Все уехали — догнать статусы (${behind.length})`;
         catchUpBtn.addEventListener('click', () => {
           openCatchUp(behind.map(b => b.orderId), behind[0].targetStatus, collective.name);
         });
         actionsEl.appendChild(catchUpBtn);
       }
+      if (notAtBroker.length > 0) {
+        const poolBtn = document.createElement('button');
+        poolBtn.type = 'button';
+        poolBtn.className = 'return-to-pool-btn flex-1 min-w-[45%] py-2 rounded-xl border border-amber-200 text-xs font-medium text-amber-700';
+        poolBtn.textContent = `Не уехали — вернуть в пул (${notAtBroker.length})`;
+        poolBtn.addEventListener('click', async () => {
+          if (poolBtn.disabled) return;
+          const ok = await showConfirmModal(
+            `Вернуть в пул заказы, которые ещё не у посредника (${notAtBroker.length})?
+
+Они уйдут из коллективки «${collective.name}» во вкладку «Без коллективки». Деньги и статус не меняются.`,
+            { confirmLabel: 'Вернуть в пул' }
+          );
+          if (!ok) return;
+          poolBtn.disabled = true;
+          try {
+            const result = await callServer('unassignOrdersFromCollective', notAtBroker.map(b => b.orderId), summary ? summary.stage : undefined);
+            if (result.failed.length > 0) showSaveToast(false, `Вернули в пул: ${result.removed.length}, не получилось: ${result.failed.length} — ${result.failed[0].reason}`);
+            else showSaveToast(true, `Вернули в пул: ${result.removed.length}.`);
+            await loadReminders();
+          } catch (error) {
+            showSaveToast(false, 'Не удалось вернуть в пул: ' + error.message);
+            poolBtn.disabled = false;
+          }
+        });
+        actionsEl.appendChild(poolBtn);
+      }
+      if (summary && summary.sdekUnpaidClients > 0) {
+        const sdekBtn = document.createElement('button');
+        sdekBtn.type = 'button';
+        sdekBtn.className = 'open-sdek-btn flex-1 min-w-[45%] py-2 rounded-xl bg-indigo-50 text-xs font-medium text-indigo-600';
+        sdekBtn.textContent = `Оплата СДЭК — клиентов: ${summary.sdekUnpaidClients} →`;
+        sdekBtn.addEventListener('click', () => navigateTo(`collectives/${encodeURIComponent(collective.id)}`));
+        actionsEl.appendChild(sdekBtn);
+      }
       const toggleBtn = document.createElement('button');
       toggleBtn.type = 'button';
-      toggleBtn.className = 'group-toggle-btn flex-1 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600';
+      toggleBtn.className = 'group-toggle-btn flex-1 min-w-[45%] py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600';
       toggleBtn.textContent = expanded ? 'Свернуть' : 'Показать заказы';
       toggleBtn.addEventListener('click', () => {
         const listEl = el.querySelector('[data-group-cards]');

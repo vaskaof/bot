@@ -1795,14 +1795,18 @@ window.Screens.orderEdit = {
       // из сохранённой разбивки; итог пересчитывается сразу же тем же кодом,
       // что и на ручной ввод (updateDeliveryKzRfTotalDisplay), не полагаемся
       // на details.payments.deliveryKzRf.sum напрямую здесь.
-      taxiKzSumInput.value = details.payments.deliveryKzRf.taxiKz || '';
-      sdekCostSumInput.value = details.payments.deliveryKzRf.sdek || '';
-      taxiRfSumInput.value = details.payments.deliveryKzRf.taxiRf || '';
+      // 0 ₽ — подтверждённая цена («Без СДЭК», Коллективки 2.0 э2, 10.10.2026),
+      // не пусто: раньше `|| ''` показывал пустые поля, и следующее же
+      // «Сохранить» сбрасывало цену этапа обратно в «не выставлена».
+      const amountField = (v) => (v === '' || v === null || v === undefined ? '' : v);
+      taxiKzSumInput.value = amountField(details.payments.deliveryKzRf.taxiKz);
+      sdekCostSumInput.value = amountField(details.payments.deliveryKzRf.sdek);
+      taxiRfSumInput.value = amountField(details.payments.deliveryKzRf.taxiRf);
       updateDeliveryKzRfTotalDisplay();
       // "Доставка по РФ" (Э4, §2.5) — тот же принцип, зеркало 4 строк выше.
-      taxiRfSendSumInput.value = details.payments.deliveryRf.taxiRfSend || '';
-      shippingRfSumInput.value = details.payments.deliveryRf.shippingRf || '';
-      taxiRfReceiveSumInput.value = details.payments.deliveryRf.taxiRfReceive || '';
+      taxiRfSendSumInput.value = amountField(details.payments.deliveryRf.taxiRfSend);
+      shippingRfSumInput.value = amountField(details.payments.deliveryRf.shippingRf);
+      taxiRfReceiveSumInput.value = amountField(details.payments.deliveryRf.taxiRfReceive);
       updateDeliveryRfTotalDisplay();
 
       afterOrderLoaded(details);
