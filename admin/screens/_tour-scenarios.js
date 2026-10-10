@@ -252,6 +252,8 @@
       title: 'Коллективка: собрать и отправить',
       screens: ['orders', 'collectives', 'collectiveDetail', 'orderEdit'],
       momentScreens: ['collectives', 'collectiveDetail'],
+      // С настоящей коллективки («Здесь есть урок») — сначала в учебный список (tour.js enterSandbox).
+      startRoute: 'collectives', startScreens: ['training', 'orders', 'collectives'],
       block: [
         '#collective-picker-create-save', '#create-collective-save', '#pool-cancel-btn',
         '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#apply-costs-confirm', '#detail-delete-btn',
@@ -370,6 +372,8 @@
       title: 'Собрать на СДЭК заранее',
       screens: ['orders', 'collectives', 'collectiveDetail', 'payments'],
       momentScreens: ['collectiveDetail'],
+      // С настоящей коллективки («Здесь есть урок») — сначала в учебный список (tour.js enterSandbox).
+      startRoute: 'collectives', startScreens: ['training', 'orders', 'collectives'],
       block: [
         '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#detail-delete-btn', '.units-slider', '#detail-order-dropdown > *',
         '[data-todo-action]', '[data-sdek-action="no-sdek"]', '[data-sdek-action="remind"]', '#select-mode-btn', '.unassign-order-btn',

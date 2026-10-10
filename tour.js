@@ -741,6 +741,14 @@
   function enterSandbox(scenario) {
     if (scenario.sandbox === false || !window.TrainingSandbox) return;
     window.TrainingSandbox.activate();
+    // Урок запущен с экрана, которого нет в учебном примере (например, «Здесь
+    // есть урок» на НАСТОЯЩЕЙ коллективке): там остались бы настоящие данные под
+    // плашкой «Учебный пример», и урок не находил бы свои шаги (отзыв VASY
+    // 10.10.2026). Такой урок начинается со своего экрана — `startRoute`.
+    if (scenario.startRoute && scenario.startScreens && !scenario.startScreens.includes(currentScreen()) && typeof navigateTo === 'function') {
+      navigateTo(scenario.startRoute);
+      return;
+    }
     if (currentScreen() !== host().home) window.dispatchEvent(new HashChangeEvent('hashchange'));
   }
 
