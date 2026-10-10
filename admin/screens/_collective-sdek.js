@@ -80,14 +80,31 @@ function collectiveChecklistSteps(progress, head) {
 
 /**
  * Что подставить в «Занести оплату» по клиенту: каждый его заказ с
- * подтверждённой ценой и остатком — этап плеча на остаток.
- * @param {{orders:{orderId:string, stage:string, priceState:string, remaining:number}[]}} client
+ * подтверждённой ценой и остатком — этап плеча на остаток; с прогнозом
+ * («Сбор на СДЭК», этап 3) — на «прогноз − внесено».
+ * @param {{orders:{orderId:string, stage:string, priceState:string, remaining:number, forecastRemaining?:number}[]}} client
  * @returns {{orderId:string, stage:string, amount:number}[]}
  */
 function collectiveSdekPrefill(client) {
+  const toCollect = (o) => (o.priceState === 'priced' ? o.remaining : (o.priceState === 'forecast' ? (o.forecastRemaining || 0) : 0));
   return ((client && client.orders) || [])
-    .filter((o) => o.priceState === 'priced' && o.remaining > 0.01)
-    .map((o) => ({ orderId: o.orderId, stage: o.stage, amount: Math.round(o.remaining * 100) / 100 }));
+    .filter((o) => !o.isClosed && toCollect(o) > 0.01)
+    .map((o) => ({ orderId: o.orderId, stage: o.stage, amount: Math.round(toCollect(o) * 100) / 100 }));
+}
+
+/**
+ * Итог «Сбора на СДЭК»: «Собрано X из ≈N · не внесли: K клиентов». null —
+ * ожидаемая сумма не задана.
+ * @param {{paidSum:number, notCollectedClients?:number}} totals
+ * @param {{rub:number}|null} sdekForecast
+ * @returns {string|null}
+ */
+function collectiveForecastSummary(totals, sdekForecast) {
+  if (!sdekForecast || !(sdekForecast.rub > 0)) return null;
+  const t = totals || {};
+  const k = t.notCollectedClients || 0;
+  return `Собрано ${collectiveRub(t.paidSum)} из ≈${collectiveRub(sdekForecast.rub)}`
+    + (k > 0 ? ` · не внесли клиентов: ${k}` : ' · внесли все');
 }
 
 /**
@@ -143,6 +160,7 @@ window.CollectiveSdek = {
   rub: collectiveRub,
   checklistSteps: collectiveChecklistSteps,
   prefillForClient: collectiveSdekPrefill,
+  forecastSummary: collectiveForecastSummary,
   parsePrefill: parseSdekPrefill,
   isSendTransition: isCollectiveSendTransition,
   clientsWithoutSdekMoney

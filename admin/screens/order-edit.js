@@ -1768,7 +1768,13 @@ window.Screens.orderEdit = {
         toggleEl.classList.add('hidden');
         readonlyEl.classList.remove('hidden');
         const s = (details.stagesBalance || []).find((st) => st.stage === stage);
-        if (s && s.covered) {
+        if (s && s.target > 0 && s.isForecast === true) {
+          // «Сбор на СДЭК» (Коллективки 2.0 э3): прогноз из коллективки живёт
+          // только в цели этапа, поля формы пустые — показываем его здесь;
+          // «Оплачено» при прогнозе врало бы — цена ещё не по чеку.
+          readonlyEl.textContent = `Прогноз ≈${s.target.toFixed(2)} ₽ · внесено ${s.paid.toFixed(2)}`;
+          readonlyEl.className = 'shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-700';
+        } else if (s && s.covered) {
           readonlyEl.textContent = '✓ Оплачено';
           readonlyEl.className = 'shrink-0 text-xs font-medium px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700';
         } else if (s && s.target > 0) {

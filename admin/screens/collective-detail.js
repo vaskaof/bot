@@ -164,6 +164,8 @@ window.Screens.collectiveDetail = {
               <span class="text-sm font-semibold text-gray-900" id="sdek-title">Оплата СДЭК</span>${helpIcon('Оплата СДЭК', '<p>Сколько каждый клиент должен за доставку этой посылки, сколько уже внёс и сколько осталось. Считается только выставленная цена — прогноз ещё не долг.</p><p><b>Занести</b> — откроет «Оплаты» с уже заполненным окном: клиент, сумма и СДЭК его заказов. Проверьте и сохраните.</p><p><b>Внести цену по чеку</b> — разложит чек коллективки по долям только на заказы без цены. Уже выставленные и оплаченные цены не меняются.</p><p><b>Без СДЭК</b> — цена 0 ₽, если заказ правда едет без СДЭК. Клиентские заказы платят СДЭК по весу — это исключение.</p>')}
             </div>
             <div id="sdek-totals" class="grid grid-cols-3 gap-2 mt-2 text-center"></div>
+            <!-- Коллективки 2.0 э3: «Сбор на СДЭК» — до чека ожидаемая сумма раскладывается прогнозом. -->
+            <div id="sdek-forecast" class="hidden mt-3 rounded-xl bg-indigo-50/60 border border-indigo-100 p-3"></div>
             <div id="sdek-unpriced" class="hidden mt-3 rounded-xl bg-amber-50 border border-amber-100 p-3"></div>
             <div id="sdek-clients" class="mt-3 space-y-2"></div>
             <button type="button" id="sdek-show-rest" class="hidden w-full mt-2 py-2 text-xs font-medium text-gray-500"></button>
@@ -234,6 +236,27 @@ window.Screens.collectiveDetail = {
             <div class="flex gap-2">
               <button type="button" id="apply-costs-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
               <button type="button" id="apply-costs-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Коллективки 2.0 э3: «Разложить по заказам» — прогноз СДЭК, было → станет -->
+      <div id="forecast-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-[60] px-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <h2 class="text-base font-semibold text-gray-900">Разложить прогноз по заказам</h2>
+            <button type="button" id="forecast-close" title="Закрыть" class="p-1 text-gray-400 hover:text-gray-600">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="forecast-hint" class="px-4 pt-3 text-[12px] text-gray-500"></div>
+          <div class="p-4 overflow-y-auto custom-scrollbar" id="forecast-list"></div>
+          <div class="p-4 border-t border-gray-100 space-y-2 shrink-0">
+            <div id="forecast-warning" class="text-xs text-red-500 hidden"></div>
+            <div class="flex gap-2">
+              <button type="button" id="forecast-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
+              <button type="button" id="forecast-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Записать прогноз</button>
             </div>
           </div>
         </div>
@@ -541,7 +564,8 @@ window.Screens.collectiveDetail = {
           ? `${rub(o.target)} · внесено ${rub(o.paid)} · <span class="text-red-600">осталось ${rub(o.remaining)}</span>`
           : `${rub(o.target)} · <span class="text-emerald-600">оплачено</span>`;
       } else if (o.priceState === 'forecast') {
-        state = `<span class="text-amber-700">прогноз ${rub(o.target)}, цена не выставлена</span>${paidPart}`;
+        const toCollect = o.forecastRemaining > 0.01 ? ` · <span class="text-indigo-700">собрать ≈${rub(o.forecastRemaining)}</span>` : (o.paid > 0.01 ? ' · <span class="text-emerald-600">собрано</span>' : '');
+        state = `<span class="text-amber-700">≈${rub(o.target)} прогноз</span>${paidPart}${toCollect}`;
       } else if (o.priceState === 'exempt') {
         state = `<span class="text-gray-400">${o.statusDelivery === 'возврат средств' ? 'возврат средств' : 'получен без цены — не трогаем'}</span>`;
       } else {
@@ -563,9 +587,11 @@ window.Screens.collectiveDetail = {
     function sdekClientCard(c, index) {
       const rub = CollectiveSdek.rub;
       const owes = c.remainingSum > 0.01;
+      const toCollect = c.forecastRemainingSum > 0.01;
       const right = owes ? `<span class="text-red-600">${rub(c.remainingSum)}</span>`
-        : (c.priceMissingCount > 0 ? '<span class="text-amber-700">без цены</span>' : '<span class="text-emerald-600">оплачено</span>');
-      const actions = !owes ? ''
+        : (toCollect ? `<span class="text-indigo-700">≈${rub(c.forecastRemainingSum)}</span>`
+          : (c.priceMissingCount > 0 ? '<span class="text-amber-700">без цены</span>' : '<span class="text-emerald-600">оплачено</span>'));
+      const actions = !(owes || toCollect) ? ''
         : (c.clientTelegramId
           ? `<div class="flex gap-2 mt-2">
               <button type="button" data-sdek-action="pay" data-client-index="${index}" class="flex-1 py-2 rounded-xl bg-indigo-50 text-xs font-medium text-indigo-600">Занести</button>
@@ -598,6 +624,8 @@ window.Screens.collectiveDetail = {
         <div><div class="text-sm font-semibold text-emerald-600">${rub(t.paidSum)}</div><div class="text-[10px] text-gray-400">внесено</div></div>
         <div><div class="text-sm font-semibold ${t.remainingSum > 0.01 ? 'text-red-600' : 'text-gray-900'}">${rub(t.remainingSum)}</div><div class="text-[10px] text-gray-400">осталось</div></div>`;
 
+      renderSdekForecast();
+
       const unpriced = sdekData.clients.flatMap((c) => c.orders).filter(isUnpricedOpen);
       const unpricedEl = document.getElementById('sdek-unpriced');
       unpricedEl.classList.toggle('hidden', unpriced.length === 0);
@@ -607,8 +635,9 @@ window.Screens.collectiveDetail = {
         <button type="button" data-sdek-action="price-unpriced" class="w-full mt-2 py-2 rounded-xl bg-white border border-amber-200 text-amber-900 text-xs font-medium">Внести цену по чеку</button>`;
 
       const indexed = sdekData.clients.map((c, i) => ({ c, i }));
-      const attention = indexed.filter(({ c }) => c.remainingSum > 0.01 || c.priceMissingCount > 0);
-      const rest = indexed.filter(({ c }) => !(c.remainingSum > 0.01 || c.priceMissingCount > 0));
+      const needsAttention = (c) => c.remainingSum > 0.01 || c.forecastRemainingSum > 0.01 || c.priceMissingCount > 0;
+      const attention = indexed.filter(({ c }) => needsAttention(c));
+      const rest = indexed.filter(({ c }) => !needsAttention(c));
       const shown = sdekShowRest ? attention.concat(rest) : attention;
       document.getElementById('sdek-clients').innerHTML = shown.length > 0
         ? shown.map(({ c, i }) => sdekClientCard(c, i)).join('')
@@ -618,6 +647,123 @@ window.Screens.collectiveDetail = {
       restBtn.textContent = sdekShowRest ? 'Скрыть оплативших' : `Показать оплативших — клиентов: ${rest.length}`;
       card.classList.remove('hidden');
     }
+
+    // --- «Сбор на СДЭК» (э3): ожидаемая сумма до чека → прогноз по долям ---
+
+    let forecastCurrency = null; // 'RUB'|'KZT'; null — взять из сохранённой суммы
+    let forecastPreviewInput = null; // что отправили в предпросмотр — то же уйдёт в запись
+
+    function renderSdekForecast() {
+      const el = document.getElementById('sdek-forecast');
+      const reconciled = !!(sdekData.progress && sdekData.progress.reconciled);
+      if (reconciled) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      const rub = CollectiveSdek.rub;
+      const leg = CollectiveSdek.legLabel(details.stage);
+      const stored = sdekData.sdekForecast || null;
+      if (forecastCurrency === null) forecastCurrency = stored && stored.currency === 'KZT' ? 'KZT' : 'RUB';
+      const value = stored ? (stored.currency === 'KZT' && stored.original !== null ? stored.original : stored.rub) : '';
+      const summary = CollectiveSdek.forecastSummary(sdekData.totals, stored);
+      el.innerHTML = `
+        <div class="text-sm font-medium text-indigo-900">Сбор на ${details.stage === 'По РФ' ? 'доставку по РФ' : 'СДЭК'} заранее</div>
+        <div class="text-[11px] text-indigo-800 mt-0.5">Чека ещё нет — введите ожидаемую сумму ${leg}. Она разложится по долям как прогноз (≈) на заказы без цены, «Занести» подставит прогноз. Придёт чек — «Внести цену по чеку»: лишнее останется у клиента, недостающее — доплатить.</div>
+        ${summary ? `<div class="text-xs font-medium text-indigo-900 mt-2" data-forecast-summary>${escapeHtmlClient(summary)}</div>` : ''}
+        <div class="flex items-center gap-2 mt-2">
+          <input type="number" inputmode="decimal" min="0" step="0.01" id="forecast-amount" value="${escapeHtmlClient(String(value))}" placeholder="Ожидаемая сумма ${leg}" class="flex-1 min-w-0 px-3 py-2 border border-indigo-100 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white">
+          <button type="button" data-sdek-action="forecast-currency" class="shrink-0 text-[11px] font-medium px-2 py-2 rounded-lg border border-indigo-100 bg-white text-gray-600">${forecastCurrency === 'KZT' ? '₸' : '₽'}</button>
+        </div>
+        <div id="forecast-kzt-hint" class="text-[10px] text-gray-500 mt-0.5 ${forecastCurrency === 'KZT' ? '' : 'hidden'}"></div>
+        <button type="button" data-sdek-action="forecast-preview" class="w-full mt-2 py-2 rounded-xl bg-white border border-indigo-200 text-indigo-700 text-xs font-medium">${stored ? 'Пересчитать прогноз' : 'Разложить по заказам'}</button>
+        ${stored ? `<div class="text-[10px] text-gray-500 mt-1">Сейчас: ≈${rub(stored.rub)}${stored.currency === 'KZT' && stored.original !== null ? ` (${stored.original.toLocaleString('ru-RU')} ₸)` : ''}. Добавили заказ — нажмите «Пересчитать», доли поменяются.</div>` : ''}`;
+      el.classList.remove('hidden');
+      if (forecastCurrency === 'KZT') updateForecastHint();
+    }
+
+    // Рубли — источник истины (как у сверки): ₸ переводятся тем же курсом калькулятора.
+    function readForecastInput() {
+      const raw = parseFloat((document.getElementById('forecast-amount') || {}).value);
+      if (!(raw > 0)) return { error: 'Введите ожидаемую сумму больше нуля.' };
+      if (forecastCurrency === 'KZT') {
+        if (!kztToRubRate) return { error: 'Курс тенге ещё не загружен — подождите или переключите на ₽.' };
+        return { totalRub: round2(raw * kztToRubRate), currency: 'KZT', original: raw };
+      }
+      return { totalRub: round2(raw), currency: 'RUB', original: null };
+    }
+
+    function updateForecastHint() {
+      const hint = document.getElementById('forecast-kzt-hint');
+      if (!hint) return;
+      const raw = parseFloat((document.getElementById('forecast-amount') || {}).value) || 0;
+      hint.textContent = kztToRubRate
+        ? `≈ ${round2(raw * kztToRubRate).toLocaleString('ru-RU')} ₽ по курсу тенге к рублю ${(1 / kztToRubRate).toFixed(4)} ₸`
+        : 'Курс загружается…';
+    }
+
+    document.getElementById('sdek-card').addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'forecast-amount' && forecastCurrency === 'KZT') updateForecastHint();
+    });
+
+    const forecastModal = document.getElementById('forecast-modal');
+    const forecastConfirmBtn = document.getElementById('forecast-confirm');
+    const forecastWarning = document.getElementById('forecast-warning');
+
+    function closeForecastModal() {
+      forecastModal.classList.add('hidden');
+      forecastModal.classList.remove('flex');
+      forecastPreviewInput = null;
+    }
+    document.getElementById('forecast-close').addEventListener('click', closeForecastModal);
+    document.getElementById('forecast-cancel').addEventListener('click', closeForecastModal);
+
+    function openForecastModal(preview) {
+      const rub = CollectiveSdek.rub;
+      const t = preview.totals;
+      const hint = [`Ожидаемая сумма ≈${rub(preview.forecast.rub)} делится по долям на все заказы коллективки. Прогноз запишется заказам без цены: ${preview.orders.length} (≈${rub(t.forecastSum)}).`];
+      if (t.skippedPricedSum > 0.01) hint.push(`Цена уже вписана у части заказов (${rub(t.skippedPricedSum)}) — их не меняем.`);
+      if (t.surplusSum > 0.01) hint.push(`У кого собрано больше нового прогноза — лишнее (${rub(t.surplusSum)}) останется у клиента.`);
+      hint.push('Прогноз — ещё не долг: клиенту он виден как «предварительно», напоминаний нет. Платежи не меняются.');
+      document.getElementById('forecast-hint').textContent = hint.join(' ');
+      const reasonText = { priced: 'цена вписана', closed: 'получен / возврат', 'no-share': 'доля 0' };
+      const rows = preview.orders.map((o) => {
+        const before = o.before === null ? 'нет' : `≈${rub(o.before)}`;
+        const paid = o.paid > 0.01 ? `<div class="text-[11px] ${o.surplus > 0.01 ? 'text-amber-700' : 'text-gray-400'}">собрано ${rub(o.paid)}${o.surplus > 0.01 ? ` — лишние ${rub(o.surplus)} останутся у клиента` : ''}</div>` : '';
+        return `
+          <div class="py-2 border-b border-gray-50 last:border-0 text-sm" data-forecast-order="${escapeHtmlClient(o.orderId)}">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-gray-600 truncate">${escapeHtmlClient(o.productDisplay)} <span class="text-gray-400">№ ${escapeHtmlClient(o.orderId)}</span></span>
+              <span class="shrink-0 font-medium text-gray-900">${before} → ≈${rub(o.after)}</span>
+            </div>
+            <div class="text-[11px] text-gray-400">${escapeHtmlClient(o.clientDisplay)}</div>
+            ${paid}
+          </div>`;
+      }).join('');
+      const skipped = preview.skipped.length === 0 ? '' : `
+        <div class="mt-3 text-[11px] text-gray-500">Не меняются: ${preview.skipped.length}</div>
+        ${preview.skipped.map((o) => `<div class="text-[11px] text-gray-400 truncate">${escapeHtmlClient(o.productDisplay)} № ${escapeHtmlClient(o.orderId)} — ${reasonText[o.reason] || ''}${o.reason === 'priced' ? ` ${rub(o.target)}` : ''}</div>`).join('')}`;
+      document.getElementById('forecast-list').innerHTML = (rows || '<div class="text-xs text-gray-400 text-center py-2">Заказов без цены нет — прогноз некуда записать.</div>') + skipped;
+      forecastConfirmBtn.disabled = preview.orders.length === 0;
+      forecastWarning.classList.add('hidden');
+      forecastModal.classList.remove('hidden');
+      forecastModal.classList.add('flex');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    forecastConfirmBtn.addEventListener('click', async () => {
+      if (forecastConfirmBtn.disabled || !forecastPreviewInput) return;
+      forecastConfirmBtn.disabled = true;
+      forecastWarning.classList.add('hidden');
+      try {
+        const result = await callServer('applyCollectiveSdekForecast', collectiveId, forecastPreviewInput);
+        closeForecastModal();
+        if (result.failed.length > 0) showSaveToast(false, `Прогноз записан: ${result.applied.length}, не удалось: ${result.failed.length} — ${result.failed[0].reason}`);
+        else showSaveToast(true, `Прогноз записан заказам: ${result.applied.length}.`);
+        await refreshSdek();
+      } catch (error) {
+        forecastWarning.textContent = error.message;
+        forecastWarning.classList.remove('hidden');
+      } finally {
+        forecastConfirmBtn.disabled = false;
+      }
+    });
 
     document.getElementById('sdek-show-rest').addEventListener('click', () => {
       sdekShowRest = !sdekShowRest;
@@ -644,6 +790,29 @@ window.Screens.collectiveDetail = {
         }
       } else if (action === 'price-unpriced') {
         await openApplyCosts('unpriced', btn);
+      } else if (action === 'forecast-currency') {
+        forecastCurrency = forecastCurrency === 'KZT' ? 'RUB' : 'KZT';
+        btn.textContent = forecastCurrency === 'KZT' ? '₸' : '₽';
+        document.getElementById('forecast-kzt-hint').classList.toggle('hidden', forecastCurrency !== 'KZT');
+        if (forecastCurrency === 'KZT') {
+          updateForecastHint();
+          try { await ensureKztRate(); } catch (err) { /* подсказка останется «загружается», запись заблокирована */ }
+          updateForecastHint();
+        }
+      } else if (action === 'forecast-preview') {
+        if (forecastCurrency === 'KZT') { try { await ensureKztRate(); } catch (err) { /* проверка ниже */ } }
+        const input = readForecastInput();
+        if (input.error) { showSaveToast(false, input.error); return; }
+        btn.disabled = true;
+        try {
+          const preview = await callServer('previewCollectiveSdekForecast', collectiveId, input);
+          forecastPreviewInput = input;
+          openForecastModal(preview);
+        } catch (error) {
+          showSaveToast(false, 'Не удалось посчитать: ' + error.message);
+        } finally {
+          btn.disabled = false;
+        }
       } else if (action === 'no-sdek') {
         const orderId = btn.dataset.orderId;
         const o = sdekData.clients.flatMap((c) => c.orders).find((x) => x.orderId === orderId);
@@ -1687,10 +1856,21 @@ window.Screens.collectiveDetail = {
       applyCostsWarning.classList.add('hidden');
       applyCostsList.innerHTML = preview.map((p) => {
         const beforeText = p.before === null ? 'пусто' : `${p.before.toLocaleString('ru-RU')} ₽`;
+        // «Сбор на СДЭК» (э3): сколько уже собрали на это плечо → что дальше.
+        let paidLine = '';
+        if (p.alreadyPaid > 0.01) {
+          const diff = round2(p.alreadyPaid - p.after);
+          const tail = diff > 0.01 ? ` → <span class="text-emerald-700">останется у клиента ${diff.toLocaleString('ru-RU')} ₽</span>`
+            : (diff < -0.01 ? ` → <span class="text-red-600">доплатить ${(-diff).toLocaleString('ru-RU')} ₽</span>` : ' → ровно');
+          paidLine = `<div class="text-[11px] text-gray-500" data-apply-paid>собрали ${p.alreadyPaid.toLocaleString('ru-RU')} ₽${tail}</div>`;
+        }
         return `
-          <div class="flex items-center justify-between gap-2 py-2 border-b border-gray-50 last:border-0 text-sm">
-            <span class="text-gray-600 truncate">${escapeHtmlClient(orderLabelFor(p.orderId))}</span>
-            <span class="shrink-0 font-medium text-gray-900">${beforeText} → ${p.after.toLocaleString('ru-RU')} ₽</span>
+          <div class="py-2 border-b border-gray-50 last:border-0 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-gray-600 truncate">${escapeHtmlClient(orderLabelFor(p.orderId))}</span>
+              <span class="shrink-0 font-medium text-gray-900">${beforeText} → ${p.after.toLocaleString('ru-RU')} ₽</span>
+            </div>
+            ${paidLine}
           </div>
         `;
       }).join('');
