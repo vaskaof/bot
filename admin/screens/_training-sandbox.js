@@ -188,7 +188,7 @@
         kind: t.kind, label: t.label, hint: t.hint, severity: t.severity, sinceMs: t.days ? now - t.days * DAY : 0,
         ...(t.stage ? { stage: t.stage } : {})
       }));
-      return { def, date, client: c, stagesBalance, items, imageUrl: doll(def.hue), collective: def.collective || null };
+      return { def, date, client: c, stagesBalance, items, imageUrl: doll(def.hue), collective: def.collective || null, units: def.units || null };
     });
     const byId = new Map(orders.map((o) => [o.def.id, o]));
     const collectives = COLLECTIVE_DEFS.map((d) => ({ ...d, forecast: null, costs: { ...NO_COSTS } }));
@@ -335,7 +335,7 @@
     return membersOf(colId).map((o) => ({
       orderId: o.def.id, productDisplay: o.def.short, productOriginal: o.def.product, clientDisplay: display(o.client),
       imageUrl: o.imageUrl, statusOrder: o.def.statusOrder, statusDelivery: o.def.statusDelivery, remark: '',
-      logisticsUnitsRaw: o.def.units || null, logisticsUnitsEffective: o.def.units || 1, ownLegPaid: sdekPaidUp(o), lotId: null
+      logisticsUnitsRaw: o.units, logisticsUnitsEffective: o.units ?? 1, ownLegPaid: sdekPaidUp(o), lotId: null
     }));
   }
 
@@ -373,8 +373,8 @@
   /** Доли «во сколько раз тяжелее обычного» → коэффициенты (как collectiveUnitRatios на сервере). */
   function unitRatios(colId) {
     const list = membersOf(colId);
-    const sum = list.reduce((a, o) => a + (o.def.units || 1), 0);
-    return new Map(list.map((o) => [o.def.id, (o.def.units || 1) / sum]));
+    const sum = list.reduce((a, o) => a + (o.units ?? 1), 0);
+    return new Map(list.map((o) => [o.def.id, sum > 0 ? (o.units ?? 1) / sum : 0]));
   }
 
   /** «Оплата СДЭК» учебной коллективки — та же форма, что getCollectiveSdekPayments. */
@@ -508,6 +508,16 @@
       const plan = sharesPlan(id, options);
       plan.forEach((p) => setSdekTarget(p.o, p.after, false));
       return { applied: plan.map((p) => ({ orderId: p.o.def.id, amount: p.after })), failed: [] };
+    },
+    // Ползунок «Доля» на учебной коллективке: без него менеджер, тронувший
+    // ползунок, получал красное «не удалось сохранить долю» посреди урока.
+    setOrderLogisticsUnits: (orderId, units) => {
+      const o = trnOrder(orderId);
+      if (!o) return undefined;
+      const n = units === null || units === undefined || units === '' ? null : Number(units);
+      if (n !== null && !(n >= 0 && n <= 2)) throw new Error('Доля логистики должна быть числом от 0 до 2.');
+      o.units = n;
+      return { orderId: o.def.id, logisticsUnits: n };
     }
   };
 

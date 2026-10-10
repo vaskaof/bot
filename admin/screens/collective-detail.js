@@ -143,6 +143,7 @@ window.Screens.collectiveDetail = {
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <label class="text-xs font-medium text-gray-500 flex items-center gap-1">Факт. расход логистики${helpIcon('Что такое сверка логистики', '<p>Разбивает факт. расход на доставку коллективки между заказами по их долям и сравнивает с тем, что было заранее оценено при создании каждого заказа.</p><p>Разница записывается в финансовый леджер. Повторное сохранение исправляет уже записанную сверку, не дублирует её.</p>')}</label>
             <div class="grid grid-cols-3 gap-2 mt-1" id="cost-fields-grid"></div>
+            <div id="kzt-rate-line" class="hidden text-[11px] text-indigo-900 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1.5 mt-1.5"></div>
             <div class="text-[11px] text-gray-500 mt-1.5">Итого: <span id="logistics-total" class="font-medium text-gray-700">0</span> ₽</div>
             <button id="logistics-save-btn" class="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить сверку</button>
             <div id="logistics-error-text" class="text-xs text-red-500 hidden mt-1.5"></div>
@@ -694,7 +695,7 @@ window.Screens.collectiveDetail = {
       if (!hint) return;
       const raw = parseFloat((document.getElementById('forecast-amount') || {}).value) || 0;
       hint.textContent = kztToRubRate
-        ? `≈ ${round2(raw * kztToRubRate).toLocaleString('ru-RU')} ₽ по курсу тенге к рублю ${(1 / kztToRubRate).toFixed(4)} ₸`
+        ? `≈ ${round2(raw * kztToRubRate).toLocaleString('ru-RU')} ₽ по курсу 1 ₽ = ${(1 / kztToRubRate).toFixed(2)} ₸`
         : 'Курс загружается…';
     }
 
@@ -1170,9 +1171,9 @@ window.Screens.collectiveDetail = {
           <label class="text-[10px] text-gray-400">${f.label.replace(', ₽', '')}</label>
           <div class="flex items-center gap-1">
             <input type="number" id="${f.id}" min="0" step="0.01" value="${costFieldOriginal[f.key]}" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400">
-            <button type="button" class="currency-toggle-btn shrink-0 text-[11px] font-medium px-1.5 py-1.5 rounded-lg border border-gray-200 text-gray-500" data-field="${f.key}">${costFieldCurrency[f.key] === 'KZT' ? '₸' : '₽'}</button>
+            <button type="button" class="currency-toggle-btn shrink-0 text-xs font-semibold px-2 py-1.5 rounded-lg border ${currencyBtnClass(costFieldCurrency[f.key])}" data-field="${f.key}">${costFieldCurrency[f.key] === 'KZT' ? '₸' : '₽'}</button>
           </div>
-          <div id="${f.id}-kzt-hint" class="text-[10px] text-gray-400 mt-0.5 ${costFieldCurrency[f.key] === 'KZT' ? '' : 'hidden'}"></div>
+          <div id="${f.id}-kzt-hint" class="text-[11px] font-medium text-indigo-700 mt-0.5 ${costFieldCurrency[f.key] === 'KZT' ? '' : 'hidden'}"></div>
         </div>
       `).join('');
 
@@ -1184,6 +1185,7 @@ window.Screens.collectiveDetail = {
           const key = btn.dataset.field;
           costFieldCurrency[key] = costFieldCurrency[key] === 'KZT' ? 'RUB' : 'KZT';
           btn.textContent = costFieldCurrency[key] === 'KZT' ? '₸' : '₽';
+          btn.className = `currency-toggle-btn shrink-0 text-xs font-semibold px-2 py-1.5 rounded-lg border ${currencyBtnClass(costFieldCurrency[key])}`;
           const hint = document.getElementById(`${fields.find((x) => x.key === key).id}-kzt-hint`);
           hint.classList.toggle('hidden', costFieldCurrency[key] !== 'KZT');
           if (costFieldCurrency[key] === 'KZT') { try { await ensureKztRate(); } catch (e) { /* сеть недоступна — hint покажет "курс недоступен" ниже */ } }
@@ -1192,6 +1194,23 @@ window.Screens.collectiveDetail = {
       });
 
       updateCostsPreview();
+      renderKztRateLine();
+    }
+
+    // Курс на виду (отзыв VASY 10.10.2026: «про курс чека подробнее, менеджеры
+    // путались, поставить, чтоб было заметнее курс»): одна строка под полями —
+    // сколько тенге за рубль сейчас и как вписать чек в тенге.
+    function currencyBtnClass(currency) {
+      return currency === 'KZT' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-600';
+    }
+
+    async function renderKztRateLine() {
+      const line = document.getElementById('kzt-rate-line');
+      if (!line) return;
+      try { await ensureKztRate(); } catch (e) { /* без курса строку не показываем — подсказка у поля скажет «курс недоступен» */ }
+      if (!kztToRubRate) { line.classList.add('hidden'); return; }
+      line.innerHTML = `Курс сейчас: <b>1 ₽ = ${(1 / kztToRubRate).toFixed(2)} ₸</b> — тот же, что в калькуляторе заказа. Чек в тенге? Нажмите <b>₽</b> у поля — станет <b>₸</b> — и впишите сумму как в чеке, рубли посчитаются сами.`;
+      line.classList.remove('hidden');
     }
 
     // Читает поля формы в {sdekCost,taxiKzCost,taxiRfCost} УЖЕ В РУБЛЯХ
@@ -1252,7 +1271,7 @@ window.Screens.collectiveDetail = {
         // 1 ₸, участвует в РАСЧЁТЕ costs[f.key]) не меняется, инвертируется
         // только то, что написано в подсказке: 1/kztToRubRate = ₸ за 1 ₽.
         hint.textContent = kztToRubRate
-          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу тенге к рублю ${(1 / kztToRubRate).toFixed(4)} ₸ (тот же курс, что в калькуляторе формы заказа)`
+          ? `≈ ${costs[f.key].toLocaleString('ru-RU')} ₽ по курсу`
           : 'Курс недоступен — переключите на ₽ или дождитесь курса, сохранение пока заблокировано';
       });
       const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
