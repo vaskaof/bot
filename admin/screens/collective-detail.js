@@ -1857,8 +1857,11 @@ window.Screens.collectiveDetail = {
       applyCostsList.innerHTML = preview.map((p) => {
         const beforeText = p.before === null ? 'пусто' : `${p.before.toLocaleString('ru-RU')} ₽`;
         // «Сбор на СДЭК» (э3): сколько уже собрали на это плечо → что дальше.
+        // null — сервер не знает, сколько собрали (строки нет), тогда молчим.
         let paidLine = '';
-        if (p.alreadyPaid > 0.01) {
+        if (p.alreadyPaid !== null && p.alreadyPaid !== undefined && p.alreadyPaid <= 0.01 && p.after > 0.01) {
+          paidLine = `<div class="text-[11px] text-gray-500" data-apply-paid>ещё ничего не внесли → <span class="text-red-600">доплатить ${p.after.toLocaleString('ru-RU')} ₽</span></div>`;
+        } else if (p.alreadyPaid > 0.01) {
           const diff = round2(p.alreadyPaid - p.after);
           const tail = diff > 0.01 ? ` → <span class="text-emerald-700">останется у клиента ${diff.toLocaleString('ru-RU')} ₽</span>`
             : (diff < -0.01 ? ` → <span class="text-red-600">доплатить ${(-diff).toLocaleString('ru-RU')} ₽</span>` : ' → ровно');
