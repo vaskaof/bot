@@ -194,6 +194,8 @@ window.Screens.orders = {
         <div class="max-w-2xl mx-auto">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-gray-700">Выбрано: <span id="bulk-selected-count">0</span></span>
+            <!-- «Выбрать все» (11.10.2026, VASY) — все найденные с текущими поиском и фильтрами, не только показанные. -->
+            <button type="button" id="bulk-select-all-btn" class="text-xs text-indigo-600 font-medium ml-auto mr-4">Выбрать все</button>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -531,8 +533,21 @@ window.Screens.orders = {
     });
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
 
+    // Найденные сейчас (поиск + фильтры + плитка стадии) — пишет render().
+    let lastFilteredIds = [];
+    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
+    const allFilteredSelected = () => lastFilteredIds.length > 0 && lastFilteredIds.every((id) => selectedIds.has(id));
+    bulkSelectAllBtn.addEventListener('click', () => {
+      if (allFilteredSelected()) lastFilteredIds.forEach((id) => selectedIds.delete(id));
+      else lastFilteredIds.forEach((id) => selectedIds.add(id));
+      updateBulkBar();
+      render();
+    });
+
     function updateBulkBar() {
       bulkSelectedCount.textContent = selectedIds.size;
+      bulkSelectAllBtn.textContent = allFilteredSelected() ? 'Снять все' : `Выбрать все (${lastFilteredIds.length})`;
+      bulkSelectAllBtn.classList.toggle('hidden', lastFilteredIds.length === 0);
       const disabled = selectedIds.size === 0;
       bulkAssignBtn.disabled = disabled;
       bulkCreateBtn.disabled = disabled;
@@ -618,6 +633,7 @@ window.Screens.orders = {
       });
 
       countLabel.textContent = `Найдено: ${sorted.length}`;
+      lastFilteredIds = sorted.map((o) => o.orderId);
 
       const toShow = sorted.slice(0, displayCount);
       listContainer.innerHTML = '';

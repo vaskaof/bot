@@ -198,6 +198,8 @@ window.Screens.collectiveDetail = {
         <div class="max-w-2xl mx-auto">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-gray-700 inline-flex items-center gap-1">Выбрано: <span id="bulk-selected-count">0</span>${helpIcon('Массовые действия', '<p><b>Убрать из коллективки</b> — заказы остаются как есть, просто больше не входят в эту коллективку и не участвуют в раскладке логистики. Уже записанная сверка пересчитается сама.</p><p><b>Перенести в другую</b> — то же самое, но заказы сразу попадают в выбранную коллективку.</p><p><b>Сменить статус доставки</b> — один статус сразу всем выбранным заказам. Если по заказу остался непогашенный долг, система предупредит и попросит подтвердить отдельно.</p><p><b>Продолжить как «По РФ»</b> — только для этапа «КЗ→РФ»: выбранные заказы (можно часть, не обязательно все — посылка могла разделиться) добавляются ВТОРЫМ плечом в коллективку этапа «По РФ» (новую или уже существующую), первое плечо остаётся как есть.</p>')}</span>
+            <!-- «Выбрать все» (11.10.2026, VASY) — все заказы коллективки. -->
+            <button type="button" id="bulk-select-all-btn" class="text-xs text-indigo-600 font-medium ml-auto mr-4">Выбрать все</button>
             <button type="button" id="bulk-cancel-btn" class="text-xs text-gray-400 font-medium">Отменить</button>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -1334,8 +1336,18 @@ window.Screens.collectiveDetail = {
     selectModeBtn.addEventListener('click', () => setSelectMode(!selectMode));
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
 
+    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
+    const allOrdersSelected = () => orders.length > 0 && orders.every((o) => selectedIds.has(o.orderId));
+    bulkSelectAllBtn.addEventListener('click', () => {
+      if (allOrdersSelected()) selectedIds.clear();
+      else orders.forEach((o) => selectedIds.add(o.orderId));
+      renderOrderList();
+      updateBulkBar();
+    });
+
     function updateBulkBar() {
       bulkSelectedCount.textContent = selectedIds.size;
+      bulkSelectAllBtn.textContent = allOrdersSelected() ? 'Снять все' : `Выбрать все (${orders.length})`;
       const disabled = selectedIds.size === 0;
       bulkUnassignBtn.disabled = disabled;
       bulkTransferBtn.disabled = disabled;
