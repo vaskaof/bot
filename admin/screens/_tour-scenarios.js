@@ -66,6 +66,21 @@
     const card = Array.from(document.querySelectorAll(boardCard(id))).find((el) => el.getClientRects().length > 0);
     if (card && !shown(card)) card.scrollIntoView({ block: 'nearest', inline: 'center' });
   };
+  // «Задачи» 11.10.2026: разделы над доской — раскрыть и показать.
+  const openDetails = (selector) => () => {
+    const d = document.querySelector(selector);
+    if (!d) return;
+    d.open = true;
+    if (!shown(d)) d.scrollIntoView({ block: 'start' });
+  };
+  const openClosedCosts = () => {
+    const d = document.getElementById('closed-costs');
+    if (!d) return;
+    d.open = true;
+    d.querySelectorAll('details').forEach((x) => { x.open = true; });
+    d.scrollIntoView({ block: 'start' });
+  };
+  const BOARD_SECTION_WRITES = ['.collective-step-btn', '.open-collective-btn', '.closed-open-collective', '.no-price-btn', '.inline-fill-save'];
   const byText = (sel, text) => () => Array.from(document.querySelectorAll(sel)).find((el) => shown(el) && el.textContent.includes(text)) || null;
   const orderListCard = (id) => byText('#orders-list > div', `№ ${id}`);
   const questionCardWith = (text) => () => {
@@ -184,7 +199,7 @@
       title: 'Утро менеджера: «Задачи»',
       screens: ['reminders', 'orderEdit'],
       momentScreens: ['reminders'],
-      block: ORDER_WRITES,
+      block: [...ORDER_WRITES, ...BOARD_SECTION_WRITES],
       steps: [
         { target: nav('reminders'), title: 'Открой «Задачи»', text: 'Рабочий день начинается здесь.', advance: 'click', skipIf: onScreen('reminders') },
         {
@@ -208,6 +223,19 @@
           target: `${boardCard('TRN101')} [data-actions]`, title: 'Кнопки на карточке',
           text: '<b>«Занести оплату»</b> — деньги пришли: откроются «Оплаты» сразу на этом заказе. <b>«Напомнить»</b> — денег нет: готовый текст клиентке. <b>«Отложить на 3 дня»</b> — только если правда ждёшь (Аня обещала оплатить в пятницу).'
         },
+        {
+          target: '#collectives-tasks > summary', title: 'Коллективки — навести порядок', onEnter: () => window.scrollTo(0, 0),
+          advance: { until: () => { const d = document.getElementById('collectives-tasks'); return !!d && d.open; } },
+          text: 'Над доской — <b>отправленные посылки, где ещё не всё сделано</b>. Сейчас раздел свёрнут: на доске есть срочное (Фрэнки Оли) — сначала оно. Нажми на строку, чтобы раскрыть.'
+        },
+        {
+          target: '[data-collective-task="TRNC3"]', title: 'Одно действие — много задач', onEnter: openDetails('#collectives-tasks'),
+          text: '«СДЭК 21.09» уехала 20 дней назад, а Хоулин Кати по статусу всё ещё «У посредника в КЗ». <b>«Догнать статусы»</b> переведёт сразу всех отставших этой посылки, <b>«уберёт задач: 1»</b> — сколько задач доски снимет порядок в ней. В большой посылке это десятки задач одним нажатием — поэтому порядок наводят с коллективок. Сейчас учебный режим — не нажимаем.'
+        },
+        {
+          target: '#closed-costs', title: 'Закрыто без расходов', onEnter: openClosedCosts, place: 'away',
+          text: 'Ниже — заказы, которые <b>уже у клиентки, а цена веса или СДЭК так и не вписана</b>. Венера Оли — «Закрыт без цены: Вес». Это не долг и не красная задача — подсветка, чтобы не терять деньги. Знаешь цену — впиши прямо здесь. Уже не восстановить — <b>«Цены не будет»</b> с причиной.'
+        },
         { target: `${boardCard('TRN101')} [data-open]`, title: 'Открой заказ', text: 'Нажми на карточку Ани — откроется заказ.', advance: 'click', onEnter: revealBoardCard('TRN101') },
         {
           target: '#order-next-step', title: '«Следующий шаг»', wait: 12000,
@@ -220,7 +248,7 @@
           title: 'Проверка',
           text: 'Утро, на доске 12 задач. С чего начинаешь?',
           quiz: { options: [
-            { label: 'С верхней карточки: доска уже сложила задачи по срочности', correct: true, explain: 'Сверху — красные и самые старые. Сделал — «Следующая задача», и так по очереди.' },
+            { label: 'Сначала красные, потом «Коллективки», потом остальное по доске', correct: true, explain: 'Красное горит — его первым. Дальше «Коллективки»: одно действие снимает задачи у всей посылки. Потом — карточки по очереди, «Следующая задача».' },
             { label: 'Открываю «Заказы» и листаю все подряд', explain: 'Долго, и легко пропустить то, что горит. Доска уже собрала всё, что ждёт тебя.' },
             { label: 'С тех, кто громче пишет в личку', explain: 'Тогда тихие клиенты ждут неделями. Порядок — по доске.' }
           ] }
@@ -618,7 +646,7 @@
         },
         {
           title: 'Что пропустить нельзя',
-          text: 'У долга, оплаты, «Курсы и сумма не подтверждены», «Отстал от коллективки» кнопки «Пропустить» нет — <b>это деньги и посылки</b>. Их делают. Кажется, что задача неверная, — «?» → «🆘 Что-то не работает».'
+          text: 'У долга, оплаты, «Курсы и сумма не подтверждены», «Отстал от коллективки» кнопки «Пропустить» нет — <b>это деньги и посылки</b>. Их делают. Кажется, что задача неверная, — «?» → «🆘 Что-то не работает».<br><br>Своя кнопка есть у <b>«Закрыт без цены»</b> (раздел «Закрыто без расходов» над доской): цену уже не восстановить — <b>«Цены не будет»</b> с причиной.'
         },
         {
           target: `${boardCard('TRN104')} [data-open]`, title: 'Фрэнки Оли', advance: 'click', onEnter: revealBoardCard('TRN104'),

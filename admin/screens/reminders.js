@@ -136,6 +136,9 @@ window.Screens.reminders = {
     const stageTabsContainer = document.getElementById('stage-tabs');
 
     let allCards = [];
+    // Пока доска не загрузилась — «Задач нет 🎉» не показываем (11.10.2026, VASY:
+    // во время загрузки путало).
+    let boardLoaded = false;
     let stageTotals = {};
     let collectiveSummaries = {}; // Коллективки 2.0 э2 — сводка группы коллективки (getTasksBoard)
     let collectiveTasks = []; // раздел «Коллективки» (11.10.2026)
@@ -257,8 +260,10 @@ window.Screens.reminders = {
 
     async function loadReminders() {
       listContainer.innerHTML = '<div class="p-6 text-center text-sm text-gray-400">Загрузка...</div>';
+      emptyMessage.classList.add('hidden');
       try {
         const board = await callServer('getTasksBoard');
+        boardLoaded = true;
         allCards = board.cards;
         stageTotals = board.stageTotals || {};
         collectiveSummaries = board.collectiveSummaries || {};
@@ -408,6 +413,7 @@ window.Screens.reminders = {
     }
 
     function render() {
+      if (!boardLoaded) { emptyMessage.classList.add('hidden'); return; }
       const cards = boardCards();
       const visible = allCards.filter(c => c.items.some(i => i.kind !== 'closed_price_missing' && !isCollectiveItem(c, i) && !i.quiet));
       const clientCount = visible.filter(c => !c.isOwnPurchase).length;

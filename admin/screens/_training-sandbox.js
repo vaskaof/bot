@@ -125,6 +125,25 @@
       daysAgo: 8, statusDelivery: 'На складе КЗ (карго)', statusOrder: 'Актуально, в доставке', stage: 'e5',
       stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 0, 0, false, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: []
+    },
+    // «Задачи» 11.10.2026: отправленная «СДЭК 21.09 (учебная)» — Венера Оли уже
+    // у клиентки, а цену веса не вписали («Закрыто без расходов»); Хоулин Кати
+    // по статусу отстала от посылки (раздел «Коллективки»).
+    {
+      id: 'TRN109', client: 'trn-olya', product: 'Monster High Venus McFlytrap Core', short: 'Венера Core', hue: 100,
+      channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
+      daysAgo: 40, statusDelivery: 'Получено клиентом', statusOrder: 'Выполнен', stage: 'e7', collective: 'TRNC3',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 0, 0, true, null], ['СДЭК', 750, 750, true, false], ['Доставка_РФ', 0, 0, false, null]],
+      tasks: [{ kind: 'closed_price_missing', stage: 'Вес', label: 'Закрыт без цены: Вес', hint: 'Впишите, если знаете. Уже не восстановить — «Цены не будет».', severity: 'info', days: 0,
+        extra: { quiet: true, closedIsNew: true, dismissKey: 'closed_price_missing:Вес' } }]
+    },
+    {
+      id: 'TRN110', client: 'trn-katya', product: 'Monster High Howleen Wolf Core', short: 'Хоулин Core', hue: 15,
+      channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
+      daysAgo: 38, statusDelivery: 'У посредника в КЗ', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC3',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 750, 750, true, false], ['Доставка_РФ', 0, 0, false, null]],
+      tasks: [{ kind: 'behind_collective', label: 'Отстал от коллективки', hint: 'Коллективка «СДЭК 21.09 (учебная)» — «Отправлено (СДЭК)», заказ — «У посредника в КЗ»', severity: 'warning', days: 20,
+        extra: { collectiveId: 'TRNC3', collectiveName: 'СДЭК 21.09 (учебная)', targetStatus: 'В пути КЗ→РФ (СДЭК)' } }]
     }
   ];
 
@@ -168,7 +187,8 @@
 
   const COLLECTIVE_DEFS = [
     { id: 'TRNC1', name: 'СДЭК 12.10 (учебная)', stage: 'КЗ→РФ', status: 'Формируется', daysAgo: 3, track: '' },
-    { id: 'TRNC2', name: 'Отправка по РФ 28.09 (учебная)', stage: 'По РФ', status: 'Отправлено', daysAgo: 7, track: '10012345678', orderCount: 2 }
+    { id: 'TRNC2', name: 'Отправка по РФ 28.09 (учебная)', stage: 'По РФ', status: 'Отправлено', daysAgo: 7, track: '10012345678', orderCount: 2 },
+    { id: 'TRNC3', name: 'СДЭК 21.09 (учебная)', stage: 'КЗ→РФ', status: 'Отправлено (СДЭК)', daysAgo: 25, sentDaysAgo: 20, track: '1098765432', costs: { sdekCost: 1500 } }
   ];
 
   // --- Сборка мира ---
@@ -186,12 +206,12 @@
       }));
       const items = def.tasks.map((t) => ({
         kind: t.kind, label: t.label, hint: t.hint, severity: t.severity, sinceMs: t.days ? now - t.days * DAY : 0,
-        ...(t.stage ? { stage: t.stage } : {})
+        ...(t.stage ? { stage: t.stage } : {}), ...(t.extra || {})
       }));
       return { def, date, client: c, stagesBalance, items, imageUrl: doll(def.hue), collective: def.collective || null, units: def.units || null };
     });
     const byId = new Map(orders.map((o) => [o.def.id, o]));
-    const collectives = COLLECTIVE_DEFS.map((d) => ({ ...d, forecast: null, costs: { ...NO_COSTS } }));
+    const collectives = COLLECTIVE_DEFS.map((d) => ({ ...d, forecast: null, costs: { ...NO_COSTS, ...(d.costs || {}) } }));
     return { now, orders, byId, collectives };
   }
 
@@ -658,6 +678,36 @@
     };
   }
 
+  /**
+   * Раздел «Коллективки» на учебной доске (11.10.2026) — как
+   * collectivesService.getCollectiveBoardTasks: только отправленные, шаги по
+   * пунктам заказов, «уберёт задач» — отставшие (не красные).
+   */
+  function collectiveBoardTasks() {
+    const result = [];
+    for (const col of world.collectives || []) {
+      if (!col.sentDaysAgo) continue;
+      const members = world.orders.filter((o) => o.collective === col.id);
+      if (!members.length) continue;
+      const behind = members.filter((o) => o.items.some((i) => i.kind === 'behind_collective'));
+      const closed = members.filter((o) => o.items.some((i) => i.kind === 'closed_price_missing'));
+      const steps = [];
+      if (behind.length) {
+        const target = behind[0].items.find((i) => i.kind === 'behind_collective').targetStatus;
+        steps.push({ key: 'behind', text: `Догнать статусы: ${behind.length} → «${target}»`, action: { type: 'catchUp', orderIds: behind.map((o) => o.def.id), targetStatus: target } });
+      }
+      if (!costTotal(col)) steps.push({ key: 'check', text: 'Внести чек СДЭК («Сохранить сверку»)', action: { type: 'open' } });
+      if (closed.length) steps.push({ key: 'closedCosts', text: `Закрыто без расходов: ${closed.length}`, action: { type: 'closedCosts' } });
+      if (!steps.length) continue;
+      result.push({
+        collectiveId: col.id, name: col.name, status: col.status, stage: col.stage,
+        sentAt: new Date(world.now - col.sentDaysAgo * DAY).toISOString(),
+        orderIds: members.map((o) => o.def.id), tasksClosable: behind.length, steps
+      });
+    }
+    return result;
+  }
+
   const trnOrder = (id) => world.byId.get(String(id || ''));
   const isTrnClient = (tid) => !!CLIENTS[String(tid || '')];
 
@@ -667,7 +717,7 @@
       const cards = world.orders.filter((o) => o.items.length).map(boardCard).sort((a, b) => b.priorityScore - a.priorityScore);
       const stageTotals = {};
       cards.forEach((c) => { const k = c.stage ? c.stage.key : ''; stageTotals[k] = (stageTotals[k] || 0) + 1; });
-      return { cards, stageTotals };
+      return { cards, stageTotals, collectiveTasks: collectiveBoardTasks() };
     },
     getRemindersSummary: () => ({ criticalCount: world.orders.filter((o) => o.items.some((i) => i.severity === 'critical')).length }),
     getShippingRecommendations: () => [],
