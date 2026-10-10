@@ -814,12 +814,72 @@
     showStep();
   }
 
+  const esc = (s) => escapeHtmlClient(s == null ? '' : String(s));
+  const daysWord = (n) => {
+    const m10 = n % 10; const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return `${n} день`;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} дня`;
+    return `${n} дней`;
+  };
+
+  /**
+   * Экран перемотки (06.10.2026, VASY: «момент прокрутки времени можно как-то
+   * обозначить, чтоб был лучше понятен переход»): «⏩ Прошло N дней» со
+   * счётчиком дней, событие и что изменилось (было → стало). Дальше — только
+   * по нажатию «Смотреть», сам не уходит.
+   */
+  function showTimeSkip(skip) {
+    return new Promise((resolve) => {
+      if (!document.getElementById('time-skip-style')) {
+        const st = document.createElement('style');
+        st.id = 'time-skip-style';
+        st.textContent = '@keyframes tsSpin{to{transform:rotate(360deg)}}@keyframes tsIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'
+          + '#time-skip [data-ts-row]{opacity:0;animation:tsIn .35s ease-out forwards}'
+          + '@media (prefers-reduced-motion:reduce){#time-skip *{animation:none!important;opacity:1!important}}';
+        document.head.appendChild(st);
+      }
+      const el = document.createElement('div');
+      el.id = 'time-skip';
+      el.className = 'fixed inset-0 z-[96] flex items-center justify-center px-5';
+      el.style.background = 'rgba(30,27,75,.72)';
+      el.innerHTML = `<div class="w-full max-w-sm rounded-3xl p-5 text-white shadow-2xl" style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 60%,#ec4899 100%)">
+        <div class="flex items-center gap-3">
+          <div class="text-4xl leading-none" style="animation:tsSpin 1.2s ease-in-out 1">⏩</div>
+          <div>
+            <div class="text-[12px] uppercase tracking-wide opacity-80">Перемотка времени</div>
+            <div class="text-[22px] font-bold leading-tight">Прошло <span data-ts-days>0 дней</span></div>
+          </div>
+        </div>
+        <div class="mt-3 text-[15px] font-semibold leading-snug" data-ts-row style="animation-delay:.5s">${esc(skip.event)}</div>
+        <div class="mt-3 bg-white/95 rounded-2xl p-3 text-gray-800 space-y-2">
+          ${skip.changes.map((c, i) => `<div data-ts-row style="animation-delay:${0.8 + i * 0.25}s">
+            <div class="text-[11px] text-gray-500">${esc(c[0])}</div>
+            <div class="text-[13px] leading-snug"><span class="text-gray-400 line-through">${esc(c[1])}</span> → <b class="text-indigo-700">${esc(c[2])}</b></div>
+          </div>`).join('')}
+        </div>
+        <button type="button" data-ts-go class="mt-4 w-full py-2.5 rounded-xl bg-white text-indigo-700 text-[15px] font-semibold" data-ts-row style="animation-delay:${0.9 + skip.changes.length * 0.25}s">Смотреть, что изменилось ▶</button>
+      </div>`;
+      document.body.appendChild(el);
+      // Счётчик дней: 0 → N за ~0,8 с.
+      const daysEl = el.querySelector('[data-ts-days]');
+      let d = 0;
+      const timer = setInterval(() => {
+        d = Math.min(skip.days, d + 1);
+        daysEl.textContent = daysWord(d);
+        if (d >= skip.days) clearInterval(timer);
+      }, Math.max(60, Math.round(800 / skip.days)));
+      el.querySelector('[data-ts-go]').onclick = () => { clearInterval(timer); el.remove(); resolve(); };
+    });
+  }
+
   window.Tour = {
     start,
     resume,
     isActive: () => !!active,
     activeId: () => (active ? active.scenario.id : ''),
     currentScreen,
+    // «⏩ Прошло N дней» (уроки клиентов «Мой заказ», кабинет «Собрать на СДЭК заранее»)
+    showTimeSkip,
     // для тестов
     _layout: layout
   };

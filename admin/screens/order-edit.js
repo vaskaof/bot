@@ -1851,6 +1851,13 @@ window.Screens.orderEdit = {
 
     const CURRENCY_SYMBOLS = { 'Доллар': '$', 'Юань': '¥', 'Евро': '€', 'Фунт': '£', 'Тенге': '₸' };
     function updateBlockSummaries() {
+      // root — общий контейнер экранов: ушли с карточки заказа — слушатели
+      // снимаем, иначе ввод на следующем экране падал на null (10.10.2026).
+      if (!document.getElementById('ps-paid')) {
+        root.removeEventListener('change', updateBlockSummaries);
+        root.removeEventListener('input', updateBlockSummaries);
+        return;
+      }
       const val = (sel) => { const el = root.querySelector(sel); return el ? el.value : ''; };
       const amount = val('#amount-input');
       orderCard.setSummary('product', [

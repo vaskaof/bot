@@ -102,6 +102,41 @@
     input.dispatchEvent(new Event('change')); // канал корзины подберётся по ссылке (eBay)
   }
 
+  // --- Коллективка (10.10.2026, Коллективки 2.0 э4) ---
+  /** Вписать пример в поле так, будто его набрали (экран слушает input). */
+  function fillValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) throw new Error('Не вижу поле — пролистай к нему.');
+    el.value = String(value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const costsCard = () => { const g = document.getElementById('cost-fields-grid'); return g ? g.closest('.rounded-2xl') : null; };
+  const sdekToggleIs = (sign) => { const b = document.querySelector('#cost-fields-grid .currency-toggle-btn[data-field="sdekCost"]'); return !!b && b.textContent.trim() === sign; };
+  /** Учебный чек: поле СДЭК → ₸, 24 000 (сохранять не будем). */
+  async function fillTrainingCheck() {
+    if (!sdekToggleIs('₸')) document.querySelector('#cost-fields-grid .currency-toggle-btn[data-field="sdekCost"]').click();
+    fillValue('cost-1', 24000);
+  }
+  const sdekClientCard = (name) => Array.from(document.querySelectorAll('#sdek-clients [data-sdek-client]')).find((el) => el.textContent.includes(name)) || null;
+  /** «⏩ Перемотать время»: экран «Прошло N дней», учебная посылка — на шаг дальше, снова в посылку. */
+  const rewindSdek = {
+    label: '⏩ Перемотать время',
+    run: async () => {
+      const sb = window.TrainingSandbox;
+      if (!sb) return;
+      const skip = sb.nextStorySkip();
+      if (skip && !window.__E2E_SKIP_TIME_SKIP) await Tour.showTimeSkip(skip);
+      sb.advanceStory();
+      if (location.hash !== '#/collectives/TRNC1') navigateTo('collectives/TRNC1');
+      else window.dispatchEvent(new HashChangeEvent('hashchange'));
+      setTimeout(() => {
+        const card = document.getElementById('sdek-card');
+        if (card && card.animate) card.animate([{ backgroundColor: 'rgba(253,230,138,.95)' }, { backgroundColor: 'rgba(253,230,138,0)' }], { duration: 1600, easing: 'ease-out' });
+      }, 700);
+    }
+  };
+  const afterSdekRewind = (n) => ({ until: () => !!window.TrainingSandbox && window.TrainingSandbox.storyStep() >= n && Tour.currentScreen() === 'collectiveDetail' });
+
   window.TourScenarios = {
     'nav-overview': {
       id: 'nav-overview',
@@ -207,85 +242,228 @@
       ]
     },
 
-    // Коллективка — общая отправка. Учебный пример: Гулия Маши и Торалей Кати
-    // ещё не в коллективке, а в «СДЭК 12.10 (учебная)» уже лежат Дракулаура
-    // Ани (большая коробка, доля 2), Клодин Кати и Эбби Маши (плечо оплачено).
+    // Коллективка — общая посылка (переписан 10.10.2026, Коллективки 2.0 э4).
+    // Учебный пример: в «Без коллективки» на складе КЗ лежат Гулия Маши и
+    // Торалей Кати; в «СДЭК 12.10 (учебная)» — Дракулаура Ани (большая
+    // коробка, доля 2), Клодин Кати и Эбби Маши, цены СДЭК ещё нет.
+    // «В коллективку» в уроке срабатывает понарошку — только в учебном мире.
     'collective': {
       id: 'collective',
       title: 'Коллективка: собрать и отправить',
-      screens: ['orders', 'collectives', 'collectiveDetail'],
+      screens: ['orders', 'collectives', 'collectiveDetail', 'orderEdit'],
       momentScreens: ['collectives', 'collectiveDetail'],
       block: [
-        '#collective-picker-list > *', '#collective-picker-create-save', '#bulk-create-collective-btn', '#bulk-delete-btn',
-        '#delivery-status-apply-btn', '#delivery-status-force-btn', '#create-collective-save',
+        '#collective-picker-create-save', '#create-collective-save', '#pool-cancel-btn',
         '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#apply-costs-confirm', '#detail-delete-btn',
         '#bulk-unassign-btn', '#bulk-transfer-btn', '#bulk-continue-rf-btn', '.unassign-order-btn', '.units-slider',
-        '#detail-order-dropdown > *'
+        '#detail-order-dropdown > *', '[data-todo-action]', '[data-sdek-action]', '#select-mode-btn',
+        '.collective-pick-btn', '.collective-unassign-btn', ...ORDER_WRITES
       ],
       steps: [
-        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Отправку собирают из заказов.', advance: 'click', skipIf: onScreen('orders') },
+        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Посылки собирают отсюда.', advance: 'click', skipIf: onScreen('orders', 'collectives', 'collectiveDetail') },
         {
-          title: 'Что такое коллективка',
-          text: 'Несколько заказов, которые едут <b>одной посылкой</b>. Два плеча: <b>КЗ→РФ</b> — из Казахстана в Россию (СДЭК) и <b>По РФ</b> — по России до клиентов. Статус меняешь <b>один раз у коллективки</b> — и он меняется у всех заказов внутри.'
-        },
-        { target: '#select-mode-btn', title: 'Выбрать несколько', text: 'На складе в Казахстане лежат Гулия Маши и Торалей Кати — соберём их в отправку. Нажми «Выбрать». Быстрее — долгое нажатие на заказ.', advance: 'click' },
-        {
-          target: orderListCard('TRN107'), title: 'Отметь заказы', free: true,
-          text: 'Отметь <b>Гулию</b> (№ TRN107) нажатием на карточку. Можно и Торалей (№ TRN108) — она рядом.',
-          advance: { until: () => bulkCount() > 0 }
+          target: '#collectives-btn', title: 'Коллективки', advance: 'click', skipIf: onScreen('collectives', 'collectiveDetail'),
+          text: 'Коллективка — <b>одна посылка</b> из Казахстана в Россию (СДЭК) с заказами разных клиентов. Даже один заказ едет коллективкой. Открой «Коллективки».'
         },
         {
-          target: '#bulk-assign-btn', title: '«В коллективку»',
-          text: '<b>«В коллективку»</b> — добавить в уже собранную. <b>«Создать коллективку»</b> — новая из выбранных. Нажми «В коллективку».',
-          advance: 'click'
+          target: '#collectives-tabs', title: 'Три вкладки', skipIf: onScreen('collectiveDetail'),
+          text: '<b>В работе</b> — посылки, по которым ещё что-то не сделано. <b>Без коллективки</b> — заказы, которые ещё ни в одну посылку не собраны. <b>Завершённые</b> — всё сделано: посылка доехала, чек СДЭК внесён, клиенты оплатили.'
         },
         {
-          target: '#collective-picker-modal .bg-white', title: 'Выбор коллективки',
-          text: 'Первая строка — <b>«+ Создать новую коллективку»</b>, ниже — уже собранные: <b>«СДЭК 12.10 (учебная)»</b>, в ней 3 заказа (видно статус, трек и дату). В работе выбираешь — система спросит подтверждение. Сейчас закрой окно крестиком.',
-          advance: { until: () => { const m = document.getElementById('collective-picker-modal'); return !m || m.classList.contains('hidden'); } }
+          target: '#collectives-tabs [data-tab="pool"]', title: 'Без коллективки', text: 'Открой «Без коллективки».', advance: 'click',
+          skipIf: () => { const p = document.getElementById('collectives-pool-panel'); return !!p && !p.classList.contains('hidden'); }
         },
         {
-          target: '#bulk-status-btn', title: '«Статус доставки»',
-          text: 'Один статус сразу всем выбранным — когда заказы едут <b>не</b> в коллективке. Не хватает оплаты или данных — система покажет у кого и попросит подтвердить отдельно.'
-        },
-        { target: '#bulk-cancel-btn', title: 'Выйти из выбора', text: 'Нажми «Отменить» — выбор снимется.', advance: 'click' },
-        { target: '#collectives-btn', title: 'Все коллективки', text: 'Открой «Коллективки».', advance: 'click' },
-        {
-          target: '#stage-filter-tabs', title: 'Два плеча',
-          text: '<b>КЗ→РФ</b> — посылки из Казахстана, <b>По РФ</b> — отправки по России. Заказ проходит оба: в коллективке КЗ→РФ выбираешь заказы → «Продолжить как «По РФ»».'
-        },
-        { target: '#add-collective-btn', title: 'Новая коллективка', optional: true, text: 'Здесь создаётся новая: название («СДЭК 12.10»), трек-номер, плечо. Сейчас не создаём.' },
-        {
-          target: byText('#collective-list > div', 'СДЭК 12.10'), title: 'Открой «СДЭК 12.10»', advance: 'click',
-          text: 'Карточка: название, плечо, статус, сколько заказов. Нажми — посмотрим, что внутри.'
+          target: '[data-pool-group="store"]', title: 'Ждут отправки с магазина', optional: true,
+          text: 'Лагуна Ани и Фрэнки Оли ещё в магазине — собирать их в посылку рано. Эта группа свёрнута внизу, чтобы не мешала.'
         },
         {
-          target: '#detail-status', title: 'Статус коллективки', wait: 10000,
-          text: 'Главное поле. Посылка уехала — меняешь здесь на «Отправлено (СДЭК)» и «Сохранить». Откроется окно «статус доставки для всех 3 заказов» — проверь и «Применить».'
+          target: '[data-pool-group="kz"]', title: 'Уже в Казахстане', free: true,
+          text: 'А здесь — то, что уже в Казахстане и ждёт посылки: <b>Гулия Маши</b> (№ TRN107) и <b>Торалей Кати</b> (№ TRN108). Отметь обе — нажми на каждую карточку.',
+          advance: { until: () => /Выбрано: 2/.test((document.getElementById('pool-selected-count') || {}).textContent || '') }
+        },
+        { target: '#pool-assign-btn', title: '«В коллективку»', text: 'Внизу появилась панель. Нажми «В коллективку».', advance: 'click' },
+        {
+          target: '#collective-picker-modal > div', title: 'Куда положить', place: 'away',
+          text: 'Первая строка — <b>«+ Создать новую коллективку»</b>: нет подходящей посылки — создаёшь прямо здесь. Ниже — уже собранные: статус, трек, сколько заказов, дата. Выбери <b>«СДЭК 12.10 (учебная)»</b>.',
+          advance: { until: () => { const m = document.getElementById('shared-confirm-modal'); return !!m && !m.classList.contains('hidden'); } }
         },
         {
-          target: '#summary-paid-count', title: 'Кто оплатил плечо',
-          text: '<b>1/3</b> — доставку уже оплатила только Маша (за Эбби). Аня и Катя ещё должны — напомни до выдачи.'
+          target: '#shared-confirm-modal > div', title: 'Подтверди', place: 'away',
+          text: 'Система переспрашивает, куда и сколько заказов. Нажми <b>«В коллективку»</b> — в уроке заказы переедут только в учебном примере.',
+          advance: { until: () => { const m = document.getElementById('shared-confirm-modal'); return !!m && m.classList.contains('hidden') && !document.querySelector('[data-pool-order="TRN107"]'); } }
+        },
+        { target: '#collectives-tabs [data-tab="work"]', title: 'Готово', text: 'Гулия и Торалей ушли из «Без коллективки» — они теперь в «СДЭК 12.10». Открой «В работе».', advance: 'click' },
+        {
+          target: byText('#collective-list > div', 'СДЭК 12.10'), title: 'Карточка посылки', advance: 'click',
+          text: 'Жёлтые пометки — чего не хватает: у всех 5 заказов ещё <b>не выставлена цена СДЭК</b> (чека пока нет). Открой посылку.'
         },
         {
-          target: '#detail-order-search', title: 'Добавить заказ',
-          text: 'Забыли заказ — найди здесь по номеру, товару или клиенту. Убрать — крестик на карточке заказа или «Выбрать» → «Убрать из коллективки» / «Перенести в другую».'
+          target: '#todo-card', title: '«Что осталось сделать»', wait: 10000,
+          text: 'Шаги до конца посылки, у каждого — кнопка к действию. Сейчас: <b>2 заказа ещё не у посредника</b> — Гулия и Торалей по статусу на складе КЗ; нет трека и даты отправки, нет чека СДЭК, нет цены СДЭК. Закроешь все шаги — посылка сама уйдёт в «Завершённые».'
         },
         {
-          target: '#order-list .units-slider', title: 'Доля в расходах',
-          text: 'У Дракулауры Ани большая коробка — доля <b>2</b>: она несёт вдвое больше расхода на СДЭК. Обычный заказ — <b>1</b>, не участвует — <b>0</b>.'
+          target: '#detail-status', title: 'Статус посылки',
+          text: 'Посылка уехала — меняешь здесь на «Отправлено (СДЭК)» и «Сохранить»: статус доставки поменяется <b>у всех заказов внутри</b>. Если кто-то ещё не у посредника, система спросит по каждому: <b>уехал этой посылкой</b> или <b>вернуть в пул</b> («Без коллективки», деньги не меняются).'
         },
         {
-          target: '#cost-fields-grid', title: 'Факт. расход', optional: true,
-          text: 'Пришёл чек СДЭК или такси — сумма сюда и «Сохранить сверку». <b>«Применить расход в заказы»</b> меняет клиентам сумму к оплате за доставку — не уверен(а), спроси VASY.'
+          target: '#order-list .units-slider', title: 'Доля',
+          text: 'У Дракулауры Ани большая коробка — доля <b>2</b>: она вдвое «тяжелее обычного» и несёт вдвое больше расхода на СДЭК. Обычный заказ — <b>1</b>.'
         },
         {
-          title: 'Проверка',
-          text: 'Посылка «СДЭК 12.10» с этими 3 заказами уехала из Казахстана. Как отметить?',
+          target: '#order-list [data-order-id="TRN105"] [data-open-order]', title: 'Открой заказ Кати', advance: 'click',
+          text: 'Нажми на Клодин Кати (№ TRN105) — посмотрим, как посылка видна в карточке заказа.'
+        },
+        {
+          target: '#collective-box-stage1', title: 'Посылка в заказе', wait: 12000,
+          text: 'В карточке заказа видно, в какой он посылке: название, статус, сколько заказов, дата. <b>«Сменить»</b> — перенести в другую (спросит «из «А» в «Б»?»), <b>«Отвязать»</b> — вернуть в «Без коллективки».'
+        },
+        { target: '#collective-box-stage1 .collective-open-btn', title: '«Открыть»', text: 'Нажми «Открыть» — вернёмся в посылку.', advance: 'click' },
+        {
+          target: '#sdek-card', title: 'Оплата СДЭК', wait: 10000,
+          text: 'По каждой клиентке: цена СДЭК, сколько внесла, сколько осталось. Сейчас цены нет ни у кого — чек ещё не пришёл. Придёт — «Внести цену по чеку» разложит его по долям. Собрать деньги на СДЭК <b>заранее</b>, до чека, — урок «Собрать на СДЭК заранее».'
+        },
+        {
+          target: costsCard, title: 'Расходы: чек в тенге',
+          text: 'Сюда — сколько реально заплатили: СДЭК, такси по КЗ, такси по РФ. Чек СДЭК часто в тенге: у каждого поля свой переключатель <b>₽/₸</b>. Нажми «Вписать учебный чек» — поле СДЭК переключится на ₸ и получит 24 000 ₸.',
+          actions: [{ label: 'Вписать учебный чек', run: fillTrainingCheck }],
+          advance: { until: () => { const i = document.getElementById('cost-1'); return !!i && Number(i.value) === 24000 && sdekToggleIs('₸'); } }
+        },
+        {
+          target: costsCard, title: 'Рубли — сами',
+          text: 'Под полем — сколько это в рублях: система переводит по тому же курсу, что в калькуляторе заказа. Сам пересчитывать не нужно — <b>вписывай ровно как в чеке</b> и выбирай валюту чека.'
+        },
+        {
+          target: '#logistics-save-btn', title: 'Две разные кнопки',
+          text: '<b>«Сохранить сверку»</b> — записать, сколько стоила посылка (наш расход): клиентам ничего не меняет. <b>«Применить расход в заказы»</b> — разложить расход по долям в цену СДЭК каждого заказа: <b>меняет клиентам сумму к оплате</b>. Сначала сверка, потом — применить. Сейчас учебный режим, не сохраняем.'
+        },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'Посылка «СДЭК 12.10» уехала из Казахстана. Как отметить?',
           quiz: { options: [
-            { label: 'Сменить статус у коллективки → «Сохранить» → «Применить»', correct: true, explain: 'Один раз — и у всех 3 заказов статус доставки поменяется. Клиентки получат уведомление, если оно включено.' },
+            { label: 'Сменить статус у коллективки → «Сохранить» → «Применить»', correct: true, explain: 'Один раз — и статус доставки поменяется у всех заказов внутри. Кто ещё не у посредника — система спросит отдельно.' },
             { label: 'Открыть каждый заказ и поменять статус', explain: 'Долго, и легко пропустить один — тогда появится задача «Отстал от коллективки». Меняй у коллективки.' },
-            { label: 'Ничего, статус обновится сам', explain: 'Сам не обновится — статус коллективки меняешь ты, когда посылка двинулась.' }
+            { label: 'Ничего, статус обновится сам', explain: 'Сам не обновится — статус посылки меняешь ты, когда она двинулась.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Чек СДЭК — <b>24 000 ₸</b>. Как внести?',
+          quiz: { options: [
+            { label: 'В поле СДЭК переключить на ₸ и вписать 24 000 — в рубли переведётся само', correct: true, explain: 'Так в системе останется и сумма из чека, и рубли по нашему курсу.' },
+            { label: 'Пересчитать в рубли по курсу из интернета и вписать рублями', explain: 'Курс у нас свой — как в калькуляторе заказа. Другой курс даст другую сумму. Вписывай тенге, как в чеке.' },
+            { label: 'Вписать 24 000 в поле с ₽', explain: 'Тогда система решит, что это 24 000 рублей — в несколько раз больше. Сначала переключатель на ₸.' }
+          ] }
+        }
+      ]
+    },
+
+    // Сбор на СДЭК заранее (10.10.2026, Коллективки 2.0 э4). Учебный пример:
+    // «СДЭК 12.10» формируется, чека нет; Дракулаура Ани (доля 2), Клодин
+    // Кати и Эбби Маши. «Разложить» и «Внести цену» в уроке срабатывают
+    // понарошку (только учебный мир), «⏩ Перемотать время» — оплаты Кати и
+    // Маши, потом чек 2 000 ₽. Деньги в текстах сверены с payments/:
+    // метка на СДЭК покрывает не больше цены, лишнее остаётся у клиента;
+    // прогноз — не «к оплате сейчас».
+    'collective-sdek': {
+      id: 'collective-sdek',
+      title: 'Собрать на СДЭК заранее',
+      screens: ['orders', 'collectives', 'collectiveDetail', 'payments'],
+      momentScreens: ['collectiveDetail'],
+      block: [
+        '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#detail-delete-btn', '.units-slider', '#detail-order-dropdown > *',
+        '[data-todo-action]', '[data-sdek-action="no-sdek"]', '[data-sdek-action="remind"]', '#select-mode-btn', '.unassign-order-btn',
+        '#rp-save', '#em-save', '#rm-send', '[data-action="edit-payment"]', '[data-action="cancel-payment"]', '[data-action="cancel-earmark"]',
+        '.attach-receipt-input'
+      ],
+      steps: [
+        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Посылки — в «Заказах».', advance: 'click', skipIf: onScreen('orders', 'collectives', 'collectiveDetail') },
+        { target: '#collectives-btn', title: 'Коллективки', text: 'Открой «Коллективки».', advance: 'click', skipIf: onScreen('collectives', 'collectiveDetail') },
+        {
+          target: byText('#collective-list > div', 'СДЭК 12.10'), title: 'Посылка «СДЭК 12.10»', advance: 'click', skipIf: onScreen('collectiveDetail'),
+          text: 'В ней три заказа: Дракулаура Ани (большая коробка, доля 2), Клодин Кати и Эбби Маши. Посылка ещё формируется, чека СДЭК нет. Открой её.'
+        },
+        {
+          title: 'Зачем собирать заранее',
+          text: 'Чек СДЭК приходит, когда посылка уже уехала. Если просить деньги только после чека — клиенты платят поздно, а СДЭК уже оплачен нами. Поэтому на СДЭК можно собрать <b>заранее</b>: по ожидаемой сумме, а когда придёт чек — пересчитать точно.'
+        },
+        {
+          target: '#sdek-forecast', title: 'Ожидаемая сумма', wait: 10000,
+          text: 'Такая посылка обычно обходится примерно в <b>2 400 ₽</b>. Нажми «Вписать 2 400 ₽» — в работе впишешь свою (можно и в ₸: переключатель рядом).',
+          actions: [{ label: 'Вписать 2 400 ₽', run: () => fillValue('forecast-amount', 2400) }],
+          advance: { until: () => { const i = document.getElementById('forecast-amount'); return !!i && Number(i.value) === 2400; } }
+        },
+        { target: '[data-sdek-action="forecast-preview"]', title: 'Разложить', text: 'Нажми «Разложить по заказам».', advance: 'click' },
+        {
+          target: '#forecast-modal > div', title: 'Было → станет', place: 'away', wait: 8000,
+          text: 'Сумма делится по долям: у Ани доля 2 из 4 — <b>≈1 200 ₽</b>, у Кати и Маши — по <b>≈600 ₽</b>. «≈» — прогноз, ещё не цена. Записывается только заказам без цены: вписанные цены не трогаются. Нажми «Записать прогноз».',
+          advance: { until: () => { const m = document.getElementById('forecast-modal'); return !!m && m.classList.contains('hidden') && !!document.querySelector('[data-forecast-summary]'); } }
+        },
+        {
+          target: '[data-forecast-summary]', title: 'Собрано X из ≈N',
+          text: '<b>«Собрано 0 ₽ из ≈2 400 ₽ · не внесли клиентов: 3»</b> — сколько уже собрали из ожидаемого и сколько клиенток ещё не внесли. Добавишь заказ в посылку — «Пересчитать прогноз», доли поменяются.'
+        },
+        {
+          target: '#sdek-clients', title: 'Прогноз — ещё не долг',
+          text: 'У каждой клиентки — «≈ прогноз» и «собрать ≈…». Клиентка видит прогноз как <b>предварительную</b> сумму, а не «к оплате сейчас», и напоминаний по нему нет — попросить заранее решаешь ты. Заплатит сейчас — когда придёт чек, цена пересчитается.'
+        },
+        {
+          target: () => { const card = sdekClientCard('Катя'); return card ? card.querySelector('[data-sdek-action="pay"]') : null; },
+          title: 'Катя перевела 600 ₽', advance: 'click',
+          text: 'Катя прислала 600 ₽ за СДЭК. Нажми <b>«Занести»</b> у Кати.'
+        },
+        {
+          target: '#rp-alloc-section', title: 'Окно уже заполнено', wait: 12000,
+          text: 'Клиентка, сумма <b>600 ₽</b> и «За что» — СДЭК Клодин (№ TRN105) — уже подставлены. В работе сверяешь с банком и «Занести». Сейчас учебный режим — не сохраняем.'
+        },
+        { target: '#rp-cancel', title: 'Закрой окно', text: 'Нажми «Отмена».', advance: 'click' },
+        {
+          title: '⏩ Перемотаем время',
+          text: 'Пусть пройдёт несколько дней: Катя и Маша заплатят, а мы вернёмся в посылку. Нажми «Перемотать время».',
+          actions: [rewindSdek], advance: afterSdekRewind(1)
+        },
+        {
+          target: '[data-forecast-summary]', title: 'Не внесла одна Аня', wait: 10000,
+          text: '<b>«Собрано 1 200 ₽ из ≈2 400 ₽ · не внесли клиентов: 1»</b>. Осталась Аня — у неё «Напомнить» отправит сообщение. Посылка уезжает — едем дальше.'
+        },
+        {
+          title: '⏩ Пришёл чек',
+          text: 'Посылка уехала, и пришёл чек СДЭК. Перемотаем ещё.',
+          actions: [rewindSdek], advance: afterSdekRewind(2)
+        },
+        {
+          target: '#todo-card', title: 'Чек внесён', wait: 10000,
+          text: 'Галочка «Чек СДЭК внесён». Остался шаг <b>«Цена СДЭК у всех заказов»</b>: прогноз нужно заменить точной ценой по чеку.'
+        },
+        {
+          target: '[data-sdek-action="price-unpriced"]', title: 'Внести цену по чеку', advance: 'click',
+          text: 'Чек — <b>2 000 ₽</b>, а ждали ≈2 400. Нажми «Внести цену по чеку» — чек разложится по тем же долям.'
+        },
+        {
+          target: '#apply-costs-modal > div', title: 'Кто доплачивает, кому остаётся', place: 'away', wait: 8000,
+          text: 'Ане вышло <b>1 000 ₽</b> («пусто → 1 000 ₽»): она ещё ничего не вносила — <b>заплатит все 1 000 ₽</b>. Кате и Маше вышло по <b>500 ₽</b>, а собрали по 600 — <b>по 100 ₽ останется у них</b>. Галочка «сообщить клиентам» — по желанию. Нажми «Применить».',
+          advance: { until: () => { const m = document.getElementById('apply-costs-modal'); return !!m && m.classList.contains('hidden') && !document.querySelector('[data-sdek-action="price-unpriced"]'); } }
+        },
+        {
+          target: '#sdek-clients', title: 'Точные цены', wait: 8000,
+          text: 'Теперь цены точные. У Ани <b>1 000 ₽</b> — уже долг: заказ у посредника в КЗ, она попадёт в «Кто должен» и в напоминания. Катя и Маша оплатили — они ниже, под «Показать оплативших». Их лишние 100 ₽ не теряются: остаются у них <b>свободным остатком</b> (видно в «Оплатах»).'
+        },
+        {
+          title: 'Проверка 1 из 2',
+          text: 'С Кати собрали 600 ₽, а по чеку вышло 500 ₽. Что с лишними 100 ₽?',
+          quiz: { options: [
+            { label: 'Ничего не делаю: они остаются у Кати свободным остатком', correct: true, explain: 'Деньги не теряются и не задваиваются. Если Катя попросит вернуть их на карту — это делает VASY.' },
+            { label: 'Сразу перевожу Кате 100 ₽ обратно', explain: 'Возвраты делает только VASY. Сами 100 ₽ остаются у Кати — ничего не теряется.' },
+            { label: 'Заношу оплату на −100 ₽', explain: 'Отрицательных оплат нет, а исправить внесённое может только VASY. Здесь ничего делать не нужно.' }
+          ] }
+        },
+        {
+          title: 'Проверка 2 из 2',
+          text: 'Ты разложил(а) прогноз — у Кати ≈600 ₽. Это уже её долг?',
+          quiz: { options: [
+            { label: 'Нет: это предварительно — в «Кто должен» не попадает, точная цена будет по чеку', correct: true, explain: 'Прогноз подсказывает, сколько собрать. Долгом становится точная цена — после «Внести цену по чеку».' },
+            { label: 'Да, она сразу появится в «Кто должен»', explain: 'В «Кто должен» попадает только точная цена. Прогноз — подсказка, сколько собрать.' },
+            { label: 'Да, ей сразу придёт сообщение об оплате', explain: 'Прогноз клиентам не рассылается. Попросить заранее — твоё решение: «Напомнить» или в переписке.' }
           ] }
         }
       ]

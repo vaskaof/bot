@@ -11,7 +11,9 @@
  *   каталог и поиск товара, «уже брал(а)», разбор учебного лота);
  *   остальные чтения (справочники, каталог, курсы) идут на сервер как есть;
  * - любая запись отклоняется здесь же, до сервера (вторая линия защиты
- *   после `block` сценария) — кроме самого обучения (события, отзывы);
+ *   после `block` сценария) — кроме самого обучения (события, отзывы) и
+ *   учебных «записей» уроков про коллективку (`WRITE_HANDLERS`): они меняют
+ *   только учебный мир в памяти, на сервер не уходят;
  * - на сервер учебные данные не попадают никогда: ни в базу, ни в отчёты,
  *   ни в «Проверено делом» (там считаются только настоящие вызовы).
  *
@@ -78,8 +80,8 @@
     {
       id: 'TRN102', client: 'trn-anya', product: 'Monster High Draculaura Skulltimate Secrets', short: 'Дракулаура Skulltimate', hue: 330,
       channel: 'eBay', account: 'ebay-2@учебный', cargo: 'Карго Алматы', amount: 85, rateKzt: '480', rateRub: '0.19',
-      daysAgo: 30, statusDelivery: 'На складе в Казахстане', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1', units: 2,
-      stages: [['Основная', 6800, 6800, true, false], ['Вес', 2000, 0, true, false], ['СДЭК', 0, 0, false, null], ['Доставка_РФ', 0, 0, false, null]],
+      daysAgo: 30, statusDelivery: 'У посредника в КЗ', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1', units: 2,
+      stages: [['Основная', 6800, 6800, true, false], ['Вес', 2000, 0, true, false], ['СДЭК', 0, 0, true, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: [{ kind: 'stage_unpaid', stage: 'Вес', label: 'Вес: ждёт оплаты', hint: 'Осталось: 2 000 ₽', severity: 'warning', days: 2 }]
     },
     {
@@ -99,29 +101,29 @@
     {
       id: 'TRN105', client: 'trn-katya', product: 'Monster High Clawdeen Wolf Core', short: 'Клодин Core', hue: 25,
       channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
-      daysAgo: 25, statusDelivery: 'На складе в Казахстане', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1',
-      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 900, 0, false, true], ['Доставка_РФ', 0, 0, false, null]],
+      daysAgo: 25, statusDelivery: 'У посредника в КЗ', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 0, 0, true, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: []
     },
     {
       id: 'TRN106', client: 'trn-masha', product: 'Monster High Abbey Bominable Core', short: 'Эбби Core', hue: 210,
       channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
-      daysAgo: 24, statusDelivery: 'На складе в Казахстане', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1', legPaid: true,
-      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 900, 900, true, false], ['Доставка_РФ', 0, 0, false, null]],
+      daysAgo: 24, statusDelivery: 'У посредника в КЗ', statusOrder: 'Актуально, в доставке', stage: 'e5', collective: 'TRNC1',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 0, 0, true, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: []
     },
     {
       id: 'TRN107', client: 'trn-masha', product: 'Monster High Ghoulia Yelps Core', short: 'Гулия Core', hue: 260,
       channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
-      daysAgo: 9, statusDelivery: 'На складе в Казахстане', statusOrder: 'Актуально, в доставке', stage: 'e5',
-      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 900, 0, false, true], ['Доставка_РФ', 0, 0, false, null]],
+      daysAgo: 9, statusDelivery: 'На складе КЗ (карго)', statusOrder: 'Актуально, в доставке', stage: 'e5',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 0, 0, false, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: []
     },
     {
       id: 'TRN108', client: 'trn-katya', product: 'Monster High Toralei Stripe Core', short: 'Торалей Core', hue: 300,
       channel: 'AmazonUSA', account: 'amazon-1@учебный', cargo: 'Карго Алматы', amount: 30, rateKzt: '480', rateRub: '0.19',
-      daysAgo: 8, statusDelivery: 'На складе в Казахстане', statusOrder: 'Актуально, в доставке', stage: 'e5',
-      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 900, 0, false, true], ['Доставка_РФ', 0, 0, false, null]],
+      daysAgo: 8, statusDelivery: 'На складе КЗ (карго)', statusOrder: 'Актуально, в доставке', stage: 'e5',
+      stages: [['Основная', 3900, 3900, true, false], ['Вес', 700, 700, true, false], ['СДЭК', 0, 0, false, null], ['Доставка_РФ', 0, 0, false, null]],
       tasks: []
     }
   ];
@@ -186,10 +188,11 @@
         kind: t.kind, label: t.label, hint: t.hint, severity: t.severity, sinceMs: t.days ? now - t.days * DAY : 0,
         ...(t.stage ? { stage: t.stage } : {})
       }));
-      return { def, date, client: c, stagesBalance, items, imageUrl: doll(def.hue) };
+      return { def, date, client: c, stagesBalance, items, imageUrl: doll(def.hue), collective: def.collective || null };
     });
     const byId = new Map(orders.map((o) => [o.def.id, o]));
-    return { now, orders, byId };
+    const collectives = COLLECTIVE_DEFS.map((d) => ({ ...d, forecast: null, costs: { ...NO_COSTS } }));
+    return { now, orders, byId, collectives };
   }
 
   const SEVERITY_RANK = { critical: 0, warning: 1, info: 2 };
@@ -224,7 +227,7 @@
   }
 
   function collectiveLinks(o) {
-    const col = o.def.collective && COLLECTIVE_DEFS.find((c) => c.id === o.def.collective);
+    const col = o.collective && findCol(o.collective);
     return col ? [{ collectiveId: col.id, name: col.name, stage: col.stage }] : [];
   }
 
@@ -235,7 +238,7 @@
       statusOrder: def.statusOrder, statusDelivery: def.statusDelivery, managerId: me(), deliveryLadder: null,
       stage: STAGE_KEYS[def.stage] || null, purchaseChannel: def.channel, clientDisplay: display(client),
       dateOrderDisplay: ruDay(o.date), dateOrderSort: o.date.getTime(), searchTags: '', imageUrl: o.imageUrl, inCatalog: true,
-      collectiveId: def.collective || '', collectiveLinks: collectiveLinks(o), lotId: '', cartId: '',
+      collectiveId: o.collective || '', collectiveLinks: collectiveLinks(o), lotId: '', cartId: '',
       amount: String(def.amount), currency: 'Доллар', productShort: def.short,
       client: { telegramId: client.telegramId, username: client.username, name: client.name }, money: orderMoney(o)
     };
@@ -245,7 +248,7 @@
     const { def, client } = o;
     const sb = (stage) => o.stagesBalance.find((s) => s.stage === stage) || { target: 0, paid: 0 };
     const main = sb('Основная');
-    const col = def.collective && COLLECTIVE_DEFS.find((c) => c.id === def.collective);
+    const col = o.collective && findCol(o.collective);
     return {
       orderId: def.id, cartId: '', wishlistId: '', remark: '', productOriginal: def.product, productShort: def.short,
       imageUrl: o.imageUrl, inCatalog: true, purchaseLink: '', statusDelivery: def.statusDelivery, deliveryLadder: null,
@@ -324,11 +327,15 @@
     };
   }
 
+  const membersOf = (colId) => world.orders.filter((o) => o.collective === colId);
+  const sdekStage = (o) => o.stagesBalance.find((s) => s.stage === 'СДЭК');
+  const sdekPaidUp = (o) => { const s = sdekStage(o); return !!s && s.isForecast === false && s.target > 0 && s.paid >= s.target; };
+
   function collectiveOrders(colId) {
-    return world.orders.filter((o) => o.def.collective === colId).map((o) => ({
+    return membersOf(colId).map((o) => ({
       orderId: o.def.id, productDisplay: o.def.short, productOriginal: o.def.product, clientDisplay: display(o.client),
       imageUrl: o.imageUrl, statusOrder: o.def.statusOrder, statusDelivery: o.def.statusDelivery, remark: '',
-      logisticsUnitsRaw: o.def.units || null, logisticsUnitsEffective: o.def.units || 1, ownLegPaid: !!o.def.legPaid, lotId: null
+      logisticsUnitsRaw: o.def.units || null, logisticsUnitsEffective: o.def.units || 1, ownLegPaid: sdekPaidUp(o), lotId: null
     }));
   }
 
@@ -345,15 +352,192 @@
     taxiKzCostCurrency: 'RUB', taxiKzCostOriginal: null, taxiRfCostCurrency: 'RUB', taxiRfCostOriginal: null
   };
 
-  function collectiveHead(def) {
-    const created = new Date(world.now - def.daysAgo * DAY);
-    const list = collectiveOrders(def.id);
+  function collectiveHead(col) {
+    const created = new Date(world.now - col.daysAgo * DAY);
+    const list = collectiveOrders(col.id);
+    const sent = col.sentDaysAgo ? new Date(world.now - col.sentDaysAgo * DAY) : null;
     return {
-      collectiveId: def.id, name: def.name, trackNumber: def.track, status: def.status, stage: def.stage,
-      createdAt: ruDay(created), sentAt: null, sentAtDisplay: '', orderCount: def.orderCount || list.length,
-      lastActivityAt: created.toISOString()
+      collectiveId: col.id, name: col.name, trackNumber: col.track, status: col.status, stage: col.stage,
+      createdAt: ruDay(created), sentAt: sent ? sent.toISOString() : null, sentAtDisplay: sent ? ruDay(sent) : '',
+      orderCount: col.orderCount || list.length, lastActivityAt: (sent || created).toISOString(),
+      progress: sdekPayments(col.id).progress
     };
   }
+
+  const findCol = (id) => (world.collectives || []).find((c) => c.id === id);
+  const round2 = (n) => Math.round(n * 100) / 100;
+  // Позиция статуса на лестнице доставки (server/src/orders/deliveryLadder.js): < 8 — ещё не у посредника.
+  const POSITIONS = { 'Ожидает отправки с магазина': 2, 'На складе КЗ (карго)': 6, 'У посредника в КЗ': 8, 'Получено клиентом': 12 };
+  const costTotal = (col) => (Number(col.costs.sdekCost) || 0) + (Number(col.costs.taxiKzCost) || 0) + (Number(col.costs.taxiRfCost) || 0);
+
+  /** Доли «во сколько раз тяжелее обычного» → коэффициенты (как collectiveUnitRatios на сервере). */
+  function unitRatios(colId) {
+    const list = membersOf(colId);
+    const sum = list.reduce((a, o) => a + (o.def.units || 1), 0);
+    return new Map(list.map((o) => [o.def.id, (o.def.units || 1) / sum]));
+  }
+
+  /** «Оплата СДЭК» учебной коллективки — та же форма, что getCollectiveSdekPayments. */
+  function sdekPayments(id) {
+    const col = findCol(id);
+    const paymentStage = col.stage === 'По РФ' ? 'Доставка_РФ' : 'СДЭК';
+    const byClient = new Map();
+    for (const o of membersOf(id)) {
+      const s = o.stagesBalance.find((x) => x.stage === paymentStage) || { target: 0, paid: 0, isForecast: null };
+      const priceState = s.isForecast === false ? 'priced' : (s.isForecast === true ? 'forecast' : 'missing');
+      const isClosed = o.def.statusDelivery === 'Получено клиентом';
+      const key = o.client.telegramId;
+      if (!byClient.has(key)) {
+        byClient.set(key, { clientTelegramId: key, clientName: o.client.name, clientUsername: o.client.username, clientDisplay: display(o.client), orders: [] });
+      }
+      byClient.get(key).orders.push({
+        orderId: o.def.id, productDisplay: o.def.short, statusDelivery: o.def.statusDelivery, position: POSITIONS[o.def.statusDelivery] || null,
+        stage: paymentStage, priceState, isClosed, target: s.target, paid: s.paid,
+        remaining: priceState === 'priced' ? Math.max(0, s.target - s.paid) : 0,
+        forecastRemaining: priceState === 'forecast' && !isClosed ? round2(Math.max(0, s.target - s.paid)) : 0
+      });
+    }
+    const clients = [...byClient.values()].map((c) => {
+      const priced = c.orders.filter((o) => o.priceState === 'priced');
+      return {
+        ...c,
+        targetSum: priced.reduce((a, o) => a + o.target, 0),
+        paidSum: c.orders.reduce((a, o) => a + o.paid, 0),
+        remainingSum: priced.reduce((a, o) => a + o.remaining, 0),
+        forecastRemainingSum: round2(c.orders.reduce((a, o) => a + o.forecastRemaining, 0)),
+        priceMissingCount: c.orders.filter((o) => o.priceState !== 'priced').length
+      };
+    });
+    clients.sort((a, b) => (b.remainingSum - a.remainingSum) || (b.priceMissingCount - a.priceMissingCount) || a.clientDisplay.localeCompare(b.clientDisplay, 'ru'));
+    const all = clients.flatMap((c) => c.orders);
+    const unpaid = all.filter((o) => o.remaining > 0.01);
+    const notAtBroker = membersOf(id).filter((o) => (POSITIONS[o.def.statusDelivery] || 99) < 8);
+    const totals = {
+      targetSum: clients.reduce((a, c) => a + c.targetSum, 0), paidSum: clients.reduce((a, c) => a + c.paidSum, 0),
+      remainingSum: clients.reduce((a, c) => a + c.remainingSum, 0), unpaidClients: clients.filter((c) => c.remainingSum > 0.01).length,
+      priceMissingCount: clients.reduce((a, c) => a + c.priceMissingCount, 0),
+      forecastTargetSum: round2(all.filter((o) => o.priceState === 'forecast').reduce((a, o) => a + o.target, 0)),
+      forecastRemainingSum: round2(clients.reduce((a, c) => a + c.forecastRemainingSum, 0)),
+      notCollectedClients: clients.filter((c) => c.remainingSum + c.forecastRemainingSum > 0.01).length
+    };
+    return {
+      collectiveId: id, stage: col.stage, paymentStage, behindOrders: [],
+      notAtBrokerOrders: notAtBroker.map((o) => ({ orderId: o.def.id, productDisplay: o.def.short, clientDisplay: display(o.client), statusDelivery: o.def.statusDelivery })),
+      clients, totals, sdekForecast: col.forecast ? { ...col.forecast } : null,
+      progress: {
+        orderCount: all.length, notAtBrokerCount: notAtBroker.length, sdekPriced: all.length - totals.priceMissingCount, sdekPriceMissing: totals.priceMissingCount,
+        sdekPriceExempt: 0, sdekUnpaid: unpaid.length, sdekUnpaidClients: totals.unpaidClients, sdekRemainingRub: totals.remainingSum,
+        behindCount: 0, reconciled: costTotal(col) > 0, isTerminal: false, done: false
+      }
+    };
+  }
+
+  /** «Разложить по заказам»: как ordersService.computeCollectiveSdekForecast — прогноз только заказам без цены. */
+  function forecastPlan(id, input) {
+    const col = findCol(id);
+    if (costTotal(col) > 0) throw new Error('Чек СДЭК уже внесён — прогноз больше не нужен, используйте «Применить расход в заказы».');
+    const rub = round2(Number(input && input.totalRub) || 0);
+    if (!(rub > 0)) throw new Error('Введите ожидаемую сумму СДЭК больше нуля.');
+    const forecast = { rub, currency: input.currency === 'KZT' ? 'KZT' : 'RUB', original: input.original === undefined ? null : input.original };
+    const ratios = unitRatios(id);
+    const orders = [];
+    const skipped = [];
+    for (const c of sdekPayments(id).clients) {
+      for (const o of c.orders) {
+        const base = { orderId: o.orderId, productDisplay: o.productDisplay, clientDisplay: c.clientDisplay, paid: o.paid };
+        if (o.isClosed) { skipped.push({ ...base, reason: 'closed', target: o.target }); continue; }
+        if (o.priceState === 'priced') { skipped.push({ ...base, reason: 'priced', target: o.target }); continue; }
+        const after = round2(rub * (ratios.get(o.orderId) || 0));
+        orders.push({ ...base, before: o.priceState === 'forecast' ? o.target : null, after, surplus: round2(Math.max(0, o.paid - after)) });
+      }
+    }
+    return { col, forecast, orders, skipped };
+  }
+
+  /** «Внести цену по чеку» / «Применить расход»: доля чека каждому заказу (как computeCollectiveOrderShares). */
+  function sharesPlan(id, options) {
+    const col = findCol(id);
+    const total = costTotal(col);
+    if (!(total > 0)) throw new Error('Сначала сохраните сверку — внесите чек и «Сохранить сверку».');
+    const ratios = unitRatios(id);
+    const onlyUnpriced = !!(options && options.onlyUnpriced);
+    return membersOf(id)
+      .filter((o) => {
+        if (!onlyUnpriced) return true;
+        const s = sdekStage(o);
+        return o.def.statusDelivery !== 'Получено клиентом' && (!s || s.isForecast !== false);
+      })
+      .map((o) => {
+        const s = sdekStage(o);
+        return { o, s, before: s && s.isForecast === false ? s.target : null, after: round2(total * (ratios.get(o.def.id) || 0)), alreadyPaid: s ? s.paid : 0 };
+      });
+  }
+
+  /** Записать цель СДЭК в учебном мире. Метка покрывает не больше цели — лишнее у клиента (в учебном мире не показываем). */
+  function setSdekTarget(o, target, isForecast) {
+    const s = sdekStage(o);
+    s.target = target;
+    s.isForecast = isForecast;
+    s.paid = Math.min(s.paid, target);
+    s.remaining = Math.max(0, s.target - s.paid);
+    s.covered = s.target > 0 && s.paid >= s.target;
+  }
+
+  /**
+   * Учебные «записи» уроков про коллективку (10.10.2026, Коллективки 2.0 э4):
+   * меняют только учебный мир в памяти — на сервер не уходит ничего. Так
+   * менеджер сам нажимает «В коллективку» / «Разложить» / «Внести цену» и
+   * видит результат. Чужие (не учебные) id — undefined: запись отклоняется.
+   */
+  const WRITE_HANDLERS = {
+    assignOrdersToCollective: (ids, colId) => {
+      const list = (Array.isArray(ids) ? ids : []).map(String);
+      if (!findCol(colId) || !list.every((id) => trnOrder(id))) return undefined;
+      list.forEach((id) => { trnOrder(id).collective = colId; });
+      return { moved: [], added: list, failed: [] };
+    },
+    applyCollectiveSdekForecast: (id, input) => {
+      if (!findCol(id)) return undefined;
+      const plan = forecastPlan(id, input);
+      plan.col.forecast = plan.forecast;
+      plan.orders.forEach((p) => setSdekTarget(trnOrder(p.orderId), p.after, true));
+      return { forecast: plan.forecast, applied: plan.orders.map((p) => ({ orderId: p.orderId, amount: p.after })), failed: [], skippedCount: plan.skipped.length };
+    },
+    applyCollectiveLogisticsSharesToOrders: (id, options) => {
+      if (!findCol(id)) return undefined;
+      const plan = sharesPlan(id, options);
+      plan.forEach((p) => setSdekTarget(p.o, p.after, false));
+      return { applied: plan.map((p) => ({ orderId: p.o.def.id, amount: p.after })), failed: [] };
+    }
+  };
+
+  /**
+   * «⏩ Перемотать время» в уроке «Собрать на СДЭК заранее»: что случилось и
+   * что стало (было → стало) — экран «Прошло N дней» (Tour.showTimeSkip).
+   */
+  const SDEK_STORY = [
+    {
+      skip: {
+        days: 3, event: 'Катя и Маша перевели по 600 ₽ за СДЭК — ты занёс(ла) их через «Занести»',
+        changes: [['Собрано на СДЭК', '0 ₽', '1 200 ₽'], ['Не внесли', '3 клиентки', '1 — Аня']]
+      },
+      apply: () => ['TRN105', 'TRN106'].forEach((id) => { const s = sdekStage(trnOrder(id)); s.paid = Math.min(600, s.target); s.remaining = Math.max(0, s.target - s.paid); s.covered = s.paid >= s.target; })
+    },
+    {
+      skip: {
+        days: 5, event: 'Посылка уехала, пришёл чек СДЭК — 2 000 ₽. Его вписали в «Расходы» и нажали «Сохранить сверку»',
+        changes: [['Статус коллективки', 'Формируется', 'Отправлено (СДЭК)'], ['СДЭК за посылку', 'ожидали ≈2 400 ₽', 'вышло 2 000 ₽']]
+      },
+      apply: () => {
+        const col = findCol('TRNC1');
+        col.costs = { ...NO_COSTS, sdekCost: 2000 };
+        col.status = 'Отправлено (СДЭК)';
+        col.track = '1098765432';
+        col.sentDaysAgo = 1;
+      }
+    }
+  ];
+  let storyStep = 0;
 
   const ago = (days, hours = 0) => new Date(world.now - days * DAY - hours * 3600000);
 
@@ -513,67 +697,40 @@
     getMyAssistant: () => ({ remaining: 5, perDay: 5, sessions: [] }),
     askAssistant: (payload) => ({ session: assistantDemo(payload), remaining: 5, perDay: 5 }),
     rateAssistantSession: (id, helped) => ({ status: helped ? 'helped' : 'not_helped' }),
-    getCollectivesList: () => COLLECTIVE_DEFS.map(collectiveHead),
+    getCollectivesList: () => world.collectives.map(collectiveHead),
     getCollectiveDetails: (id) => {
-      const def = COLLECTIVE_DEFS.find((c) => c.id === id);
-      if (!def) return undefined;
+      const col = findCol(id);
+      if (!col) return undefined;
       const list = collectiveOrders(id);
-      return { ...collectiveHead(def), actualLogisticsCosts: { ...NO_COSTS }, orders: list, summary: collectiveSummary(list) };
+      return { ...collectiveHead(col), actualLogisticsCosts: { ...col.costs }, orders: list, summary: collectiveSummary(list) };
     },
     getCollectiveLogisticsContext: (id) => {
-      if (!COLLECTIVE_DEFS.some((c) => c.id === id)) return undefined;
+      const col = findCol(id);
+      if (!col) return undefined;
       const list = collectiveOrders(id).map((o) => ({ ...o, alreadyEstimated: 0, units: o.logisticsUnitsEffective }));
-      return { orders: list, actualLogisticsCosts: { ...NO_COSTS }, summary: collectiveSummary(list) };
+      return { orders: list, actualLogisticsCosts: { ...col.costs }, summary: collectiveSummary(list) };
     },
     searchOrdersForCollective: () => [],
-    // Коллективки 2.0 э2 (10.10.2026) — «Что осталось сделать» и «Оплата СДЭК» учебной коллективки.
-    getCollectiveSdekPayments: (id) => {
-      const def = COLLECTIVE_DEFS.find((c) => c.id === id);
-      if (!def) return undefined;
-      const paymentStage = def.stage === 'По РФ' ? 'Доставка_РФ' : 'СДЭК';
-      const byClient = new Map();
-      for (const o of world.orders.filter((x) => x.def.collective === id)) {
-        const s = o.stagesBalance.find((x) => x.stage === paymentStage) || { target: 0, paid: 0, isForecast: null };
-        const priceState = s.isForecast === false ? 'priced' : (s.isForecast === true ? 'forecast' : 'missing');
-        const key = o.client.telegramId;
-        if (!byClient.has(key)) {
-          byClient.set(key, { clientTelegramId: key, clientName: o.client.name, clientUsername: o.client.username, clientDisplay: display(o.client), orders: [] });
-        }
-        byClient.get(key).orders.push({
-          orderId: o.def.id, productDisplay: o.def.short, statusDelivery: o.def.statusDelivery, position: null, stage: paymentStage,
-          priceState, isClosed: o.def.statusDelivery === 'Получено клиентом', target: s.target, paid: s.paid,
-          remaining: priceState === 'priced' ? Math.max(0, s.target - s.paid) : 0
-        });
-      }
-      const clients = [...byClient.values()].map((c) => {
-        const priced = c.orders.filter((o) => o.priceState === 'priced');
-        return {
-          ...c,
-          targetSum: priced.reduce((a, o) => a + o.target, 0),
-          paidSum: c.orders.reduce((a, o) => a + o.paid, 0),
-          remainingSum: priced.reduce((a, o) => a + o.remaining, 0),
-          priceMissingCount: c.orders.length - priced.length
-        };
-      });
-      const all = clients.flatMap((c) => c.orders);
-      const unpaid = all.filter((o) => o.remaining > 0.01);
-      const totals = {
-        targetSum: clients.reduce((a, c) => a + c.targetSum, 0), paidSum: clients.reduce((a, c) => a + c.paidSum, 0),
-        remainingSum: clients.reduce((a, c) => a + c.remainingSum, 0), unpaidClients: clients.filter((c) => c.remainingSum > 0.01).length,
-        priceMissingCount: clients.reduce((a, c) => a + c.priceMissingCount, 0)
-      };
+    // Коллективки 2.0 э2–э4 (10.10.2026) — «Что осталось сделать», «Оплата СДЭК», «Сбор на СДЭК».
+    getCollectiveSdekPayments: (id) => (findCol(id) ? sdekPayments(id) : undefined),
+    previewCollectiveSdekForecast: (id, input) => {
+      if (!findCol(id)) return undefined;
+      const { col, forecast, orders, skipped } = forecastPlan(id, input);
       return {
-        collectiveId: id, stage: def.stage, paymentStage, behindOrders: [], notAtBrokerOrders: [], clients, totals,
-        progress: {
-          orderCount: all.length, notAtBrokerCount: 0, sdekPriced: all.length - totals.priceMissingCount, sdekPriceMissing: totals.priceMissingCount,
-          sdekPriceExempt: 0, sdekUnpaid: unpaid.length, sdekUnpaidClients: totals.unpaidClients, sdekRemainingRub: totals.remainingSum,
-          behindCount: 0, reconciled: false, isTerminal: false, done: false
+        collectiveId: id, forecast, previousForecast: col.forecast ? { ...col.forecast } : null, orders, skipped,
+        totals: {
+          forecastSum: round2(orders.reduce((a, o) => a + o.after, 0)), paidSum: round2(orders.reduce((a, o) => a + o.paid, 0)),
+          surplusSum: round2(orders.reduce((a, o) => a + o.surplus, 0)),
+          skippedPricedSum: round2(skipped.filter((x) => x.reason === 'priced').reduce((a, x) => a + x.target, 0))
         }
       };
     },
+    previewApplyCollectiveLogisticsSharesToOrders: (id, options) => (findCol(id)
+      ? sharesPlan(id, options).map((p) => ({ orderId: p.o.def.id, before: p.before, after: p.after, alreadyPaid: p.alreadyPaid }))
+      : undefined),
     // Коллективки 2.0 (10.10.2026) — «Без коллективки»: учебные заказы без коллективки.
     getCollectivePool: () => world.orders
-      .filter((o) => !o.def.collective && o.def.statusDelivery !== 'Получено клиентом')
+      .filter((o) => !o.collective && o.def.statusDelivery !== 'Получено клиентом')
       .map((o) => {
         const sdek = o.stagesBalance.find((s) => s.stage === 'СДЭК') || { target: 0, paid: 0, isForecast: null };
         return {
@@ -631,6 +788,12 @@
       try { result = handler(...args); } catch (e) { return Promise.reject(e); }
       if (result !== undefined) return new Promise((resolve) => setTimeout(() => resolve(clone(result)), 120));
     }
+    const write = WRITE_HANDLERS[method];
+    if (write) {
+      let result;
+      try { result = write(...args); } catch (e) { return Promise.reject(e); }
+      if (result !== undefined) return new Promise((resolve) => setTimeout(() => resolve(clone(result)), 150));
+    }
     if (WRITE_RE.test(method) && !ALLOWED_WRITES.has(method)) {
       return Promise.reject(new Error('Учебный режим: ничего не записывается.'));
     }
@@ -676,6 +839,7 @@
   window.TrainingSandbox = {
     activate() {
       world = buildWorld();
+      storyStep = 0;
       active = true;
       banner(true);
     },
@@ -688,6 +852,15 @@
     },
     isActive: () => active,
     CLIENTS,
+    /** «⏩ Перемотать время» в уроке «Собрать на СДЭК заранее»: учебная коллективка — на следующий шаг истории. */
+    advanceStory() {
+      if (!active || storyStep >= SDEK_STORY.length) return storyStep;
+      SDEK_STORY[storyStep].apply();
+      storyStep += 1;
+      return storyStep;
+    },
+    storyStep: () => storyStep,
+    nextStorySkip: () => (storyStep < SDEK_STORY.length ? clone(SDEK_STORY[storyStep].skip) : null),
     // Ссылка учебного лота: «Разобрать лот» отвечает по ней из учебного мира.
     LOT_URL: `https://www.ebay.com/itm/${LOT_URL_MARK}-monster-high-core`
   };
