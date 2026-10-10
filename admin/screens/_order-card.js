@@ -99,6 +99,14 @@
           steps.push(step(item, field ? [{ text: `Внести ${field.label}`, action: { type: 'focus', block: field.block, selectors: [field.selector] } }] : []));
           break;
         }
+        case 'closed_price_missing': {
+          // «Закрыто без расходов» (11.10.2026): вписать цену или «Цены не будет».
+          const field = STAGE_FIELDS[item.stage];
+          const buttons = field ? [{ text: `Внести ${field.label}`, action: { type: 'focus', block: field.block, selectors: [field.selector] } }] : [];
+          buttons.push({ text: 'Цены не будет', secondary: true, action: { type: 'dismiss', kind: item.dismissKey } });
+          steps.push(step(item, buttons));
+          break;
+        }
         case 'debt_on_close':
           steps.push(step(item, [
             { text: 'Записать оплату', action: { type: 'payments' } },

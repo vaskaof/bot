@@ -32,7 +32,12 @@ const WRITEOFF_REASON_STATUSES = new Set(['Не найдено', 'Заказ о�
 // "Пропустить с причиной" (22.09.2026) — та же строка, что серверный
 // reminderService.DISMISSIBLE_KINDS/reminderItems.js's kind, читаемая подпись
 // для баннера на карточке заказа.
-const DISMISSIBLE_KIND_LABELS = { purchase_event_missing: 'Факт выкупа не зафиксирован', fields_missing: 'Не заполнены канал/аккаунт/карго/валюта' };
+const DISMISSIBLE_KIND_LABELS = {
+  purchase_event_missing: 'Факт выкупа не зафиксирован', fields_missing: 'Не заполнены канал/аккаунт/карго/валюта',
+  // «Цены не будет» у закрытого заказа (11.10.2026) — ключ closed_price_missing:<этап>.
+  'closed_price_missing:Основная': 'Цены не будет: основная оплата', 'closed_price_missing:Вес': 'Цены не будет: вес',
+  'closed_price_missing:СДЭК': 'Цены не будет: СДЭК', 'closed_price_missing:СДЭК_Индивидуальная': 'Цены не будет: СДЭК'
+};
 
 window.Screens = window.Screens || {};
 window.Screens.orderEdit = {

@@ -58,6 +58,7 @@ const TASK_STAGES = [
 // Живёт в рамках SPA-сессии, полную перезагрузку не переживает.
 const tasksBoardState = {
   activeTab: 'client', activeStageKey: null, expandedGroups: new Set(), openQuiet: new Set(),
+  collectivesOpen: null, closedOpen: false, closedOldOpen: false, closedGroupsOpen: new Set(),
   clientFilter: '', channelFilter: '', managerFilter: '', scrollY: 0, scrollX: 0, openedOrderId: null
 };
 
@@ -112,6 +113,11 @@ window.Screens.reminders = {
           </div>
           <div id="stage-tabs" class="flex gap-1.5 overflow-x-auto pb-1.5 mb-1.5 md:hidden" style="scrollbar-width: none"></div>
         </div>
+        <!-- 11.10.2026 (решение VASY): «Коллективки» — порядок в отправленных
+             посылках снимает сразу много задач; «Закрыто без расходов» —
+             подсветка полученных заказов без цены (не долг, не в бейдже). -->
+        <div id="collectives-panel"></div>
+        <div id="closed-costs-panel"></div>
         <div id="reminders-list" class="tasks-board"></div>
         <div id="empty-message" class="hidden text-center text-sm text-gray-400 py-10">Задач нет 🎉</div>
       </main>
@@ -132,6 +138,10 @@ window.Screens.reminders = {
     let allCards = [];
     let stageTotals = {};
     let collectiveSummaries = {}; // Коллективки 2.0 э2 — сводка группы коллективки (getTasksBoard)
+    let collectiveTasks = []; // раздел «Коллективки» (11.10.2026)
+    let collectiveByOrder = new Map(); // orderId → id коллективок из раздела
+    const collectivesPanel = document.getElementById('collectives-panel');
+    const closedPanel = document.getElementById('closed-costs-panel');
     let activeTab = tasksBoardState.activeTab;
     let activeStageKey = tasksBoardState.activeStageKey; // вкладка стадии на телефоне; null — первая с задачами
     const expandedGroups = tasksBoardState.expandedGroups; // id коллективок, раскрытых на доске
@@ -252,6 +262,9 @@ window.Screens.reminders = {
         allCards = board.cards;
         stageTotals = board.stageTotals || {};
         collectiveSummaries = board.collectiveSummaries || {};
+        collectiveTasks = board.collectiveTasks || [];
+        collectiveByOrder = new Map();
+        for (const t of collectiveTasks) for (const id of t.orderIds) collectiveByOrder.set(id, [...(collectiveByOrder.get(id) || []), t.collectiveId]);
         populateChannelFilter();
         render();
         if (restorePending) {
@@ -286,7 +299,7 @@ window.Screens.reminders = {
     // внутри — группы коллективок, потом справочные) — очередь для
     // «Следующая задача →» в карточке заказа.
     function boardQueue() {
-      const cards = filteredCards();
+      const cards = boardCards();
       const ids = [];
       for (const stage of TASK_STAGES) {
         const stageCards = cards.filter(c => stageKeyOf(c) === stage.key);
@@ -344,6 +357,44 @@ window.Screens.reminders = {
       });
     }
 
+    // То же правило, что collectivesService.isCollectiveBoardItem на сервере:
+    // отставание от коллективки и этапы СДЭК её заказов уходят в раздел
+    // «Коллективки» (красные остаются на карточке заказа).
+    function isCollectiveItem(card, item) {
+      const ids = collectiveByOrder.get(card.orderId);
+      if (!ids || item.quiet || item.severity === 'critical') return false;
+      if (item.kind === 'behind_collective') return ids.includes(item.collectiveId);
+      return item.stage === 'СДЭК' || item.stage === 'СДЭК_Индивидуальная';
+    }
+
+    const SEVERITY_RANK_UI = { critical: 0, warning: 1, info: 2 };
+
+    // Карточки для колонок доски: без «Закрыт без цены» (свой раздел) и без
+    // пунктов, которые снимаются работой с коллективкой. Пустые — не показываем.
+    function boardCards() {
+      const result = [];
+      for (const card of filteredCards()) {
+        const items = card.items.filter(i => i.kind !== 'closed_price_missing' && !isCollectiveItem(card, i));
+        if (items.length === 0) continue;
+        if (items.length === card.items.length) { result.push(card); continue; }
+        const active = items.filter(i => !i.quiet);
+        const quiet = active.length === 0;
+        const ranked = quiet ? items : active;
+        const rank = Math.min(...ranked.map(i => SEVERITY_RANK_UI[i.severity] ?? 2));
+        // Эскалацию сервера (severity карточки выше пунктов) не теряем.
+        const severity = SEVERITY_RANK_UI[card.severity] < rank ? card.severity : SEVERITY_ORDER[rank];
+        result.push({ ...card, items, quiet, severity });
+      }
+      return result;
+    }
+
+    function closedCostCards() {
+      if (activeTab !== 'client') return [];
+      return filteredCards()
+        .map(card => ({ card, items: card.items.filter(i => i.kind === 'closed_price_missing') }))
+        .filter(x => x.items.length > 0);
+    }
+
     function getAgeColorClass(sinceMs) {
       if (!sinceMs) return 'border-gray-200';
       const daysOld = (Date.now() - sinceMs) / (1000 * 60 * 60 * 24);
@@ -357,9 +408,10 @@ window.Screens.reminders = {
     }
 
     function render() {
-      const cards = filteredCards();
-      const clientCount = allCards.filter(c => !c.isOwnPurchase && !c.quiet).length;
-      const ownCount = allCards.filter(c => c.isOwnPurchase && !c.quiet).length;
+      const cards = boardCards();
+      const visible = allCards.filter(c => c.items.some(i => i.kind !== 'closed_price_missing' && !isCollectiveItem(c, i) && !i.quiet));
+      const clientCount = visible.filter(c => !c.isOwnPurchase).length;
+      const ownCount = visible.filter(c => c.isOwnPurchase).length;
       tabsContainer.querySelector('[data-tab="client"]').textContent = `Клиентские (${clientCount})`;
       tabsContainer.querySelector('[data-tab="own"]').textContent = `Личные (${ownCount})`;
 
@@ -368,6 +420,8 @@ window.Screens.reminders = {
 
       listContainer.innerHTML = '';
       stageTabsContainer.innerHTML = '';
+      renderCollectivesPanel(criticalCount);
+      renderClosedPanel();
 
       const columns = TASK_STAGES
         .map(stage => {
@@ -687,6 +741,175 @@ window.Screens.reminders = {
       return el;
     }
 
+    // Раздел «Коллективки» (11.10.2026). Порядок VASY: сначала срочные заказы,
+    // потом коллективки — есть срочные, раздел свёрнут в одну строку.
+    function renderCollectivesPanel(criticalCount) {
+      collectivesPanel.innerHTML = '';
+      if (activeTab !== 'client' || collectiveTasks.length === 0) return;
+      const closable = collectiveTasks.reduce((sum, t) => sum + t.tasksClosable, 0);
+      const details = document.createElement('details');
+      details.className = 'mb-2 rounded-xl bg-violet-50 border border-violet-200 px-3 py-1.5';
+      details.id = 'collectives-tasks';
+      details.open = tasksBoardState.collectivesOpen !== null ? tasksBoardState.collectivesOpen : criticalCount === 0;
+      details.addEventListener('toggle', () => { tasksBoardState.collectivesOpen = details.open; });
+      const urgent = criticalCount > 0 ? ` <span class="font-normal text-violet-700">(сначала срочные: ${criticalCount})</span>` : '';
+      details.innerHTML = `
+        <summary class="text-[13px] font-semibold text-violet-900 cursor-pointer select-none">📦 Коллективки — навести порядок: ${collectiveTasks.length}${closable > 0 ? ` · уберёт задач: ${closable}` : ''}${urgent}</summary>
+        <div class="text-[11px] text-violet-800 pt-1">Одно действие с коллективкой закрывает задачи сразу у всех её заказов — начинайте отсюда.</div>
+        <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-2 py-2" data-collective-tasks></div>
+      `;
+      const listEl = details.querySelector('[data-collective-tasks]');
+      collectiveTasks.forEach(t => listEl.appendChild(buildCollectiveTaskCard(t)));
+      collectivesPanel.appendChild(details);
+    }
+
+    function buildCollectiveTaskCard(task) {
+      const el = document.createElement('div');
+      el.className = 'bg-white rounded-xl border border-violet-200 p-3';
+      el.dataset.collectiveTask = task.collectiveId;
+      el.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-semibold text-gray-900 text-[14px] line-clamp-2 break-words">${escapeHtmlClient(task.name)}</div>
+            <div class="text-[11px] text-gray-500">${escapeHtmlClient(task.status || '')} · заказов: ${task.orderIds.length}</div>
+          </div>
+          ${task.tasksClosable > 0 ? `<span class="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">уберёт задач: ${task.tasksClosable}</span>` : ''}
+        </div>
+        <div class="mt-2 space-y-1" data-steps></div>
+        <button type="button" class="open-collective-btn w-full mt-2 py-1.5 rounded-lg border border-violet-200 text-xs font-medium text-violet-700">Открыть коллективку →</button>
+      `;
+      const stepsEl = el.querySelector('[data-steps]');
+      task.steps.forEach((step) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.step = step.key;
+        btn.className = 'collective-step-btn w-full text-left text-[12px] px-2 py-1.5 rounded-lg bg-violet-50 text-violet-900 hover:bg-violet-100';
+        btn.textContent = `• ${step.text}`;
+        btn.addEventListener('click', () => runCollectiveStep(task, step));
+        stepsEl.appendChild(btn);
+      });
+      el.querySelector('.open-collective-btn').addEventListener('click', () => navigateTo(`collectives/${encodeURIComponent(task.collectiveId)}`));
+      return el;
+    }
+
+    function runCollectiveStep(task, step) {
+      const action = step.action || {};
+      if (action.type === 'catchUp') { openCatchUp(action.orderIds, action.targetStatus, task.name); return; }
+      if (action.type === 'returnToPool') { returnToPool(task, action.orderIds); return; }
+      if (action.type === 'closedCosts') {
+        tasksBoardState.closedOpen = true;
+        tasksBoardState.closedGroupsOpen.add(task.collectiveId);
+        if (!isNewClosedGroup(task.collectiveId)) tasksBoardState.closedOldOpen = true;
+        renderClosedPanel();
+        const target = closedPanel.querySelector(`[data-closed-group="${CSS.escape(task.collectiveId)}"]`) || closedPanel;
+        target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        return;
+      }
+      navigateTo(`collectives/${encodeURIComponent(task.collectiveId)}`);
+    }
+
+    async function returnToPool(task, orderIds) {
+      const ok = await showConfirmModal(
+        `Вернуть в пул заказы, которые ещё не у посредника (${orderIds.length})?
+
+Они уйдут из коллективки «${task.name}» во вкладку «Без коллективки». Деньги и статус не меняются.`,
+        { confirmLabel: 'Вернуть в пул' }
+      );
+      if (!ok) return;
+      try {
+        const result = await callServer('unassignOrdersFromCollective', orderIds, task.stage);
+        if (result.failed.length > 0) showSaveToast(false, `Вернули в пул: ${result.removed.length}, не получилось: ${result.failed.length} — ${result.failed[0].reason}`);
+        else showSaveToast(true, `Вернули в пул: ${result.removed.length}.`);
+        await loadReminders();
+      } catch (error) {
+        showSaveToast(false, 'Не удалось вернуть в пул: ' + error.message);
+      }
+    }
+
+    function isNewClosedGroup(collectiveId) {
+      return closedCostCards().some(x => groupKeyOf(x.card) === collectiveId && x.items.some(i => i.closedIsNew));
+    }
+
+    function groupKeyOf(card) {
+      const ids = collectiveByOrder.get(card.orderId);
+      if (ids && ids.length) return ids[0];
+      return card.collective ? card.collective.id : '';
+    }
+
+    function groupNameOf(key, card) {
+      const t = collectiveTasks.find(x => x.collectiveId === key);
+      if (t) return t.name;
+      return card.collective && card.collective.id === key ? card.collective.name : key;
+    }
+
+    // «Закрыто без расходов» (11.10.2026): полученные заказы без цены веса/СДЭК/
+    // основной — подсветка, не долг. Новые (закрытые с 11.10) — открыто,
+    // старые — свёрнуто; внутри — по коллективкам.
+    function renderClosedPanel() {
+      closedPanel.innerHTML = '';
+      const list = closedCostCards();
+      if (list.length === 0) return;
+      const fresh = list.filter(x => x.items.some(i => i.closedIsNew));
+      const old = list.filter(x => !x.items.some(i => i.closedIsNew));
+      const details = document.createElement('details');
+      details.className = 'mb-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-1.5';
+      details.id = 'closed-costs';
+      details.open = tasksBoardState.closedOpen;
+      details.addEventListener('toggle', () => { tasksBoardState.closedOpen = details.open; });
+      const freshNote = fresh.length ? ` <span class="font-normal text-slate-600">(новых: ${fresh.length})</span>` : '';
+      details.innerHTML = `
+        <summary class="text-[13px] font-semibold text-slate-800 cursor-pointer select-none">🧾 Закрыто без расходов: ${list.length}${freshNote}</summary>
+        <div class="text-[11px] text-slate-600 pt-1">Заказ получен, а цена веса / СДЭК так и не вписана. Знаете — впишите прямо здесь. Уже не восстановить — «Цены не будет» с причиной.</div>
+        <div data-closed-fresh class="pt-2"></div>
+        <div data-closed-old></div>
+      `;
+      const freshEl = details.querySelector('[data-closed-fresh]');
+      if (fresh.length) appendClosedGroups(freshEl, fresh);
+      if (old.length) {
+        const oldDetails = document.createElement('details');
+        oldDetails.className = 'mt-1 mb-1';
+        oldDetails.id = 'closed-costs-old';
+        oldDetails.open = tasksBoardState.closedOldOpen;
+        oldDetails.addEventListener('toggle', () => { tasksBoardState.closedOldOpen = oldDetails.open; });
+        oldDetails.innerHTML = `<summary class="text-xs text-slate-600 py-1.5 cursor-pointer select-none">Старые (закрыты до 11.10): ${old.length}</summary><div data-old-groups></div>`;
+        appendClosedGroups(oldDetails.querySelector('[data-old-groups]'), old);
+        details.querySelector('[data-closed-old]').appendChild(oldDetails);
+      }
+      closedPanel.appendChild(details);
+    }
+
+    function appendClosedGroups(container, list) {
+      const groups = new Map();
+      for (const x of list) {
+        const key = groupKeyOf(x.card);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(x);
+      }
+      const keys = [...groups.keys()].sort((a, b) => ((a === '') - (b === '')) || (groups.get(b).length - groups.get(a).length));
+      for (const key of keys) {
+        const items = groups.get(key);
+        const groupKey = key || 'none';
+        const g = document.createElement('details');
+        g.className = 'mb-1.5 rounded-lg bg-white border border-slate-200 px-2.5 py-1';
+        g.dataset.closedGroup = groupKey;
+        g.open = tasksBoardState.closedGroupsOpen.has(groupKey);
+        g.addEventListener('toggle', () => {
+          if (g.open) tasksBoardState.closedGroupsOpen.add(groupKey); else tasksBoardState.closedGroupsOpen.delete(groupKey);
+        });
+        const title = key ? `Коллективка «${escapeHtmlClient(groupNameOf(key, items[0].card))}»` : 'Без коллективки';
+        g.innerHTML = `
+          <summary class="text-[12px] text-slate-800 py-1 cursor-pointer select-none">${title} — ${items.length}</summary>
+          ${key ? '<button type="button" class="closed-open-collective text-[11px] text-violet-700 font-medium py-1">Открыть коллективку →</button>' : ''}
+          <div data-closed-cards class="pt-1"></div>
+        `;
+        const openBtn = g.querySelector('.closed-open-collective');
+        if (openBtn) openBtn.addEventListener('click', () => navigateTo(`collectives/${encodeURIComponent(key)}`));
+        const cardsEl = g.querySelector('[data-closed-cards]');
+        items.forEach(x => cardsEl.appendChild(buildCard({ ...x.card, items: x.items, canSnooze: false })));
+        container.appendChild(g);
+      }
+    }
+
     function buildCard(card) {
       const el = document.createElement('div');
       el.className = `bg-white rounded-2xl shadow-sm border p-4 mb-3 transition-shadow ${getAgeColorClass(card.oldestSinceMs)}`;
@@ -912,6 +1135,35 @@ window.Screens.reminders = {
             showSaveToast(false, error.message);
             dismissBtn.disabled = false;
             dismissBtn.textContent = 'Пропустить (данные утеряны)';
+          }
+        });
+      }
+
+      // «Цены не будет» (11.10.2026) — пропуск этапа закрытого заказа с причиной.
+      if (item.kind === 'closed_price_missing' && item.dismissKey) {
+        const noPrice = document.createElement('div');
+        noPrice.className = 'mt-1';
+        noPrice.innerHTML = '<button type="button" class="no-price-btn text-xs text-gray-500 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Цены не будет</button>';
+        row.querySelector('[data-inline-fill]').after(noPrice);
+        const noPriceBtn = noPrice.querySelector('.no-price-btn');
+        noPriceBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const reason = await showPromptModal(
+            'Почему цены не будет? (например: «старый заказ, сумму уже не восстановить» или «вес входил в цену»)',
+            { confirmLabel: 'Цены не будет', cancelLabel: 'Отмена' }
+          );
+          if (reason === null) return;
+          if (!reason.trim()) { showSaveToast(false, 'Причина обязательна.'); return; }
+          noPriceBtn.disabled = true;
+          noPriceBtn.textContent = 'Сохраняю...';
+          try {
+            await callServer('dismissReminderItem', card.orderId, item.dismissKey, reason.trim());
+            showSaveToast(true, 'Отмечено «цены не будет» — отменить можно в карточке заказа.');
+            await loadReminders();
+          } catch (error) {
+            showSaveToast(false, error.message);
+            noPriceBtn.disabled = false;
+            noPriceBtn.textContent = 'Цены не будет';
           }
         });
       }

@@ -266,6 +266,10 @@ window.Screens.orders = {
     const countLabel = document.getElementById('orders-count');
     const selectModeBtn = document.getElementById('select-mode-btn');
     const bulkBar = document.getElementById('bulk-actions-bar');
+    // «Выбрать все» (11.10.2026): найденные сейчас (поиск + фильтры + плитка
+    // стадии) — пишет render(). Объявлено здесь, до первого render().
+    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
+    let lastFilteredIds = [];
     const bulkSelectedCount = document.getElementById('bulk-selected-count');
     const bulkAssignBtn = document.getElementById('bulk-assign-btn');
     const bulkCreateBtn = document.getElementById('bulk-create-collective-btn');
@@ -533,10 +537,7 @@ window.Screens.orders = {
     });
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
 
-    // Найденные сейчас (поиск + фильтры + плитка стадии) — пишет render().
-    let lastFilteredIds = [];
-    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
-    const allFilteredSelected = () => lastFilteredIds.length > 0 && lastFilteredIds.every((id) => selectedIds.has(id));
+    function allFilteredSelected() { return lastFilteredIds.length > 0 && lastFilteredIds.every((id) => selectedIds.has(id)); }
     bulkSelectAllBtn.addEventListener('click', () => {
       if (allFilteredSelected()) lastFilteredIds.forEach((id) => selectedIds.delete(id));
       else lastFilteredIds.forEach((id) => selectedIds.add(id));

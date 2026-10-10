@@ -1324,6 +1324,7 @@ window.Screens.collectiveDetail = {
     const bulkTransferBtn = document.getElementById('bulk-transfer-btn');
     const bulkStatusBtn = document.getElementById('bulk-status-btn');
     const bulkContinueRfBtn = document.getElementById('bulk-continue-rf-btn');
+    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
 
     function setSelectMode(on) {
       selectMode = on;
@@ -1336,8 +1337,7 @@ window.Screens.collectiveDetail = {
     selectModeBtn.addEventListener('click', () => setSelectMode(!selectMode));
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => setSelectMode(false));
 
-    const bulkSelectAllBtn = document.getElementById('bulk-select-all-btn');
-    const allOrdersSelected = () => orders.length > 0 && orders.every((o) => selectedIds.has(o.orderId));
+    function allOrdersSelected() { return orders.length > 0 && orders.every((o) => selectedIds.has(o.orderId)); }
     bulkSelectAllBtn.addEventListener('click', () => {
       if (allOrdersSelected()) selectedIds.clear();
       else orders.forEach((o) => selectedIds.add(o.orderId));
