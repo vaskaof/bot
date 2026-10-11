@@ -365,7 +365,7 @@ window.Screens.payments = {
 
     function getRecentClients() {
       try {
-        const raw = localStorage.getItem(RECENT_CLIENTS_KEY);
+        const raw = localStorage.getItem(tenantStorageKey(RECENT_CLIENTS_KEY));
         return raw ? JSON.parse(raw) : [];
       } catch (e) { return []; } // приватный режим/localStorage недоступен — не критично, просто нет списка
     }
@@ -374,7 +374,7 @@ window.Screens.payments = {
       try {
         const list = getRecentClients().filter((c) => c.telegramId !== item.telegramId);
         list.unshift({ telegramId: item.telegramId, username: item.username, name: item.name, displayName: item.displayName, pending: !!item.pending });
-        localStorage.setItem(RECENT_CLIENTS_KEY, JSON.stringify(list.slice(0, RECENT_CLIENTS_MAX)));
+        localStorage.setItem(tenantStorageKey(RECENT_CLIENTS_KEY), JSON.stringify(list.slice(0, RECENT_CLIENTS_MAX)));
       } catch (e) { /* см. getRecentClients */ }
     }
 

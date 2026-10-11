@@ -64,7 +64,7 @@
   function tileHtml(a) {
     return `<button type="button" data-achievement="${esc(a.code)}" class="relative bg-white rounded-2xl border ${a.unlocked ? (a.gold ? 'border-amber-200' : 'border-gray-100') : 'border-dashed border-gray-200'} shadow-sm p-2.5 flex flex-col items-center text-center active:scale-[0.97] transition-transform">
       ${a.isNew ? '<span class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-pink-500 text-white text-[9px] font-semibold">Новое</span>' : ''}
-      ${!a.unlocked && a.rewardSovy > 0 ? `<span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[9px] font-semibold">🦉 +${a.rewardSovy}</span>` : ''}
+      ${!a.unlocked && a.rewardSovy > 0 ? `<span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[9px] font-semibold">${esc(currencyEmoji())} +${a.rewardSovy}</span>` : ''}
       <span class="mt-1">${badgeHtml(a, 52)}</span>
       <span class="text-[11.5px] font-semibold leading-tight mt-2 ${a.unlocked ? 'text-gray-900' : 'text-gray-500'}">${esc(a.title)}</span>
       ${a.unlocked
@@ -126,7 +126,7 @@
       <div class="text-[12px] mt-0.5 ${a.unlocked ? 'text-emerald-600' : 'text-gray-400'}">${a.unlocked ? `Открыто ${esc(dateRu(a.unlockedAt))}` : 'Ещё не открыто'}</div>
       <div class="text-[14px] text-gray-700 mt-3 leading-snug">${esc(a.unlocked ? (a.cheer || a.hint) : a.hint)}</div>
       ${!a.unlocked && a.progress ? `<div class="max-w-[220px] mx-auto">${progressLine(a.progress)}</div>` : ''}
-      ${!a.unlocked && a.rewardSovy > 0 ? `<div class="mt-3 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-[13px] font-medium">🦉 Награда: +${a.rewardSovy} ${plural(a.rewardSovy, 'сова', 'совы', 'сов')}</div>` : ''}
+      ${!a.unlocked && a.rewardSovy > 0 ? `<div class="mt-3 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-[13px] font-medium">${esc(currencyEmoji())} Награда: +${a.rewardSovy} ${esc(currencyWord(a.rewardSovy))}</div>` : ''}
       <div class="flex gap-2 mt-5">
         <button type="button" data-close class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Закрыть</button>
         ${a.unlocked ? '' : (lesson
@@ -273,7 +273,7 @@
             ${a.cheer ? `<div class="text-[13.5px] text-gray-600 mt-0.5">${esc(a.cheer)}</div>` : ''}
           </div>`).join('')}
         ${sovy ? `<div class="text-[12px] text-gray-500 mt-4">${esc((r.sovy || []).map((x) => `За задание «${x.title}»`).join(' · '))}</div>` : ''}
-        ${sovy ? `<div class="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-amber-50 text-amber-700 text-[15px] font-semibold" data-pop style="animation:achPop .6s ${0.3 + achievements.length * 0.25}s both">🦉 +${sovy} ${plural(sovy, 'сова', 'совы', 'сов')}</div>` : ''}
+        ${sovy ? `<div class="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-amber-50 text-amber-700 text-[15px] font-semibold" data-pop style="animation:achPop .6s ${0.3 + achievements.length * 0.25}s both">${esc(currencyEmoji())} +${sovy} ${esc(currencyWord(sovy))}</div>` : ''}
         ${progressText ? `<div class="text-[12px] text-gray-400 mt-3">${esc(progressText)}</div>` : ''}
         <div class="flex gap-2 mt-5">
           <button type="button" data-all class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium">Все достижения</button>

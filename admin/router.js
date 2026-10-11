@@ -41,6 +41,8 @@ const ROUTES = [
   { path: 'more', screen: 'more', navKey: 'more', showNav: true },
   { path: 'contests', screen: 'contests', navKey: 'contests', showNav: true },
   { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
+  // В4 плана SaaS — «Мой канал» (бренд и тексты бота), admin-only, вход из «Настроек».
+  { path: 'my-channel', screen: 'myChannel', navKey: 'settings', showNav: true },
   { path: 'analytics', screen: 'analytics', navKey: 'analytics', showNav: true },
   // Э2 рефакторинга экономики, 25.08.2026 — форма "Конвертация" + отчёты
   // буфера/личных закупок, см. wallet.js. В MORE_GROUP наравне с settings/

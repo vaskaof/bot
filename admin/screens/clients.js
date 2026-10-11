@@ -431,8 +431,8 @@ window.Screens.clients = {
       commission: ['Комиссия', 'Сумма комиссии за посредничество по заказам клиента (поле «Бронь/комиссия за посредничество») — часть дохода, а не дополнительные деньги сверху.'],
       paid: ['Оплачено клиентом', 'Сколько денег клиент реально перевёл (сумма платежей в его пул), независимо от того, на какой заказ/стадию они уже распределены.'],
       credit: ['Кредит', 'Остаток на балансе клиента, который менеджер ещё не распределил ни на один заказ вручную. Текущее состояние — период на эту цифру не влияет.'],
-      sovy: ['Совы', 'Бонусный баланс клиента по программе лояльности — совы за заказы/приглашения. Текущее состояние — период на эту цифру не влияет.'],
-      tickets: ['Билеты', 'Билеты для розыгрышей — начисляются за каждые 100 сов. Текущее состояние — период на эту цифру не влияет.']
+      sovy: [currencyTitle(), `Бонусный баланс клиента по программе лояльности — ${currencyLower()} за заказы/приглашения. Текущее состояние — период на эту цифру не влияет.`],
+      tickets: ['Билеты', `Билеты для розыгрышей — начисляются за каждые 100 ${currencyWord(100)}. Текущее состояние — период на эту цифру не влияет.`]
     };
     const help = (key) => helpIcon(REPORT_HELP[key][0], REPORT_HELP[key][1]);
 
@@ -507,10 +507,10 @@ window.Screens.clients = {
             <div><div class="text-[11px] text-gray-400 flex items-center gap-1">Комиссия ${help('commission')}</div><div class="font-medium text-gray-900">${money(report.totalCommissionRub)} ₽</div></div>
             <div><div class="text-[11px] text-gray-400 flex items-center gap-1">Оплачено клиентом ${help('paid')}</div><div class="font-medium text-gray-900">${money(report.totalPaidRub)} ₽</div></div>
             <div><div class="text-[11px] text-gray-400 flex items-center gap-1">Кредит ${help('credit')}</div><div class="font-medium text-gray-900">${money(report.creditBalanceRub)} ₽</div></div>
-            <div><div class="text-[11px] text-gray-400 flex items-center gap-1">Совы ${help('sovy')}</div><div class="font-medium text-gray-900">${report.sovyProgress}</div></div>
+            <div><div class="text-[11px] text-gray-400 flex items-center gap-1">${escapeHtmlClient(currencyTitle())} ${help('sovy')}</div><div class="font-medium text-gray-900">${report.sovyProgress}</div></div>
             <div><div class="text-[11px] text-gray-400 flex items-center gap-1">Билеты ${help('tickets')}</div><div class="font-medium text-gray-900">${report.tickets}</div></div>
           </div>
-          <p class="text-[11px] text-gray-400 mt-3">Кредит/совы/билеты — текущий остаток, период на них не действует.</p>
+          <p class="text-[11px] text-gray-400 mt-3">Кредит/${escapeHtmlClient(currencyLower())}/билеты — текущий остаток, период на них не действует.</p>
         </div>
 
         <button type="button" id="open-payments-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-3 flex items-center justify-between text-left">
@@ -563,7 +563,7 @@ window.Screens.clients = {
           ['Заказов', report.ordersCount], ['Завершено', report.completedCount],
           ['Выручка ₽', report.totalRevenueRub], ['Доход ₽', report.totalProfitRub],
           ['Комиссия ₽', report.totalCommissionRub], ['Оплачено клиентом ₽', report.totalPaidRub],
-          ['Кредит ₽', report.creditBalanceRub], ['Совы', report.sovyProgress], ['Билеты', report.tickets]
+          ['Кредит ₽', report.creditBalanceRub], [currencyTitle(), report.sovyProgress], ['Билеты', report.tickets]
         ];
         downloadCsv(['Показатель', 'Значение'], rows, `client_${currentClient.telegramId}_report.csv`);
       });
@@ -619,8 +619,8 @@ window.Screens.clients = {
         const current = currentClient.clientType || 'Клиент';
         const next = current === 'Посредник' ? 'Клиент' : 'Посредник';
         const warning = next === 'Клиент'
-          ? 'Клиент перестанет быть исключением из начисления сов за заказ.'
-          : 'Клиент будет исключён из начисления сов за заказ (посредники не получают совы за свои заказы).';
+          ? `Клиент перестанет быть исключением из начисления бонусов (${currencyLower()}) за заказ.`
+          : `Клиент будет исключён из начисления бонусов (${currencyLower()}) за заказ (посредники не получают их за свои заказы).`;
         if (!(await showConfirmModal(`Сменить тип клиента на «${next}»? ${warning}`, { confirmLabel: 'Сменить' }))) return;
         btn.disabled = true;
         try {

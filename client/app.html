@@ -95,6 +95,17 @@
     }, 15000);
   </script>
   <script src="../vendor/tailwindcss-play-3.4.17.js?v=20261011050444" onload="__bootLoaded.tailwind=true"></script>
+  <script>
+    /* В4 плана SaaS: цвет бренда канала. Классы indigo-* приложения берут цвет из CSS-переменных --brand-*;
+       по умолчанию (и у Dream Dolls) это ровно indigo Tailwind, свой цвет ставит applyBrandColor (common.js). */
+    if (window.tailwind) {
+      (function () {
+        var colors = {};
+        [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].forEach(function (k) { colors[k] = 'rgb(var(--brand-' + k + ') / <alpha-value>)'; });
+        window.tailwind.config = { theme: { extend: { colors: { indigo: colors } } } };
+      })();
+    }
+  </script>
   <script src="../vendor/lucide-1.48.0.min.js?v=20261011050444" onload="__bootLoaded.lucide=true"></script>
   <script src="https://telegram.org/js/telegram-web-app.js" onload="__bootLoaded.telegram=true"></script>
   <script src="../config.js?v=20261011050444"></script>
@@ -150,7 +161,12 @@
       cursor: pointer;
       flex-shrink: 0;
     }
-    .toggle-switch.on { background: #4f46e5; }
+    :root {
+      --brand-50: 238 242 255; --brand-100: 224 231 255; --brand-200: 199 210 254; --brand-300: 165 180 252;
+      --brand-400: 129 140 248; --brand-500: 99 102 241; --brand-600: 79 70 229; --brand-700: 67 56 202;
+      --brand-800: 55 48 163; --brand-900: 49 46 129; --brand-950: 30 27 75;
+    }
+    .toggle-switch.on { background: rgb(var(--brand-600)); }
     .toggle-switch .knob {
       position: absolute;
       top: 2px;
@@ -190,7 +206,7 @@
        `hover:text-indigo-600` снят с разметки кнопок ниже, эквивалент
        восстановлен здесь, но ограничен устройствами с настоящим курсором. */
     @media (hover: hover) and (pointer: fine) {
-      #bottom-nav [data-nav-key]:hover { color: #4f46e5; }
+      #bottom-nav [data-nav-key]:hover { color: rgb(var(--brand-600)); }
     }
   </style>
 </head>

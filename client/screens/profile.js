@@ -63,7 +63,7 @@ window.Screens.profile = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-              <span>🦉</span><span>Совы</span>
+              <span>${escapeHtmlClient(currencyEmoji())}</span><span>${escapeHtmlClient(currencyTitle())}</span>
             </div>
             <span id="sovy-progress-label" class="text-xs text-gray-400">0/100</span>
           </div>
@@ -278,14 +278,14 @@ window.Screens.profile = {
         // и сразу попадает в innerHTML — экранировать нечего, см. JSDoc
         // inlineExpand в common.js.
         const helpSlot = document.getElementById('sovy-help-slot');
-        helpSlot.innerHTML = inlineExpand('Как устроены Совы и Билеты?', buildSovyHelpBodyFull(info));
+        helpSlot.innerHTML = inlineExpand(`Как устроены ${currencyLower()} и билеты?`, buildSovyHelpBodyFull(info));
         wireInlineExpand(helpSlot);
 
         const referralText = document.getElementById('referral-text');
         const referralInput = document.getElementById('referral-link-input');
         const inviteTextBlock = document.getElementById('referral-invite-text');
         if (info.link) {
-          referralText.textContent = `Друг получит ${info.inviteeReward} сов сразу, а вы — ${info.referrerReward} сов за его первый оплаченный заказ.`;
+          referralText.textContent = `Друг получит ${info.inviteeReward} ${currencyWord(info.inviteeReward)} сразу, а вы — ${info.referrerReward} ${currencyWord(info.referrerReward)} за его первый оплаченный заказ.`;
           referralInput.value = info.link;
           inviteTextBlock.textContent = buildInviteText(info.link);
         } else {

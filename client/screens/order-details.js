@@ -252,10 +252,10 @@ window.Screens.orderDetails = {
       const sovBox = document.getElementById('d-sov-info');
       if (d.sovInfo && d.sovInfo.amount > 0) {
         let sovHtml = d.sovInfo.accrued
-          ? `🎟️ ${d.sovInfo.amount} сов начислено за этот заказ`
-          : `🎟️ +${d.sovInfo.amount} сов при полной оплате основной суммы`;
+          ? `🎟️ ${d.sovInfo.amount} ${escapeHtmlClient(currencyWord(d.sovInfo.amount))} начислено за этот заказ`
+          : `🎟️ +${d.sovInfo.amount} ${escapeHtmlClient(currencyWord(d.sovInfo.amount))} при полной оплате основной суммы`;
         if (sovyRateInfo) {
-          sovHtml += inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo));
+          sovHtml += inlineExpand(`Как начисляются ${currencyLower()}?`, buildSovyHelpBodyFull(sovyRateInfo));
         }
         sovBox.innerHTML = sovHtml;
         sovBox.classList.remove('hidden');

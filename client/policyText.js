@@ -60,17 +60,33 @@ const POLICY_SUMMARY_HTML = `
   в Google не передаются.</p>
 `;
 
-const POLICY_HTML = `
+/**
+ * В4 плана SaaS: название канала — из бренда (`TENANT_PROFILE.branding.channelTitle`, у DD — «DreamDoll»).
+ * Профиля нет — нейтрально («администрация канала»), чужое название не подставляем. Полный шаблон политики
+ * с оператором-посредником — В8.
+ */
+function escapeHtmlPolicy(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function policyBrandName() {
+  const profile = window.TENANT_PROFILE;
+  const name = profile && profile.branding ? String(profile.branding.channelTitle || '').trim() : '';
+  return escapeHtmlPolicy(name);
+}
+
+function buildPolicyHtml(name) {
+  return `
   <p class="mb-3">Действует с ${POLICY_UPDATED_AT} · версия ${POLICY_VERSION}</p>
 
   <p class="mb-3">Настоящая политика составлена в соответствии с Федеральным
   законом от 27.07.2006 №152-ФЗ «О персональных данных» и разъясняет, какие
-  данные собирает бот и мини-приложение «Кнопка» (проект DreamDoll,
-  далее — «мы»), зачем и как ими распоряжается.</p>
+  данные собирает бот и мини-приложение «Кнопка» (${name ? `проект ${name}, ` : ''}далее — «мы»),
+  зачем и как ими распоряжается.</p>
 
   <p class="mb-1 font-semibold text-gray-800">1. Кто отвечает за ваши данные</p>
-  <p class="mb-3">Обработку данных ведёт DreamDoll. По всем вопросам —
-  менеджер DreamDoll в Telegram (контакт — в разделе 7 и в самом боте).</p>
+  <p class="mb-3">Обработку данных ведёт ${name || 'администрация канала'}. По всем вопросам —
+  менеджер ${name || 'канала'} в Telegram (контакт — в разделе 7 и в самом боте).</p>
 
   <p class="mb-1 font-semibold text-gray-800">2. Какие данные собираются</p>
   <p class="mb-3">Telegram ID, username и имя (с первого сообщения боту или
@@ -83,12 +99,12 @@ const POLICY_HTML = `
 
   <p class="mb-1 font-semibold text-gray-800">3. Зачем это нужно</p>
   <p class="mb-3">Оформление и сопровождение ваших заказов от покупки до
-  доставки; учёт оплат и бонусов (совы, билеты, реферальная программа);
+  доставки; учёт оплат и бонусов (${escapeHtmlPolicy(typeof currencyLower === 'function' ? currencyLower() : 'совы')}, билеты, реферальная программа);
   уведомления о статусе заказа, ответах на вопросы, розыгрышах; улучшение
   работы бота и мини-аппа, борьба со сбоями и злоупотреблениями.</p>
 
   <p class="mb-1 font-semibold text-gray-800">4. Кому передаются данные</p>
-  <p class="mb-3">Данные обрабатывают только сотрудники/менеджеры DreamDoll —
+  <p class="mb-3">Данные обрабатывают только сотрудники/менеджеры ${name || 'канала'} —
   третьим лицам для рекламы или перепродажи не передаются. Технически данные
   проходят через платформу Telegram (как канал связи) и, при необходимости
   доставки, — через логистических партнёров на маршруте Казахстан → Россия
@@ -117,9 +133,16 @@ const POLICY_HTML = `
   ID) невозможно связать вас с вашими заказами.</p>
 
   <p class="mb-1 font-semibold text-gray-800">7. Контакты</p>
-  <p>По всем вопросам обработки персональных данных — менеджер DreamDoll в
+  <p>По всем вопросам обработки персональных данных — менеджер ${name || 'канала'} в
   Telegram, указанный в боте (кнопка «Профиль» → «Связь с нами», либо прямо
   в сообщениях бота).</p>
 `;
+}
 
-window.PolicyText = { POLICY_VERSION, POLICY_UPDATED_AT, POLICY_SUMMARY_HTML, POLICY_HTML };
+// POLICY_HTML — геттер: название канала берётся в момент показа (профиль канала грузится при старте).
+window.PolicyText = {
+  POLICY_VERSION,
+  POLICY_UPDATED_AT,
+  POLICY_SUMMARY_HTML,
+  get POLICY_HTML() { return buildPolicyHtml(policyBrandName()); }
+};

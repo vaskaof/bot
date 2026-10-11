@@ -277,8 +277,8 @@ window.Screens.contests = {
         </div>
         ${t.description ? `<div class="text-[13px] text-gray-500 mt-1">${escapeHtmlClient(t.description)}</div>` : ''}
         ${progressHtml}
-        <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} сов</div>
-        <div class="mt-1">${sovyRateInfo ? inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo)) : ''}</div>
+        <div class="text-[12px] text-indigo-600 mt-2 font-medium">+${t.reward} ${escapeHtmlClient(currencyWord(t.reward))}</div>
+        <div class="mt-1">${sovyRateInfo ? inlineExpand(`Как начисляются ${currencyLower()}?`, buildSovyHelpBodyFull(sovyRateInfo)) : ''}</div>
       `;
 
       // Повторяемые задания (баг-репорт и т.п.) — кнопка отправки доступна

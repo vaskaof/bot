@@ -270,7 +270,7 @@ window.Screens.questions = {
         const reviewBtn = document.createElement('button');
         reviewBtn.type = 'button';
         reviewBtn.className = 'mt-2 w-full py-2 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-medium';
-        reviewBtn.textContent = `Оставить отзыв на ответ (+${reviewTask.reward} сов)`;
+        reviewBtn.textContent = `Оставить отзыв на ответ (+${reviewTask.reward} ${currencyWord(reviewTask.reward)})`;
         reviewBtn.addEventListener('click', () => {
           const questionRef = q.text ? q.text.slice(0, 60) : q.productDisplay;
           openFeedbackTaskModal('Отзыв на ответ менеджера', reviewTask, {
@@ -357,7 +357,7 @@ window.Screens.questions = {
       try {
         // module-guarded: gamification — задания приходят только из getTasksList (без модуля список пуст).
         await callServer('submitTaskProof', activeFeedbackTask.taskId, activeFeedbackTextPrefix + text);
-        const rewardNote = activeFeedbackTask.reward > 0 ? ` (+${activeFeedbackTask.reward} сов после проверки)` : '';
+        const rewardNote = activeFeedbackTask.reward > 0 ? ` (+${activeFeedbackTask.reward} ${currencyWord(activeFeedbackTask.reward)} после проверки)` : '';
         closeFeedbackTaskModal();
         showSaveToast(true, `Отправлено на проверку${rewardNote}`);
       } catch (error) {

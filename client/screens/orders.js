@@ -150,6 +150,7 @@ window.Screens.orders = {
     }
     function renderMyBookings(bookings) {
       const box = document.getElementById('my-bookings');
+      if (!box) return; // клиент уже ушёл с экрана, пока брони грузились
       if (!bookings || bookings.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
       const when = (v) => new Date(v).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       const line = (b) => {
@@ -314,15 +315,15 @@ window.Screens.orders = {
       let sovHtml = '';
       if (sov && sov.amount > 0) {
         sovHtml = sov.accrued
-          ? `<div class="text-[11px] text-amber-600 mt-1">🎟️ ${sov.amount} сов начислено</div>`
-          : `<div class="text-[11px] text-gray-400 mt-1">🎟️ +${sov.amount} сов при полной оплате</div>`;
+          ? `<div class="text-[11px] text-amber-600 mt-1">🎟️ ${sov.amount} ${escapeHtmlClient(currencyWord(sov.amount))} начислено</div>`
+          : `<div class="text-[11px] text-gray-400 mt-1">🎟️ +${sov.amount} ${escapeHtmlClient(currencyWord(sov.amount))} при полной оплате</div>`;
         // Пояснение прямо у записи о совах (19.08.2026, round 5 — расположение;
         // round 7 — buildSovyOrderNote удалена, полный канонический текст
         // buildSovyHelpBodyFull теперь везде, см. common.js) — только если
         // курс успел загрузиться (sovyRateInfo, см. loadOrders выше); без
         // него молча пропускаем пояснение, сама строка с суммой не зависит от него.
         if (sovyRateInfo) {
-          sovHtml += inlineExpand('Как начисляются Совы?', buildSovyHelpBodyFull(sovyRateInfo));
+          sovHtml += inlineExpand(`Как начисляются ${currencyLower()}?`, buildSovyHelpBodyFull(sovyRateInfo));
         }
       }
 

@@ -216,8 +216,8 @@
     if (!r) return '';
     const left = Math.max(0, r.lessons - d.done);
     return left > 0
-      ? `🦉 Ещё ${left} ${plural(left, 'урок', 'урока', 'уроков')} — и +${r.reward} ${plural(r.reward, 'сова', 'совы', 'сов')}`
-      : `🦉 +${r.reward} ${plural(r.reward, 'сова', 'совы', 'сов')} — загляните в «Конкурсы»`;
+      ? `${currencyEmoji()} Ещё ${left} ${plural(left, 'урок', 'урока', 'уроков')} — и +${r.reward} ${currencyWord(r.reward)}`
+      : `${currencyEmoji()} +${r.reward} ${currencyWord(r.reward)} — загляните в «Конкурсы»`;
   }
 
   function questHtml(d) {
@@ -383,10 +383,10 @@
             </div>
           </div>
           ${(d.rewards || []).length ? `<div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4 mb-4">
-            <div class="text-sm font-semibold text-gray-900 mb-2">🦉 Награды за прогресс</div>
+            <div class="text-sm font-semibold text-gray-900 mb-2">${escapeHtmlClient(currencyEmoji())} Награды за прогресс</div>
             ${d.rewards.map((r) => `<div class="flex items-center justify-between py-1.5 text-[13px] ${r.done ? 'text-emerald-700' : 'text-gray-700'}">
               <span>${r.done ? '✓' : '○'} ${r.lessons === d.total ? 'Весь курс' : `${r.lessons} ${plural(r.lessons, 'урок', 'урока', 'уроков')}`}</span>
-              <span class="font-semibold">+${r.reward} ${plural(r.reward, 'сова', 'совы', 'сов')}</span>
+              <span class="font-semibold">+${r.reward} ${escapeHtmlClient(currencyWord(r.reward))}</span>
             </div>`).join('')}
           </div>` : ''}
           <div class="space-y-2.5">${d.lessons.map((l, i) => `

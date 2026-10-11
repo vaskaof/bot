@@ -100,7 +100,7 @@ window.Screens.contests = {
               <div>
                 <label class="text-xs font-medium text-gray-500">За какое достижение *</label>
                 <select id="task-achievement-param" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
-                <div class="text-[11px] text-gray-400 mt-1">Конкретное — совы один раз. «Любое» — за первое открытое; включите «Повторяемое» — совы за каждое (до макс. начислений).</div>
+                <div class="text-[11px] text-gray-400 mt-1">Конкретное — ${escapeHtmlClient(currencyLower())} один раз. «Любое» — за первое открытое; включите «Повторяемое» — ${escapeHtmlClient(currencyLower())} за каждое (до макс. начислений).</div>
               </div>
               <label class="flex items-start gap-2 text-xs text-gray-600">
                 <input type="checkbox" id="task-count-existing" class="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600">
@@ -110,10 +110,10 @@ window.Screens.contests = {
             <div id="task-lessons-block" class="hidden">
               <label class="text-xs font-medium text-gray-500">Сколько уроков пройти *</label>
               <select id="task-lessons-param" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"></select>
-              <div class="text-[11px] text-gray-400 mt-1">Совы один раз, когда клиент пройдёт столько уроков. Можно завести несколько заданий-ступенек: 1 урок, 3 урока, весь курс.</div>
+              <div class="text-[11px] text-gray-400 mt-1">${escapeHtmlClient(currencyTitle())} один раз, когда клиент пройдёт столько уроков. Можно завести несколько заданий-ступенек: 1 урок, 3 урока, весь курс.</div>
             </div>
             <div>
-              <label class="text-xs font-medium text-gray-500">Награда (сов) *</label>
+              <label class="text-xs font-medium text-gray-500">Награда (${escapeHtmlClient(currencyLower())}) *</label>
               <input type="number" id="task-reward-input" min="0" step="1"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400"
                 placeholder="Например: 10">
@@ -454,7 +454,7 @@ window.Screens.contests = {
         <div class="text-[12px] text-gray-400 mt-1">Клиент: ${escapeHtmlClient(s.telegramId)} · ${escapeHtmlClient(s.submittedAt)}</div>
         <div class="text-[13px] text-gray-700 mt-2 p-2 bg-gray-50 rounded-lg break-words">${escapeHtmlClient(s.proof)}</div>
         <div class="flex items-center gap-2 mt-2">
-          <label class="text-[11px] text-gray-500 shrink-0">Награда (сов, макс. ${s.reward}) ${helpIcon('Награда при одобрении', '<p>Заявлено клиентом при подаче: ' + s.reward + ' сов. Можно снизить (например, баг уже известен) — выше заявленного значения поставить нельзя.</p>')}</label>
+          <label class="text-[11px] text-gray-500 shrink-0">Награда (${escapeHtmlClient(currencyLower())}, макс. ${s.reward}) ${helpIcon('Награда при одобрении', '<p>Заявлено клиентом при подаче: ' + s.reward + ' ' + escapeHtmlClient(currencyWord(s.reward)) + '. Можно снизить (например, баг уже известен) — выше заявленного значения поставить нельзя.</p>')}</label>
           <input type="number" class="approve-reward-input w-20 px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-indigo-400" min="0" max="${s.reward}" step="1" value="${s.reward}">
         </div>
         <div class="flex items-center gap-2 mt-3">
@@ -476,8 +476,8 @@ window.Screens.contests = {
           return;
         }
         const confirmText = finalReward < s.reward
-          ? `Одобрить и начислить ${finalReward} сов (снижено с заявленных ${s.reward})?`
-          : `Одобрить и начислить ${finalReward} сов?`;
+          ? `Одобрить и начислить ${finalReward} ${currencyWord(finalReward)} (снижено с заявленных ${s.reward})?`
+          : `Одобрить и начислить ${finalReward} ${currencyWord(finalReward)}?`;
         // ИСПРАВЛЕНО (найдено e2e-тестом 23.08.2026; тот же баг и тот же фикс,
         // что admin/screens/payments.js approve-claim-btn, 20.08.2026 round 2)
         // — `e.currentTarget` в нативном DOM Event обнуляется браузером сразу
@@ -492,7 +492,7 @@ window.Screens.contests = {
           if (!(await showConfirmModal(confirmText, { confirmLabel: 'Одобрить' }))) return;
           btn.disabled = true;
           await callServer('approveTaskSubmission', s.submissionId, finalReward);
-          showSaveToast(true, 'Заявка одобрена, совы начислены');
+          showSaveToast(true, `Заявка одобрена, ${currencyLower()} начислены`);
           loadModeration();
           loadApproved();
         } catch (error) {
@@ -558,7 +558,7 @@ window.Screens.contests = {
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="font-semibold text-gray-900 text-[15px]">${escapeHtmlClient(s.taskTitle)}</div>
-          <div class="text-[12px] text-amber-600 shrink-0">🎟️ ${s.reward} сов</div>
+          <div class="text-[12px] text-amber-600 shrink-0">🎟️ ${s.reward} ${escapeHtmlClient(currencyWord(s.reward))}</div>
         </div>
         <div class="text-[12px] text-gray-400 mt-1">Клиент: ${escapeHtmlClient(s.telegramId)} · Одобрено: ${escapeHtmlClient(s.decidedAt)}</div>
         <div class="mt-3">
@@ -571,7 +571,7 @@ window.Screens.contests = {
         // берётся ДО await, не через e.currentTarget после него.
         const btn = e.currentTarget;
         try {
-          if (!(await showConfirmModal(`Отозвать ${s.reward} сов у клиента за «${s.taskTitle}»? Списание нельзя отменить кнопкой — только повторным одобрением заявки.`, { confirmLabel: 'Отозвать', danger: true }))) return;
+          if (!(await showConfirmModal(`Отозвать ${s.reward} ${currencyWord(s.reward)} у клиента за «${s.taskTitle}»? Списание нельзя отменить кнопкой — только повторным одобрением заявки.`, { confirmLabel: 'Отозвать', danger: true }))) return;
           btn.disabled = true;
           await callServer('revokeTaskReward', s.submissionId);
           showSaveToast(true, 'Награда отозвана');

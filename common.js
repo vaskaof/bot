@@ -642,7 +642,106 @@ async function loadTenantProfile() {
     } catch (error) {
         window.TENANT_PROFILE = null;
     }
+    const branding = window.TENANT_PROFILE && window.TENANT_PROFILE.branding;
+    if (branding && branding.accentColor) applyBrandColor(branding.accentColor);
     return window.TENANT_PROFILE;
+}
+
+const BRAND_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+// Доля белого (+) или чёрного (−) для оттенка; 600 — сам цвет бренда (кнопки bg-indigo-600).
+const BRAND_SHADE_MIX = { 50: 0.92, 100: 0.84, 200: 0.68, 300: 0.5, 400: 0.3, 500: 0.14, 600: 0, 700: -0.15, 800: -0.3, 900: -0.45, 950: -0.65 };
+
+/**
+ * В4 плана SaaS: оттенки 50–950 из одного цвета бренда (#rrggbb).
+ * @param {string} hex
+ * @returns {Object<number, number[]>|null} {50: [r,g,b], …}; null — не цвет
+ */
+function brandPalette(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return null;
+    const base = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+    const out = {};
+    BRAND_SHADES.forEach((k) => {
+        const mix = BRAND_SHADE_MIX[k];
+        out[k] = base.map((c) => Math.round(mix >= 0 ? c + (255 - c) * mix : c * (1 + mix)));
+    });
+    return out;
+}
+
+/**
+ * Контраст белого текста на цвете (WCAG): ниже 3 — надписи на кнопках читаются плохо.
+ * @param {string} hex
+ * @returns {number}
+ */
+function whiteTextContrast(hex) {
+    const p = brandPalette(hex);
+    if (!p) return 21;
+    const lum = p[600].map((c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    const l = 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2];
+    return 1.05 / (l + 0.05);
+}
+
+/** Ставит CSS-переменные --brand-* (их читают классы indigo-* клиентского приложения, client/app.html). */
+function applyBrandColor(hex) {
+    const palette = brandPalette(hex);
+    if (!palette) return;
+    const root = document.documentElement;
+    BRAND_SHADES.forEach((k) => root.style.setProperty(`--brand-${k}`, palette[k].join(' ')));
+}
+
+/**
+ * В4 плана SaaS: ключ localStorage своего канала. Один телефон — несколько ботов-каналов на одном сайте
+ * (общий localStorage), и черновик заказа или «последние клиенты» одного канала не должны всплыть в другом.
+ * У Dream Dolls (и пока профиль не загружен) ключ прежний — старые черновики не теряются.
+ * @param {string} key
+ * @returns {string}
+ */
+function tenantStorageKey(key) {
+    const profile = window.TENANT_PROFILE;
+    const branding = profile && profile.branding;
+    if (!profile || !profile.slug || (branding && branding.isHome)) return key;
+    return `${profile.slug}:${key}`;
+}
+
+/**
+ * В4 плана SaaS: валюта бонусов канала (у Dream Dolls — совы). Профиля нет — совы (прежний текст).
+ * @returns {{one:string, few:string, many:string, plural:string, emoji:string}}
+ */
+function brandCurrency() {
+    const profile = window.TENANT_PROFILE;
+    const c = profile && profile.branding && profile.branding.currency;
+    if (c && c.one && c.few && c.many && c.plural) return c;
+    return { one: 'сова', few: 'совы', many: 'сов', plural: 'Совы', emoji: '🦉' };
+}
+
+/** «5 сов» / «2 балла»: слово валюты для числа. */
+function currencyWord(n) {
+    const c = brandCurrency();
+    const abs = Math.abs(Math.trunc(Number(n) || 0));
+    const m10 = abs % 10;
+    const m100 = abs % 100;
+    if (m10 === 1 && m100 !== 11) return c.one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return c.few;
+    return c.many;
+}
+
+/** Заголовок валюты с большой буквы: «Совы», «Баллы». */
+function currencyTitle() {
+    const p = brandCurrency().plural;
+    return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+/** Валюта во множественном числе строчными: «совы», «баллы» (именительный падеж). */
+function currencyLower() {
+    return brandCurrency().plural.toLowerCase();
+}
+
+/** Значок валюты: 🦉 / ⭐. */
+function currencyEmoji() {
+    return brandCurrency().emoji || '🎁';
 }
 
 /**
@@ -721,7 +820,7 @@ function _writeCachedClientContext(context) {
  */
 function saveOrderDraft(draftKey, payload) {
     try {
-        localStorage.setItem(draftKey, JSON.stringify({ payload, savedAt: Date.now() }));
+        localStorage.setItem(tenantStorageKey(draftKey), JSON.stringify({ payload, savedAt: Date.now() }));
     } catch (error) {
         // localStorage недоступен/переполнен — черновик просто не переживёт
         // сбой, не хуже прежнего поведения (без черновиков вообще).
@@ -730,7 +829,7 @@ function saveOrderDraft(draftKey, payload) {
 
 function loadOrderDraft(draftKey) {
     try {
-        const raw = localStorage.getItem(draftKey);
+        const raw = localStorage.getItem(tenantStorageKey(draftKey));
         if (!raw) return null;
         const { payload, savedAt } = JSON.parse(raw);
         if (!payload || typeof savedAt !== 'number') return null;
@@ -742,7 +841,7 @@ function loadOrderDraft(draftKey) {
 
 function clearOrderDraft(draftKey) {
     try {
-        localStorage.removeItem(draftKey);
+        localStorage.removeItem(tenantStorageKey(draftKey));
     } catch (error) {
         // недоступен — уже некритично, черновик и так не мог быть сохранён
     }
@@ -1098,17 +1197,21 @@ function wireInlineExpand(container) {
  * @returns {string}
  */
 function buildSovyHelpBodyFull(info) {
+    // В4: валюта — канала (у DD — совы). «За что начисляются» — именительный падеж, годится любой валюте.
+    const title = escapeHtmlClient(currencyTitle());
+    const lower = escapeHtmlClient(currencyLower());
+    const word = (n) => escapeHtmlClient(currencyWord(n));
     return `
-      <p><b>Как получить Сов</b><br>
-      — Оплата заказа: в среднем ${info.conversionRateRub} ₽ оплаты ≈ ${info.sovyPerTicket} Сов (курс меняется командой — здесь всегда актуальное значение)<br>
-      — Приглашение друга по личной ссылке: вам — ${info.referrerReward} Сов, когда друг оплатит свой первый заказ; другу — ${info.inviteeReward} Сов сразу при переходе по ссылке<br>
-      — Выполнение заданий: награда указана в самом задании. Для некоторых заданий, если условие выполнения перестаёт быть верным, начисленные Совы могут быть списаны обратно.</p>
-      <p><b>Во что превращаются Совы</b><br>
-      Каждые ${info.sovyPerTicket} Сов автоматически становятся 1 Билетом (это тоже может меняться) — шкала показывает прогресс до следующего.</p>
+      <p><b>За что начисляются ${lower}</b><br>
+      — Оплата заказа: в среднем ${info.conversionRateRub} ₽ оплаты ≈ ${info.sovyPerTicket} ${word(info.sovyPerTicket)} (курс меняется командой — здесь всегда актуальное значение)<br>
+      — Приглашение друга по личной ссылке: вам — ${info.referrerReward} ${word(info.referrerReward)}, когда друг оплатит свой первый заказ; другу — ${info.inviteeReward} ${word(info.inviteeReward)} сразу при переходе по ссылке<br>
+      — Выполнение заданий: награда указана в самом задании. Для некоторых заданий, если условие выполнения перестаёт быть верным, начисленные ${lower} могут быть списаны обратно.</p>
+      <p><b>Во что превращаются ${title}</b><br>
+      Каждые ${info.sovyPerTicket} ${word(info.sovyPerTicket)} автоматически становятся 1 Билетом (это тоже может меняться) — шкала показывает прогресс до следующего.</p>
       <p><b>На что тратятся Билеты</b><br>
       — Лотереи с ячейками (бейдж «Премиум»): 1 билет = 1 попытка забронировать ячейку. Если её только что занял кто-то другой — билет не списывается<br>
       — Обычные лотереи (без бейджа) — участие бесплатное, кнопкой «Участвовать»</p>
-      <p class="text-gray-400">Если заказ, за который начислены Совы, отменяется — начисление тоже отменяется.</p>
+      <p class="text-gray-400">Если заказ, за который начислены ${lower}, отменяется — начисление тоже отменяется.</p>
     `;
 }
 

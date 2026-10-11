@@ -49,7 +49,8 @@ const CATEGORY_LABELS = {
   delivery_position_threshold: 'Пороги для "Доход Руб"',
   // 06.10.2026 (VASY) — свои пороги для оплат клиента, отдельно от «Доход Руб».
   payment_due_threshold: 'Когда этап нужно оплатить',
-  economy: 'Экономика (совы/билеты)',
+  // В4: название валюты бонусов — канала (у DD — совы); геттер, т.к. профиль канала грузится после скрипта.
+  get economy() { return `Экономика (${currencyLower()}/билеты)`; },
   currency_margin: 'Наценка на конвертацию (курсы валют)',
   // Э6, D-10/F-24 (26.08.2026) — 2 generic percent-строки, тот же построчный
   // UI, что "Комиссия"/"Налоговый резерв" (не отдельный блок, ключи фиксированы
@@ -171,9 +172,9 @@ const POSITION_THRESHOLD_SECTIONS = {
 // раньше был захардкожен как ECONOMY_SOVY_PER_TICKET=100 в двух backend-файлах.
 const ECONOMY_SETTINGS_DEFS = [
   { key: 'Курс_Рубли_На_Билет', label: 'Курс: рублей на 1 билет', min: 1 },
-  { key: 'Сов_За_Билет', label: 'Совы за 1 билет', min: 1 },
-  { key: 'Реферал_Совы_Приглашённому', label: 'Реферал: сов приглашённому', min: 0 },
-  { key: 'Реферал_Совы_Пригласившему', label: 'Реферал: сов пригласившему', min: 0 },
+  { key: 'Сов_За_Билет', get label() { return `${currencyTitle()} за 1 билет`; }, min: 1 },
+  { key: 'Реферал_Совы_Приглашённому', get label() { return `Реферал: ${currencyLower()} приглашённому`; }, min: 0 },
+  { key: 'Реферал_Совы_Пригласившему', get label() { return `Реферал: ${currencyLower()} пригласившему`; }, min: 0 },
   // Э7 (26.08.2026) — НЕ то же самое, что курс начисления выше: во сколько
   // сама компания оценивает билет как обязательство для проводок леджера
   // (счета 2100/5400), не то, сколько клиент потратил, чтобы его заработать.
@@ -236,6 +237,16 @@ window.Screens.settings = {
 
     root.innerHTML = `
       <main class="pt-16 pb-10 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        <!-- В4 плана SaaS: «Мой канал» — название, ссылка, тексты бота (только админ, и у DD тоже). -->
+        ${window.CURRENT_ACCESS_ROLE === 'admin' ? `
+        <button type="button" id="my-channel-link" class="mb-5 w-full flex items-center gap-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-left">
+          <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><i data-lucide="megaphone" class="w-5 h-5"></i></div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium text-gray-900">Мой канал</div>
+            <div class="text-xs text-gray-400">Название, ссылка на канал, контакт менеджера, тексты бота клиентам</div>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 shrink-0"></i>
+        </button>` : ''}
         <!-- В3 плана SaaS: «Тариф и модули» — только админ посредника (у основного канала блока нет). -->
         <div id="plan-modules-block"></div>
         <!-- Блокеры продажи (09.10.2026): «Проверить продавца» и выгрузка данных — только админ, и у DD тоже. -->
@@ -254,6 +265,9 @@ window.Screens.settings = {
     // независимый запрос; статусы доставки — тот же справочник, что форма заказа.
     let collectiveStatusMapRows = [];
     let statusDeliveryOptions = [];
+
+    const myChannelLink = document.getElementById('my-channel-link');
+    if (myChannelLink) myChannelLink.addEventListener('click', () => navigateTo('my-channel'));
 
     load();
     loadPlanModules();

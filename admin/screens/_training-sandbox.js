@@ -884,10 +884,10 @@
   /** Убираем следы учебного мира из того, что экраны помнят между заходами. */
   function cleanup() {
     try {
-      const raw = localStorage.getItem('payments_recent_clients');
+      const raw = localStorage.getItem(tenantStorageKey('payments_recent_clients'));
       if (raw) {
         const list = JSON.parse(raw);
-        if (Array.isArray(list)) localStorage.setItem('payments_recent_clients', JSON.stringify(list.filter((c) => !isTrnClient(c && c.telegramId))));
+        if (Array.isArray(list)) localStorage.setItem(tenantStorageKey('payments_recent_clients'), JSON.stringify(list.filter((c) => !isTrnClient(c && c.telegramId))));
       }
     } catch (e) { /* нет хранилища — нечего чистить */ }
     try {
