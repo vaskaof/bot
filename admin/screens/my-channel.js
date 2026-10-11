@@ -47,6 +47,8 @@ window.Screens.myChannel = {
     }
 
     let state = null;
+    // Витрины: чей бренд правим — основного бота (null) или витрины (второй бот той же базы).
+    let storefrontId = null;
     let editingKey = null;
     let colorDraft = null; // выбранный, ещё не сохранённый цвет
     load();
@@ -54,7 +56,7 @@ window.Screens.myChannel = {
     async function load() {
       const body = document.getElementById('my-channel-body');
       try {
-        state = await callServer('getMyBranding');
+        state = await callServer('getMyBranding', storefrontId);
       } catch (error) {
         if (body) body.innerHTML = `<div class="text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
         return;
@@ -193,15 +195,39 @@ window.Screens.myChannel = {
       const body = document.getElementById('my-channel-body');
       if (!body) return;
       body.className = '';
-      body.innerHTML = channelSectionHtml() + colorSectionHtml() + currencySectionHtml() + phrasesSectionHtml();
+      body.innerHTML = storefrontSwitchHtml() + channelSectionHtml() + colorSectionHtml() + currencySectionHtml() + phrasesSectionHtml();
       wire();
+      body.querySelectorAll('[data-mc-storefront]').forEach((btn) => btn.addEventListener('click', () => {
+        const next = btn.dataset.mcStorefront ? Number(btn.dataset.mcStorefront) : null;
+        if (next === storefrontId) return;
+        storefrontId = next;
+        editingKey = null;
+        colorDraft = null;
+        load();
+      }));
+    }
+
+    /** Витрины: переключатель «чей бренд» — только если у канала есть второй бот. */
+    function storefrontSwitchHtml() {
+      const list = state.storefronts || [];
+      if (list.length === 0) return '';
+      const chip = (id, label, active) => `<button type="button" data-mc-storefront="${id === null ? '' : id}"
+          class="px-3 py-1.5 rounded-full text-sm border ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}">${escapeHtmlClient(label)}</button>`;
+      return `<section class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Чей бот настраиваем</div>
+          <div class="flex flex-wrap gap-2">
+            ${chip(null, 'Основной бот', storefrontId === null)}
+            ${list.map((sf) => chip(sf.id, sf.botUsername ? `${sf.title} · @${sf.botUsername}` : sf.title, storefrontId === sf.id)).join('')}
+          </div>
+          <div class="text-[11px] text-gray-400 px-1 mt-1">Клиенты каждого бота видят только его название, ссылку, менеджера и тексты.</div>
+        </section>`;
     }
 
     /** Сохраняет все поля разом (сервер принимает полный набор); `changes` — что поменялось в этом блоке. */
     async function saveFields(button, changes, okText) {
       button.disabled = true;
       try {
-        state = await callServer('updateMyBranding', { ...state.fields, ...changes });
+        state = await callServer('updateMyBranding', { ...state.fields, ...changes }, storefrontId);
         colorDraft = null;
         showSaveToast(true, okText);
         render();
@@ -277,7 +303,7 @@ window.Screens.myChannel = {
       // Текст совпал со стандартным — не храним копию (иначе она «застынет» при смене названия/ссылки).
       const value = phrase && text.trim() === phrase.defaultText ? '' : text;
       try {
-        state = await callServer('setMyBrandText', key, value);
+        state = await callServer('setMyBrandText', key, value, storefrontId);
         editingKey = null;
         showSaveToast(true, value ? 'Фраза сохранена' : 'Вернули стандартный текст');
         render();
