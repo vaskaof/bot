@@ -60,21 +60,27 @@ window.Screens = window.Screens || {};
   }
 
   function courseList(t) {
+    // «Тема обновилась» (11.10.2026): урок поменялся после твоего прохождения.
+    const updated = t.scenarios.filter((s) => s.updated && s.available && window.TourScenarios && window.TourScenarios[s.id]);
     return `
       <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Курс</div>
+      ${updated.length ? `<div class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 mb-2 text-[12px] text-amber-900" data-updated-banner>🆕 Обновились уроки, которые вы уже проходили: ${updated.length}. Там новое по работе — пройдите их заново.</div>` : ''}
       <div class="space-y-2 mb-4">
         ${t.scenarios.map((s, i) => {
           const playable = s.available && window.TourScenarios && window.TourScenarios[s.id];
-          const icon = s.status === 'done' ? '✅' : playable ? s.badge.emoji : '🔒';
+          const isUpdated = playable && s.updated;
+          const icon = isUpdated ? '🆕' : s.status === 'done' ? '✅' : playable ? s.badge.emoji : '🔒';
+          const again = s.status === 'done' && !isUpdated;
           const btn = playable
-            ? `<button type="button" data-start="${s.id}" class="shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-medium ${s.status === 'done' ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">${s.status === 'done' ? 'Ещё раз' : 'Пройти'}</button>`
+            ? `<button type="button" data-start="${s.id}" class="shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-medium ${again ? 'border border-gray-200 text-gray-600' : 'bg-indigo-600 text-white'}">${isUpdated ? 'Пройти заново' : again ? 'Ещё раз' : 'Пройти'}</button>`
             : '<span class="shrink-0 text-[11px] text-gray-400">скоро</span>';
           return `
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center gap-3 ${playable ? '' : 'opacity-60'}" data-scenario-row="${s.id}">
-              <div class="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center text-lg shrink-0">${icon}</div>
+            <div class="bg-white rounded-2xl shadow-sm border ${isUpdated ? 'border-amber-300' : 'border-gray-100'} p-3 flex items-center gap-3 ${playable ? '' : 'opacity-60'}" data-scenario-row="${s.id}">
+              <div class="w-9 h-9 rounded-full ${isUpdated ? 'bg-amber-50' : 'bg-indigo-50'} flex items-center justify-center text-lg shrink-0">${icon}</div>
               <div class="min-w-0 flex-1">
-                <div class="text-sm font-medium text-gray-900">${i + 1}. ${esc(s.title)}</div>
+                <div class="text-sm font-medium text-gray-900">${i + 1}. ${esc(s.title)}${isUpdated ? ' <span class="ml-1 align-middle text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800" data-updated-chip>Обновлён</span>' : ''}</div>
                 <div class="text-[12px] text-gray-500">${esc(s.summary)} · ~${s.minutes} мин</div>
+                ${isUpdated && s.updateNote ? `<div class="text-[12px] text-amber-800 mt-0.5">Что нового: ${esc(s.updateNote)}</div>` : ''}
               </div>
               ${btn}
             </div>`;
@@ -195,7 +201,7 @@ window.Screens = window.Screens || {};
 
   function teamBlock(o) {
     const titleOf = new Map(o.scenarios.map((s) => [s.id, s.title]));
-    const chip = (s) => s.status === 'done' ? '✅' : s.status === 'started' ? `⏸ шаг ${s.lastStep}` : '—';
+    const chip = (s) => s.status === 'done' ? (s.updated ? '🆕 обновлён' : '✅') : s.status === 'started' ? `⏸ шаг ${s.lastStep}` : '—';
     return `
       <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">Сотрудники</div>
       <div class="space-y-2 mb-4">

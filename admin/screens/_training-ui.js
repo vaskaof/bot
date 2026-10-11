@@ -294,6 +294,37 @@
     if (!el.isConnected) return;
     const available = t.scenarios.filter((s) => s.available && window.TourScenarios && window.TourScenarios[s.id]);
     const done = available.filter((s) => s.status === 'done').length;
+    // «Тема обновилась» (11.10.2026): пройденный урок поменялся — зовём пройти заново.
+    const updated = available.filter((s) => s.updated);
+    const updKey = `knopkaTrainingUpdatedHidden:${updated.map((s) => s.id).join(',')}`;
+    let updHidden = false;
+    try { updHidden = localStorage.getItem(updKey) === '1'; } catch (e) { /* без хранилища — показываем */ }
+    if (updated.length && !updHidden) {
+      const first = updated[0];
+      el.innerHTML = `
+        <div class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-4 text-white" data-training-updated>
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold">🆕 Обновились уроки: ${updated.length}</div>
+              <div class="text-[12px] text-amber-50 mt-0.5">«${escapeHtmlClient(first.title)}» — ${escapeHtmlClient(first.updateNote || 'в уроке новое')} Вы проходили его раньше — стоит пройти заново.</div>
+            </div>
+            <button type="button" data-hide class="text-[11px] text-amber-100 shrink-0">Скрыть</button>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <button type="button" data-go class="flex-1 py-2 rounded-xl bg-white text-orange-700 text-sm font-medium">Пройти заново</button>
+            <button type="button" data-all class="flex-1 py-2 rounded-xl bg-white/20 text-white text-sm font-medium">Весь курс</button>
+          </div>
+        </div>`;
+      el.classList.remove('hidden');
+      el.querySelector('[data-go]').onclick = () => Tour.start(first.id);
+      el.querySelector('[data-all]').onclick = () => navigateTo('training');
+      el.querySelector('[data-hide]').onclick = () => {
+        try { localStorage.setItem(updKey, '1'); } catch (e) { /* ничего */ }
+        el.classList.add('hidden');
+        el.innerHTML = '';
+      };
+      return;
+    }
     const hideKey = `knopkaTrainingBannerHidden:${available.length}`;
     let hidden = false;
     try { hidden = localStorage.getItem(hideKey) === '1'; } catch (e) { /* без хранилища — показываем */ }
