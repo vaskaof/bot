@@ -284,6 +284,17 @@ function initAccessCheck(onSuccess) {
             appContent.classList.remove('hidden');
             onSuccess(dictionaries);
         } catch (error) {
+            // Клиент (или бывший сотрудник) открыл панель — старая персональная кнопка меню, пересланная
+            // ссылка: уводим в клиентское приложение, а не показываем «Доступ запрещён» (VASY 11.10.2026).
+            if (!(error && error.isNetworkFailure)) {
+                try {
+                    const context = await fetchUserContext();
+                    if (context && context.role === 'client') {
+                        window.location.replace('../client/app.html');
+                        return;
+                    }
+                } catch (_e) { /* не узнали роль — показываем отказ как раньше */ }
+            }
             window.__bootStage = 'booted';
             loadingScreen.classList.add('hidden');
             _showAccessDeniedScreen(accessDeniedScreen, error);
@@ -871,6 +882,15 @@ function initClientAccess(onSuccess) {
                 cached ? Promise.resolve(cached) : fetchUserContext(),
                 loadTenantProfile()
             ]);
+            // Сотрудник открыл клиентское приложение (кнопка «Открыть приложение» в боте, «Открыть» в списке
+            // чатов, ссылка из канала) — уводим в панель, а не показываем «Доступ только для клиентов»: иначе
+            // менеджер посредника решит, что приложение сломано (VASY 11.10.2026). initData Telegram хранит
+            // в sessionStorage, переход его не теряет (так же уводит app.html).
+            const early = contextResult.status === 'fulfilled' ? contextResult.value : null;
+            if (early && (early.role === 'admin' || early.role === 'manager')) {
+                window.location.replace('../admin/app.html#/home');
+                return;
+            }
             if (!hasModule('client_app')) {
                 window.__bootStage = 'booted';
                 loadingScreen.classList.add('hidden');
