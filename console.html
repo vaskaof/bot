@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Консоль Кнопки</title>
+  <!-- В6 плана SaaS — консоль владельца Кнопки. Открывается ТОЛЬКО из служебного бота консоли: сервер
+       узнаёт его по подписи initData и пускает только владельца. Клиентов посредников здесь нет. -->
+  <script src="vendor/tailwindcss-play-3.4.17.js?v=20261011174307"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="config.js?v=20261011174307"></script>
+  <script src="common.js?v=20261011174307"></script>
+  <script src="console/console.js?v=20261011174307"></script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <div class="max-w-3xl mx-auto px-4 pb-16">
+    <header class="pt-4 pb-3 flex items-center justify-between gap-3">
+      <div>
+        <div class="text-lg font-semibold">Консоль Кнопки</div>
+        <div id="console-subtitle" class="text-xs text-gray-500"></div>
+      </div>
+      <button type="button" id="console-refresh" class="text-sm text-indigo-600 font-medium">Обновить</button>
+    </header>
+    <div class="mb-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2">
+      Новых посредников со стороны не подключаем до переезда сервера на VPS.
+    </div>
+    <main id="console-root" class="text-sm text-gray-500">Загрузка…</main>
+  </div>
+</body>
+
+</html>

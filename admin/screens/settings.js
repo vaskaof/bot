@@ -289,6 +289,12 @@ window.Screens.settings = {
         return;
       }
       if (!block.isConnected || plan.isHome) return;
+      // В6 — счёт Кнопке (оборот, ставка, к оплате, оплачено, долг). Сбой — блок тарифа без счёта.
+      let bill = null;
+      try {
+        bill = await callServer('getMyBilling');
+      } catch (_error) { /* без счёта */ }
+      if (!block.isConnected) return;
       const rows = plan.modules.map((m) => `
         <label class="flex items-start gap-3 py-2.5 border-t border-gray-50 first:border-t-0">
           <input type="checkbox" data-plan-module="${escapeHtmlClient(m.module)}" ${m.enabled || m.turnedOffByYou ? '' : 'disabled'} ${m.enabled ? 'checked' : ''} ${m.canToggle ? '' : 'disabled'}
@@ -304,7 +310,9 @@ window.Screens.settings = {
             <div class="text-[12px] mb-3 ${plan.aiKeys && plan.aiKeys.main ? 'text-gray-500' : 'text-amber-600'}">${aiKeysLine(plan.aiKeys)}</div>
             <div>${rows}</div>
           </div>
+          ${bill && bill.enabled ? billingHtml(bill) : ''}
         </section>`;
+      wireInlineExpand(block);
       block.querySelectorAll('[data-plan-module]').forEach((box) => {
         box.addEventListener('change', async () => {
           const module = box.dataset.planModule;
@@ -325,6 +333,44 @@ window.Screens.settings = {
           }
         });
       });
+    }
+
+    /**
+     * В6 — «Счёт Кнопке»: из чего сложилась сумма. Оборот — деньги клиентов, которые легли на «Основную»
+     * оплату заказов в этом месяце (вес и доставка не входят).
+     */
+    function billingHtml(bill) {
+      const rub = (n) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ₽`;
+      const pct = (n) => `${String(n).replace('.', ',')}%`;
+      const day = (d) => (d ? d.split('-').reverse().join('.') : '');
+      const cur = bill.periods.find((p) => p.isCurrent) || bill.periods[0];
+      const minLine = (p) => (p.minApplied
+        ? `меньше минимума — к оплате минимум ${rub(p.minPaymentRub)}`
+        : p.minApplies ? `минимум ${rub(p.minPaymentRub)} не нужен` : 'без минимума (первые два месяца)');
+      const curHtml = cur ? `
+        <div class="text-sm text-gray-900 mb-1">${escapeHtmlClient(cur.label)}${cur.isCurrent ? ' (идёт)' : ''}: <b>${rub(cur.amountDue)}</b></div>
+        <div class="text-[12px] text-gray-500">Оборот ${rub(cur.turnoverRub)} × ${pct(cur.ratePercent)} = ${rub(cur.percentAmount)}; ${minLine(cur)}.</div>` : '';
+      const history = bill.periods.map((p) => `
+        <div class="flex justify-between text-[12px] py-1 border-t border-gray-50 first:border-t-0">
+          <span>${escapeHtmlClient(p.label)}${p.partial ? ` (с ${day(p.from)})` : ''}${p.isCurrent ? ' · идёт' : ''}</span>
+          <span>оборот ${rub(p.turnoverRub)} → <b>${rub(p.amountDue)}</b></span>
+        </div>`).join('');
+      const extra = [
+        ...bill.charges.filter((c) => c.kind !== 'monthly').map((c) => `<div class="text-[12px] py-0.5">${escapeHtmlClient(c.kindLabel)} · ${day(c.createdOn)} · ${rub(c.amountRub)}${c.note ? ` — ${escapeHtmlClient(c.note)}` : ''}</div>`),
+        ...bill.payments.map((p) => `<div class="text-[12px] py-0.5 text-emerald-700">Оплачено ${day(p.paidOn)} · ${rub(p.amountRub)} · ${escapeHtmlClient(p.methodLabel)}</div>`)
+      ].join('');
+      const days = bill.currentDays.map((d) => `<div class="flex justify-between text-[12px] py-0.5"><span>${day(d.day)}</span><span>${rub(d.mainRub)}</span></div>`).join('')
+        || '<div class="text-[12px] text-gray-400">В этом месяце оплат на «Основную» ещё не было.</div>';
+      return `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mt-3">
+          <div class="text-sm font-medium text-gray-900 mb-2">Счёт Кнопке</div>
+          ${curHtml}
+          <div class="text-sm mt-2">Долг: <b class="${bill.balance > 0 ? 'text-red-600' : 'text-emerald-600'}">${rub(bill.balance)}</b>
+            <span class="text-[12px] text-gray-500">· с текущим месяцем ${rub(bill.balanceWithCurrent)}</span></div>
+          <div class="text-[11px] text-gray-400 mt-1">Оборот — деньги клиентов, которые легли на «Основную» оплату заказов (товар и комиссия) в этом месяце; вес и доставка не входят. Счёт выставляется 1-го числа за прошлый месяц.</div>
+          <div class="mt-2">${inlineExpand('Оборот по дням', days)}</div>
+          <div>${inlineExpand('Все месяцы, начисления и оплаты', history + (extra ? `<div class="mt-2">${extra}</div>` : ''))}</div>
+        </div>`;
     }
 
     /** Б4: какие ключи ИИ подключены у канала (сами ключи на фронт не приходят). */

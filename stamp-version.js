@@ -33,6 +33,7 @@ const ENTRY_FILES = [
   path.join(__dirname, 'app.html'),
   path.join(__dirname, 'admin', 'app.html'),
   path.join(__dirname, 'client', 'app.html'),
+  path.join(__dirname, 'console.html'),
 ];
 
 // Локальный <script src="..."> — не начинается с http(s):// (внешние CDN).
