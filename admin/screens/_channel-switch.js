@@ -188,7 +188,12 @@
     if (typeof window.rerenderCurrentRoute === 'function') window.rerenderCurrentRoute();
   }
 
+  /** Каналы арендатора [{id, title}] (пусто — переключателя нет). Каналы К5: выбор канала для переноса заказа. */
+  function list() {
+    return channels.slice();
+  }
+
   window.ChannelSwitch = {
-    init, param, enabled, isAll, currentStorefrontId, titleOf, colorOf, badgeHtml, createHintHtml, choose
+    init, param, enabled, isAll, currentStorefrontId, titleOf, colorOf, badgeHtml, createHintHtml, choose, list
   };
 })();

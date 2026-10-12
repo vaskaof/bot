@@ -94,6 +94,8 @@ window.Screens.payments = {
           </div>
           <div id="due-list" class="wide-grid" style="--card-min: 24rem"></div>
           <div id="due-covered-note" class="hidden text-[12px] text-gray-400 mt-3 px-1"></div>
+          <!-- Каналы К5: взаиморасчёт каналов — только в «Все вместе» (админ). -->
+          <div id="channel-settlement" class="hidden mt-4"></div>
         </div>
 
         <div id="client-tab" class="hidden">
@@ -535,6 +537,47 @@ window.Screens.payments = {
       } catch (error) {
         dueList.innerHTML = `<div class="p-6 text-center text-sm text-red-500">Ошибка загрузки: ${escapeHtmlClient(error.message)}</div>`;
       }
+      loadChannelSettlement();
+    }
+
+    /**
+     * Каналы К5: взаиморасчёт — сколько денег ушло с заказами из канала в канал («канал-откуда получил эти деньги за
+     * заказы, которые теперь ведёт канал-куда»). Только в «Все вместе»; переносов нет — блока нет.
+     */
+    async function loadChannelSettlement() {
+      const box = document.getElementById('channel-settlement');
+      if (!box) return;
+      box.classList.add('hidden');
+      if (!window.ChannelSwitch || !window.ChannelSwitch.isAll() || window.CURRENT_ACCESS_ROLE !== 'admin') return;
+      let data;
+      try {
+        data = await callServer('getChannelSettlement');
+      } catch (error) {
+        return;
+      }
+      if (!data || !data.totals || !data.totals.length) return;
+      const money = (n) => `${Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
+      box.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div class="text-[14px] font-semibold text-gray-900">Взаиморасчёт каналов</div>
+          <div class="text-[12px] text-gray-500 mt-0.5 mb-2">Деньги, которые клиенты заплатили в одном канале за заказы, перенесённые в другой. Первый канал должен эту сумму второму.</div>
+          ${data.totals.map((t) => `
+            <div class="flex items-center justify-between gap-2 py-1.5 border-t border-gray-50 text-[13px]">
+              <span class="text-gray-700">«${escapeHtmlClient(t.fromTitle)}» → «${escapeHtmlClient(t.toTitle)}» <span class="text-gray-400">· переносов: ${t.transfers}</span></span>
+              <span class="font-semibold text-gray-900 shrink-0">${money(t.amount)}</span>
+            </div>`).join('')}
+          <details class="mt-2">
+            <summary class="text-[12px] text-indigo-600 cursor-pointer">Последние переносы</summary>
+            <div class="mt-1">
+              ${data.recent.map((r) => `
+                <div class="flex items-center justify-between gap-2 py-1 text-[12px] text-gray-600">
+                  <span>Заказ ${escapeHtmlClient(r.orderId)}: «${escapeHtmlClient(r.fromTitle)}» → «${escapeHtmlClient(r.toTitle)}»${r.moneyMode === 'stay' ? ' (деньги остались)' : ''}</span>
+                  <span class="shrink-0">${money(r.amount)}</span>
+                </div>`).join('')}
+            </div>
+          </details>
+        </div>`;
+      box.classList.remove('hidden');
     }
     dueSort.addEventListener('change', renderDue);
     dueList.addEventListener('click', (e) => {

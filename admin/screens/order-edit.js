@@ -90,6 +90,8 @@ window.Screens.orderEdit = {
         <div class="lg:col-start-1 min-w-0">
         <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
         <div id="individual-shipping-banner" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm"></div>
+        <!-- Каналы К5: «чужие деньги» на заказе и «Перенести в канал…» — _order-transfer.js. -->
+        <div id="order-transfer-box"></div>
         </div>
         <aside class="wide-aside lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:self-start min-w-0">
         <!-- «Следующий шаг» (волна 3, сессия 2, 30.09.2026) — _order-card.js. -->
@@ -836,10 +838,27 @@ window.Screens.orderEdit = {
     // проксировался на старый GAS-индекс (только зашедшие в бота клиенты).
     function searchClientStub(query) { return callServer('searchClients', query); }
 
-    async function saveOrder(confirmedCloseWithDebt, confirmedProceedWithMissingData) {
-      const client = manualClientData
+    function currentClientForSave() {
+      return manualClientData
         ? { telegramId: '', username: manualClientData.username, name: manualClientData.name }
         : { telegramId: selectedClientId || '', username: selectedClientUsername, name: selectedClientName };
+    }
+
+    /** Каналы К5: клиент в форме не тот, что был при открытии (по Telegram ID, без него — по @username). */
+    function clientChangedSinceLoad() {
+      if (!loadedDetails || !loadedDetails.client) return false;
+      const norm = (u) => (u || '').toString().trim().replace(/^@/, '').toLowerCase();
+      const now = currentClientForSave();
+      const was = loadedDetails.client;
+      if ((now.telegramId || '') !== (was.telegramId || '')) return true;
+      return !now.telegramId && norm(now.username) !== norm(was.username);
+    }
+
+    // Каналы К5: решение «что с деньгами» при смене клиента в оплаченном заказе — спрашивается до сохранения.
+    let pendingClientMoney = null;
+
+    async function saveOrder(confirmedCloseWithDebt, confirmedProceedWithMissingData) {
+      const client = currentClientForSave();
 
       const fields = {
         remark: noteInput.value,
@@ -928,6 +947,7 @@ window.Screens.orderEdit = {
       // (см. ORDER_EDIT_DRAFT_KEY выше) — updateOrder сам по себе безопасен
       // к повтору, черновик просто не даёт менеджеру остаться в неведении,
       // применилась ли правка, если Telegram зависнет посреди запроса.
+      if (pendingClientMoney) Object.assign(fields, pendingClientMoney);
       saveOrderDraft(ORDER_EDIT_DRAFT_KEY, { orderId: currentOrderId, fields });
       const result = await callServer('updateOrder', currentOrderId, fields);
       clearOrderDraft(ORDER_EDIT_DRAFT_KEY);
@@ -1346,6 +1366,36 @@ window.Screens.orderEdit = {
       }
     }
 
+    /**
+     * Каналы К5: плашка «на заказе деньги не клиента заказа» и строка «Канал … · Перенести в канал…» (только при
+     * нескольких каналах). Перенос/разбор — _order-transfer.js; после него карточка открывается заново.
+     */
+    function renderOrderTransferBox(details) {
+      const box = document.getElementById('order-transfer-box');
+      if (!box || !window.OrderTransfer) return;
+      const channelRow = window.ChannelSwitch && window.ChannelSwitch.enabled()
+        ? `<div class="flex items-center justify-between gap-2 mb-3 px-1">
+             <span>${window.ChannelSwitch.badgeHtml(details.storefrontId, { prefix: 'канал ', always: true })}</span>
+             <button type="button" id="order-transfer-channel-btn" class="text-[13px] font-medium text-indigo-600">Перенести в канал…</button>
+           </div>`
+        : '';
+      box.innerHTML = window.OrderTransfer.foreignBannerHtml(details.moneyOnOrder) + channelRow;
+    }
+
+    document.addEventListener('click', async (e) => {
+      if (e.target.closest('#order-transfer-channel-btn')) {
+        if (!loadedDetails) return;
+        const moved = await window.OrderTransfer.openChannelMove(currentOrderId, loadedDetails.storefrontId);
+        if (moved) await loadOrder();
+        return;
+      }
+      const fixBtn = e.target.closest('.order-foreign-fix-btn');
+      if (fixBtn && loadedDetails && loadedDetails.moneyOnOrder) {
+        const done = await window.OrderTransfer.fixForeign(currentOrderId, loadedDetails.moneyOnOrder.ownerId, fixBtn.dataset.mode);
+        if (done) await loadOrder();
+      }
+    }, { signal });
+
     let pickerStage = 'КЗ→РФ';
     const orderCollectivePicker = CollectivePickerModal.init({
       onPicked: async (collective) => {
@@ -1561,6 +1611,7 @@ window.Screens.orderEdit = {
       // Каналы К4: при нескольких каналах — канал заказа (карточка открывается из любого канала).
       const orderChannelTitle = window.ChannelSwitch && window.ChannelSwitch.enabled() ? window.ChannelSwitch.titleOf(details.storefrontId) : '';
       document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}${orderChannelTitle ? ` · канал «${orderChannelTitle}»` : ''}`;
+      renderOrderTransferBox(details);
       noteInput.value = details.remark;
       noteCounter.textContent = `${details.remark.length}/300`;
       releaseSearch.value = details.productOriginal;
@@ -2282,6 +2333,14 @@ window.Screens.orderEdit = {
           if (!proceed) return;
           confirmedProceedWithMissingData = true;
         }
+      }
+
+      // Каналы К5: сменили клиента в заказе, за который уже внесены деньги, — что с ними (сервер без ответа не примет).
+      pendingClientMoney = null;
+      if (window.OrderTransfer && clientChangedSinceLoad() && loadedDetails.moneyOnOrder && loadedDetails.moneyOnOrder.total > 0) {
+        const decision = await window.OrderTransfer.askClientMoney(currentOrderId, currentClientForSave());
+        if (decision === null) return;
+        pendingClientMoney = decision.clientMoney ? decision : null;
       }
 
       saveOrderBtn.disabled = true;
