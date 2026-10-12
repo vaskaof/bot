@@ -311,6 +311,12 @@ window.Screens.myChannel = {
       const phrase = state.phrases.find((p) => p.key === key);
       // Текст совпал со стандартным — не храним копию (иначе она «застынет» при смене названия/ссылки).
       const value = phrase && text.trim() === phrase.defaultText ? '' : text;
+      // Пилот limisteam (13.10.2026, просьба VASY): «Кнопку» в приветствии не убираем — по ней другие каналы
+      // узнают про бота. Предупреждение, не запрет.
+      if (key === 'start.greeting' && value.trim() && !/кнопк/i.test(value)
+        && !await showConfirmModal('В приветствии нет слова «Кнопка». Просим его оставить: по нему другие каналы узнают про бота, и чем известнее бренд, тем больше доверия у клиенток. Сохранить без него?', { confirmLabel: 'Сохранить так', cancelLabel: 'Вернусь и добавлю' })) {
+        return;
+      }
       try {
         state = await callServer('setMyBrandText', key, value, storefrontId);
         editingKey = null;

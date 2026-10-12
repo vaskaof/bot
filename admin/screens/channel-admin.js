@@ -42,6 +42,7 @@ window.Screens.channelAdmin = {
       </section>`;
 
     main.innerHTML = [
+      card('ca-setup', 'Настройка канала'),
       card('ca-bot', 'Бот канала', `
         <div class="text-[12px] text-gray-500 mb-2">Название, ссылка на канал, менеджер, цвет и тексты, которые видят ваши клиенты в боте и приложении.</div>
         <button type="button" id="ca-open-brand" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Открыть «Мой канал»</button>`),
@@ -49,8 +50,25 @@ window.Screens.channelAdmin = {
       card('ca-modules', 'Разделы для клиентов'),
       card('ca-staff', 'Мои менеджеры'),
       card('ca-share', 'Моя доля'),
-      card('ca-report', 'Менеджеры канала за 30 дней')
+      card('ca-report', 'Менеджеры канала за 30 дней'),
+      // Пилот limisteam (13.10.2026): «она должна иметь возможность скачивать именно свою базу» (VASY).
+      card('ca-export', 'Моя база', `
+        <div class="text-[12px] text-gray-500 mb-2">Клиентки, заказы, оплаты, коллективки, вишлисты и вопросы вашего канала одним файлом Excel — без данных других каналов. Файл придёт вам в чат с ботом.</div>
+        <button type="button" id="ca-export-btn" class="w-full py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-medium">Скачать мою базу</button>
+        <div class="text-[11px] text-gray-400 mt-1">Можно в любой момент: раз в 15 минут, до 5 раз в сутки. В файле персональные данные клиенток — храните бережно.</div>`)
     ].join('');
+    document.getElementById('ca-export-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const res = await callServer('requestChannelDataExport');
+        showSaveToast(true, res.message || 'Собираю файл — он придёт в чат с ботом.');
+      } catch (error) {
+        showSaveToast(false, error.message || 'Не удалось запросить выгрузку.');
+      } finally {
+        btn.disabled = false;
+      }
+    });
     document.getElementById('ca-open-brand').addEventListener('click', () => navigateTo('my-channel'));
     if (window.lucide) window.lucide.createIcons();
 
@@ -58,11 +76,24 @@ window.Screens.channelAdmin = {
       document.getElementById(id).innerHTML = `<div class="text-[12px] text-red-500">${escapeHtmlClient(error.message || 'Не удалось загрузить.')}</div>`;
     };
 
+    loadSetup().catch((e) => fail('ca-setup', e));
     loadBilling().catch((e) => fail('ca-billing', e));
     loadModules().catch((e) => fail('ca-modules', e));
     loadStaff().catch((e) => fail('ca-staff', e));
     loadShare().catch((e) => fail('ca-share', e));
     loadReport().catch((e) => fail('ca-report', e));
+
+    async function loadSetup() {
+      const s = await callServer('getChannelSetup');
+      const box = document.getElementById('ca-setup');
+      const pct = Math.round((s.doneCount / s.total) * 100);
+      const next = s.steps.find((x) => !x.done);
+      box.innerHTML = `
+        <div class="text-[12px] text-gray-500">${next ? `Готово ${s.doneCount} из ${s.total}. Дальше: ${escapeHtmlClient(next.title)}.` : 'Всё готово.'}</div>
+        <div class="h-2 bg-gray-100 rounded-full mt-2 overflow-hidden"><div class="h-full bg-indigo-600 rounded-full" style="width:${pct}%"></div></div>
+        <button type="button" id="ca-setup-btn" class="w-full mt-2 py-2.5 rounded-xl ${next ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-700'} text-sm font-medium">${next ? 'Продолжить настройку' : 'Открыть настройку'}</button>`;
+      document.getElementById('ca-setup-btn').addEventListener('click', () => navigateTo('channel-setup'));
+    }
 
     async function loadBilling() {
       const bill = await callServer('getMyBilling');

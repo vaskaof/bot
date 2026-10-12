@@ -70,6 +70,7 @@ window.Screens.home = {
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl md:max-w-6xl mx-auto">
         <!-- Обучение менеджеров (04.10.2026) — «пройди сценарии», пока доступные не пройдены. -->
+        <div id="channel-setup-banner" class="hidden mb-3"></div>
         <div id="training-banner" class="hidden mb-3"></div>
         <div id="tab-switcher" class="flex gap-1.5 mb-3">
           <button type="button" data-tab="news" class="tab-btn flex-1 text-xs px-3 py-2 rounded-full font-medium">Новости</button>
@@ -142,6 +143,25 @@ window.Screens.home = {
       </div>
     `;
     if (window.TrainingUI) window.TrainingUI.renderHomeBanner(document.getElementById('training-banner'));
+    renderChannelSetupBanner();
+
+    // Пилот limisteam (13.10.2026): админу канала, пока «Настройка канала» не закончена, — карточка сверху.
+    // Не в своём канале сервер откажет — тогда карточки просто нет.
+    async function renderChannelSetupBanner() {
+      const el = document.getElementById('channel-setup-banner');
+      if (!el || !window.CURRENT_CHANNEL_ADMIN_OF || window.CURRENT_ACCESS_ROLE === 'admin') return;
+      let s;
+      try { s = await callServer('getChannelSetup'); } catch (e) { return; }
+      if (!s || s.finished || s.doneCount >= s.total || !el.isConnected) return;
+      const next = s.steps.find((x) => !x.done);
+      el.innerHTML = `
+        <button type="button" id="channel-setup-banner-btn" class="w-full text-left bg-indigo-50 border border-indigo-100 rounded-2xl p-3">
+          <div class="text-sm font-semibold text-indigo-900">⚙️ Настройка канала «${escapeHtmlClient(s.title)}» — готово ${s.doneCount} из ${s.total}</div>
+          <div class="text-[12px] text-indigo-700 mt-0.5">Дальше: ${escapeHtmlClient(next ? next.title : "")} →</div>
+        </button>`;
+      el.classList.remove('hidden');
+      document.getElementById('channel-setup-banner-btn').addEventListener('click', () => navigateTo('channel-setup'));
+    }
 
 
     // --- Переключатель вкладок ---

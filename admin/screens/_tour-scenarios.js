@@ -49,6 +49,20 @@
 
   const firstCartCard = '#cart-items-list > div:first-child';
 
+  // Урок «Заказ в своём канале»: учебные сумма $100 и комиссия pct% в первую заявку корзины (поля — как руками).
+  function fillChannelOrderSample(pct) {
+    const set = (sel, value) => {
+      const el = document.querySelector(`${firstCartCard} ${sel}`);
+      if (!el) return;
+      el.value = String(value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const amount = document.querySelector(`${firstCartCard} .amount-input`);
+    if (amount && !(Number(amount.value) > 0)) set('.amount-input', 100);
+    set('.fee-percent-input', pct);
+  }
+
   const shown = (el) => {
     if (!el || !el.isConnected) return false;
     const r = el.getBoundingClientRect();
@@ -1067,6 +1081,64 @@
             { label: '«Задачи» → открыть заказ → «Следующий шаг»; данных не найти — «Пропустить с причиной»', correct: true, explain: 'Доска покажет оба заказа, «Следующий шаг» — какое поле заполнить.' },
             { label: 'Ничего — это не про деньги', explain: 'Без цены и курса не посчитать, сколько клиентка должна. Это тоже деньги.' }
           ] }
+        }
+      ]
+    },
+
+    // Пилот limisteam (13.10.2026): урок админа канала — деньги заказа в своём канале. Не часть общего курса
+    // (server trainingCatalog.CHANNEL_SCENARIOS), запускается из «Настройки канала». Корзина в уроке не
+    // сохраняется; доля и выгрузка только показываются. Строка доли под комиссией — настоящая (доля канала из
+    // шапки), цифры — учебные.
+    'channel-order': {
+      id: 'channel-order',
+      title: 'Заказ в своём канале',
+      screens: ['channelSetup', 'orders', 'cartNew', 'more', 'channelAdmin'],
+      block: ['#save-cart-btn', '#ca-export-btn', '[data-ca-paid]', '#ca-staff-add', '[data-ca-toggle]', '[data-ca-module]'],
+      steps: [
+        {
+          title: 'Деньги заказа в своём канале',
+          text: 'С 12.10 комиссия заказов твоего канала <b>делится сама</b>: в заказ пишешь <b>полную</b> комиссию, твоя половина считается от неё. Покажу на примере Ани — ничего не сохранится.'
+        },
+        { target: nav('orders'), title: 'Открой «Заказы»', text: 'Новый заказ начинается здесь.', advance: 'click', skipIf: onScreen('orders', 'cartNew') },
+        { target: '#new-cart-btn', title: '«Корзина»', text: 'Нажми — откроется форма нового выкупа.', advance: 'click', skipIf: onScreen('cartNew') },
+        {
+          target: () => { const el = document.querySelector(`${firstCartCard} .fee-rub-input`); return el ? el.closest('.grid') || el.parentElement : null; },
+          title: 'Полная комиссия', scroll: true,
+          text: 'Аня заказала Лагуну за $100, комиссия — <b>20%</b>. Это вся комиссия: и твоя половина, и половина DD. Нажми «Вписать пример».',
+          actions: [{ label: 'Вписать пример', run: () => fillChannelOrderSample(20) }],
+          advance: { until: () => { const el = document.querySelector(`${firstCartCard} .fee-percent-input`); return !!el && Number(el.value) === 20; } }
+        },
+        {
+          target: () => document.querySelector(`${firstCartCard} [id$="commission-share-row"]:not(.hidden)`) || document.querySelector(`${firstCartCard} .fee-rub-input`),
+          title: 'Твоя половина — сама',
+          text: 'Под комиссией — строка: сколько <b>тебе</b> и сколько <b>DD</b>. Считать ничего не нужно. Клиентка видит и платит полную «Основную»: товар + вся комиссия.'
+        },
+        {
+          target: () => document.querySelector(`${firstCartCard} [id$="commission-share-row"]:not(.hidden)`) || document.querySelector(`${firstCartCard} .fee-rub-input`),
+          title: 'А если написать половину?',
+          text: 'По привычке легко вписать только свою часть. Нажми «Вписать половину» — посмотри, что будет.',
+          actions: [{ label: 'Вписать половину', run: () => fillChannelOrderSample(10) }],
+          advance: { until: () => { const el = document.querySelector(`${firstCartCard} .fee-percent-input`); return !!el && Number(el.value) === 10; } }
+        },
+        {
+          target: () => document.querySelector(`${firstCartCard} [id$="commission-share-row"]:not(.hidden)`) || document.querySelector(`${firstCartCard} .fee-rub-input`),
+          title: 'Половину поделит ещё раз',
+          text: 'Строка стала жёлтой: «похоже на половину». Если так сохранить, система поделит 10% пополам — <b>и тебе, и DD достанется по 5%</b>. Всегда пиши полную комиссию.'
+        },
+        { target: '#save-cart-btn', title: 'Сохранить', text: 'В работе здесь — «Сохранить». Сейчас учебный режим — <b>не сохраняем</b>.' },
+        { target: nav('more'), title: 'Открой «Ещё»', text: 'Теперь — где видно твою долю.', advance: 'click' },
+        { target: '.more-item[data-route="channel-admin"]', title: 'Мой канал', text: 'Твой раздел админа канала. Открой.', advance: 'click' },
+        {
+          target: '#ca-share', title: 'Моя доля', wait: 10000, scroll: true,
+          text: 'Здесь начисления по каждому заказу после оплаты «Основной». Клиентка платит тебе всю сумму, DD ты переводишь товар и его половину, <b>свою половину оставляешь</b> — и сразу жмёшь <b>«Отметить выплаченным»</b>. Иначе в отчёте будет висеть «долг DD перед тобой».'
+        },
+        {
+          target: '#ca-export', title: 'Моя база', wait: 10000, scroll: true,
+          text: 'Клиентки, заказы и оплаты твоего канала одним файлом — в любой момент, файл придёт в чат с ботом. Данных DD в нём нет.'
+        },
+        {
+          title: 'Готово',
+          text: 'Главное: <b>в заказ — полная комиссия</b>, своя половина — «Выплачено». Возвращайся к «Настройке канала» — там следующий шаг.'
         }
       ]
     },
