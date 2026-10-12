@@ -108,6 +108,7 @@ window.Screens.home = {
           </div>
 
           <div class="p-4 space-y-3">
+            <div id="news-channel-hint"></div>
             <div>
               <label class="text-xs font-medium text-gray-500">Заголовок *</label>
               <input type="text" id="news-title-input"
@@ -263,6 +264,7 @@ window.Screens.home = {
           <div class="flex flex-col items-end gap-1 shrink-0">
             <span class="text-[10px] px-2 py-0.5 rounded-full ${isDraft ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}">${escapeHtmlClient(n.status)}</span>
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">${escapeHtmlClient(audienceLabels[n.audience] || n.audience)}</span>
+            ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(n.storefrontId) : ''}
           </div>
         </div>
         <div class="text-[13px] text-gray-600 mt-1 whitespace-pre-wrap">${escapeHtmlClient(n.text)}</div>
@@ -323,6 +325,16 @@ window.Screens.home = {
     function openModalForCreate() {
       resetModalState();
       document.getElementById('news-modal-title').textContent = 'Новая новость';
+      // Каналы К6: новость уходит клиентам канала из шапки («Все вместе» — основного).
+      const hint = document.getElementById('news-channel-hint');
+      if (hint) {
+        const cs = window.ChannelSwitch;
+        hint.innerHTML = cs && cs.enabled()
+          ? `<div class="text-[12px] rounded-xl px-3 py-2 font-medium bg-indigo-50 text-indigo-700">${escapeHtmlClient(cs.isAll()
+            ? `Сейчас «Все вместе»: новость будет в канале «${cs.titleOf(null)}». Для другого канала — переключите его в шапке.`
+            : `Новость канала «${cs.titleOf(cs.currentStorefrontId())}» — увидят и получат только его клиенты.`)}</div>`
+          : '';
+      }
       newsModal.classList.remove('hidden');
       newsModal.classList.add('flex');
     }
@@ -334,6 +346,13 @@ window.Screens.home = {
       titleInput.value = n.title;
       textInput.value = n.text;
       audienceInput.value = n.audience || 'Клиент';
+      const hint = document.getElementById('news-channel-hint');
+      if (hint) {
+        const cs = window.ChannelSwitch;
+        hint.innerHTML = cs && cs.enabled()
+          ? `<div class="text-[12px] rounded-xl px-3 py-2 font-medium bg-indigo-50 text-indigo-700">${escapeHtmlClient(`Новость канала «${cs.titleOf(n.storefrontId)}».`)}</div>`
+          : '';
+      }
       newsModal.classList.remove('hidden');
       newsModal.classList.add('flex');
     }

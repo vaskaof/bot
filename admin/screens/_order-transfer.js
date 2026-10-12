@@ -95,6 +95,7 @@
       ${movingHtml(preview)}
       ${sovyHtml(preview)}
       ${blockersHtml(preview.blockers)}
+      ${(preview.notes || []).length ? `<div class="text-[13px] text-amber-800 bg-amber-50 rounded-xl px-3 py-2 mt-3">${preview.notes.map(esc).join('<br>')}</div>` : ''}
       <div class="flex gap-2 mt-4">
         <button type="button" data-value="cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
         <button type="button" data-value="ok" ${blocked ? 'disabled' : ''} class="flex-1 py-2.5 rounded-xl text-white text-sm font-medium ${blocked ? 'bg-gray-300' : 'bg-indigo-600'}">Перенести</button>

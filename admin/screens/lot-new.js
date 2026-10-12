@@ -52,7 +52,7 @@ window.Screens.lotNew = {
 
     root.innerHTML = `
       <main class="pt-16 pb-6 px-4 md:px-0 max-w-2xl mx-auto">
-        ${window.ChannelSwitch ? window.ChannelSwitch.createHintHtml() : ''}
+        ${window.ChannelSwitch ? window.ChannelSwitch.createHintHtml({ commission: true }) : ''}
         <div id="draft-recovery-banner" class="hidden mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm"></div>
 
         <!-- Шапка лота — общая, НЕ переопределяется по позициям (в отличие

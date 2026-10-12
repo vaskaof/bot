@@ -1516,7 +1516,9 @@ window.Screens.orderEdit = {
     // ordersService.updateOrder на сервере: гейт не должен всплывать на
     // несвязанной правке заказа с исторически низкой комиссией.
     commissionGate = FormHelpers.wireCommissionGate({
-      isDirty: () => Math.abs((parseFloat(feeRubInput.value) || 0) - originalBookingSum) > 0.005
+      isDirty: () => Math.abs((parseFloat(feeRubInput.value) || 0) - originalBookingSum) > 0.005,
+      // Каналы К6: доля посредника — по самому заказу (getOrderDetails.channelShare), не по шапке.
+      channelShare: null
     });
     // Э6, чек-лист п.7 (точка безубыточности, 26.08.2026) — валюта/канал
     // РЕДАКТИРУЕМЫ на этом экране (в отличие от order-new.js, где это
@@ -1622,6 +1624,7 @@ window.Screens.orderEdit = {
       document.getElementById('order-id-display').textContent = `Заказ ${details.orderId}`;
       document.getElementById('order-id-display').title = orderChannelTitle ? `Заказ ID: ${details.orderId} · канал «${orderChannelTitle}»` : '';
       renderOrderTransferBox(details);
+      if (commissionGate) commissionGate.setChannelShare(details.channelShare || null);
       noteInput.value = details.remark;
       noteCounter.textContent = `${details.remark.length}/300`;
       releaseSearch.value = details.productOriginal;

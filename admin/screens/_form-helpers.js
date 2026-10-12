@@ -250,6 +250,10 @@ window.FormHelpers = {
       <div id="${idPrefix}commission-breakeven-row" class="hidden field-row px-4 pb-3 -mt-1 border-b border-gray-100">
         <div id="${idPrefix}commission-breakeven-text" class="text-[11px] leading-tight"></div>
       </div>
+      <!-- Каналы К6: раскладка комиссии канала с долей посредника («Насте 50% — …, DD — …»). -->
+      <div id="${idPrefix}commission-share-row" class="hidden field-row px-4 pb-3 -mt-1 border-b border-gray-100">
+        <div id="${idPrefix}commission-share-text" class="text-[12px] leading-tight"></div>
+      </div>
     `;
   },
 
@@ -301,10 +305,14 @@ window.FormHelpers = {
    * что передан в `commissionGateHtml` для этой же карточки. Без аргументов
    * — `root=document`, `idPrefix=''`, поведение идентично прежнему
    * (единственный гейт на весь экран, `order-new.js`/`order-edit.js`).
-   * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean, root?:ParentNode, idPrefix?:string}} [options]
-   * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, setBreakeven(b:{breakevenCommissionPercent:number|null,breakevenIsDefaultChannelPolicy:boolean|null,breakevenUnavailableReason:string|null}|null):void, refresh():void, getReason():string, validate():boolean}}
+   * Каналы К6: `channelShare` — доля посредника канала заказа `{pct, intermediaryTitle}`: под комиссией строка
+   * «Насте 50% — …, DD — …» и предупреждение, если комиссия похожа на половинную (ниже целевой). Не передано —
+   * доля канала из шапки (новый заказ: корзина, лот); `null` — нет (карточка заказа ставит своё через
+   * `setChannelShare`).
+   * @param {{feePercentSelector?:string, feeRubSelector?:string, isDirty?:()=>boolean, root?:ParentNode, idPrefix?:string, channelShare?:Object|null}} [options]
+   * @returns {{setThresholds(t:{warnPercent:number,reasonPercent:number}):void, setBreakeven(b:{breakevenCommissionPercent:number|null,breakevenIsDefaultChannelPolicy:boolean|null,breakevenUnavailableReason:string|null}|null):void, setChannelShare(s:Object|null):void, refresh():void, getReason():string, validate():boolean}}
    */
-  wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true, root = document, idPrefix = '' } = {}) {
+  wireCommissionGate({ feePercentSelector = '#fee-percent', feeRubSelector = '#fee-rub', isDirty = () => true, root = document, idPrefix = '', channelShare } = {}) {
     const feePercentInput = root.querySelector(feePercentSelector);
     const feeRubInput = root.querySelector(feeRubSelector);
     const hintRow = root.querySelector(`#${idPrefix}commission-hint-row`);
@@ -313,11 +321,37 @@ window.FormHelpers = {
     const reasonInput = root.querySelector(`#${idPrefix}commission-reason-input`);
     const breakevenRow = root.querySelector(`#${idPrefix}commission-breakeven-row`);
     const breakevenText = root.querySelector(`#${idPrefix}commission-breakeven-text`);
-    const noop = { setThresholds() {}, setBreakeven() {}, refresh() {}, getReason: () => '', validate: () => true };
+    const shareRow = root.querySelector(`#${idPrefix}commission-share-row`);
+    const shareText = root.querySelector(`#${idPrefix}commission-share-text`);
+    const noop = { setThresholds() {}, setBreakeven() {}, setChannelShare() {}, refresh() {}, getReason: () => '', validate: () => true };
     if (!feePercentInput || !hintRow || !hintText || !reasonBlock || !reasonInput) return noop;
 
     let thresholds = { warnPercent: null, reasonPercent: null };
     let breakeven = null;
+    let share = channelShare !== undefined
+      ? channelShare
+      : (window.ChannelSwitch && window.ChannelSwitch.currentShare ? window.ChannelSwitch.currentShare() : null);
+
+    function money(n) {
+      return `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+    }
+
+    function updateShare() {
+      if (!shareRow || !shareText) return;
+      if (!share) { shareRow.classList.add('hidden'); return; }
+      const rub = feeRubInput ? parseFloat(String(feeRubInput.value).replace(/\s/g, '').replace(',', '.')) : NaN;
+      const pct = parseFloat(feePercentInput.value);
+      const who = share.intermediaryTitle || 'посредник канала';
+      const pctLabel = String(share.pct).replace('.', ',');
+      let text = isNaN(rub) || rub <= 0
+        ? `Комиссия делится: ${who} — ${pctLabel}%, остальное — DD. Пишите полную комиссию (обе половины).`
+        : `${who} — ${pctLabel}%: ${money(rub * share.pct / 100)}, DD — ${money(rub - rub * share.pct / 100)}.`;
+      const looksHalf = !isNaN(pct) && thresholds.warnPercent !== null && pct < thresholds.warnPercent;
+      if (looksHalf) text += ' Комиссия ниже целевой — похоже на половину. Пишите полную: доля посредника вычитается сама.';
+      shareRow.classList.remove('hidden');
+      shareText.className = `text-[12px] leading-tight ${looksHalf ? 'text-amber-700 font-medium' : 'text-indigo-700'}`;
+      shareText.textContent = text;
+    }
 
     function updateBreakeven() {
       if (!breakevenRow || !breakevenText) return;
@@ -363,6 +397,7 @@ window.FormHelpers = {
         reasonBlock.classList.add('hidden');
       }
       updateBreakeven();
+      updateShare();
     }
 
     feePercentInput.addEventListener('input', update);
@@ -371,6 +406,7 @@ window.FormHelpers = {
     return {
       setThresholds(t) { thresholds = t || { warnPercent: null, reasonPercent: null }; update(); },
       setBreakeven(b) { breakeven = b || null; updateBreakeven(); },
+      setChannelShare(s) { share = s || null; updateShare(); },
       refresh: update,
       getReason() { return reasonInput.value.trim(); },
       validate() {

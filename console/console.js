@@ -67,7 +67,16 @@
   }
 
   function tenantTitle(t) {
-    return `${esc(t.name || t.slug)}${t.botUsername ? ` <span class="text-gray-400 font-normal">@${esc(t.botUsername)}</span>` : ''}`;
+    // Каналы К6: строка консоли может быть каналом внутри посредника (limisteam внутри Dream Dolls).
+    const channelOf = t.storefrontId && t.tenantName ? ` <span class="text-xs text-gray-500 font-normal">канал в ${esc(t.tenantName)}</span>` : '';
+    return `${esc(t.name || t.slug)}${channelOf}${t.botUsername ? ` <span class="text-gray-400 font-normal">@${esc(t.botUsername)}</span>` : ''}`;
+  }
+
+  /** Каналы К6: взаиморасчёт каналов (переносы заказов с деньгами) — итоги. */
+  function settlementsHtml(list) {
+    if (!list || !list.length) return '';
+    return section('Взаиморасчёт каналов', `<div class="text-xs text-gray-500 mb-1">Деньги, ушедшие вместе с перенесёнными заказами.</div>
+      ${list.map((x) => `<div class="flex justify-between py-1"><div>${esc(x.fromTitle)} → ${esc(x.toTitle)} <span class="text-xs text-gray-400">(${x.transfers})</span></div><div class="font-medium">${rub(x.amountRub)}</div></div>`).join('')}`);
   }
 
   // ── Список ──────────────────────────────────────────────────────────────────────────────────────
@@ -88,7 +97,7 @@
           <div><div class="text-xs text-gray-400">Долг</div><div class="font-semibold ${row.balance > 0 ? 'text-red-600' : 'text-emerald-600'}">${rub(row.balance)}</div></div>
         </div>`;
     }
-    return `<button type="button" data-tenant="${row.tenantId}" class="w-full text-left bg-white rounded-2xl border border-gray-100 p-4 mb-3 active:bg-gray-50">
+    return `<button type="button" data-tenant="${esc(row.unitKey || row.tenantId)}" class="w-full text-left bg-white rounded-2xl border border-gray-100 p-4 mb-3 active:bg-gray-50">
       <div class="flex items-center justify-between gap-2">
         <div class="font-semibold">${tenantTitle(row)}</div>
         <div class="text-xs text-gray-500 shrink-0">${esc(PLAN_LABELS[row.plan] || row.plan)}${row.status !== 'active' ? ` · ${esc(row.status)}` : ''}</div>
@@ -104,9 +113,9 @@
     root().innerHTML = 'Загрузка…';
     const data = await run('getPlatformOverview');
     document.getElementById('console-subtitle').textContent = `Деньги · ${data.currentLabel}`;
-    root().innerHTML = data.rows.map(overviewRow).join('') || 'Посредников пока нет.';
+    root().innerHTML = (data.rows.map(overviewRow).join('') || 'Посредников пока нет.') + settlementsHtml(data.settlements);
     root().querySelectorAll('[data-tenant]').forEach((btn) => {
-      btn.addEventListener('click', () => showTenant(Number(btn.dataset.tenant)));
+      btn.addEventListener('click', () => showTenant(btn.dataset.tenant));
     });
   }
 
@@ -219,7 +228,7 @@
       <div class="text-xs text-gray-500 mb-3">Тариф: ${esc(PLAN_LABELS[t.plan] || t.plan)}</div>`;
 
     if (card.mode === 'info') {
-      html += section('Для сведения (Dream Dolls не платит)', `
+      html += section(`Для сведения (Dream Dolls не платит${t.storefrontId === null ? '; только основной канал, без каналов внутри' : ''})`, `
         <div>Этот месяц: оборот ${rub(card.current.turnoverRub)}, по тарифу было бы ${rub(card.current.wouldBe)}; вес и доставка ${rub(card.current.otherStagesRub)}</div>
         <div class="text-gray-500">Прошлый месяц: оборот ${rub(card.previous.turnoverRub)}, было бы ${rub(card.previous.wouldBe)}</div>`);
       if (card.signals.length) html += section('Сигналы', signalsHtml(card.signals));

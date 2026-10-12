@@ -109,13 +109,40 @@
     return `<span class="text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style="color:${color};background:${color}1a">${esc((o.prefix || '') + titleOf(storefrontId))}</span>`;
   }
 
-  /** Строка «Создаётся в канале …» для форм создания; пусто, если каналов нет. */
-  function createHintHtml() {
+  /**
+   * Каналы К6: доля посредника канала `{pct, since, intermediaryTitle}` или null (основной канал, доли нет).
+   * @param {number|null|undefined} storefrontId
+   */
+  function shareOf(storefrontId) {
+    const i = indexOf(storefrontId);
+    return i >= 0 && channels[i].share ? channels[i].share : null;
+  }
+
+  /** Доля канала, выбранного в шапке; в «Все вместе» — null (канал заказа ещё не известен). */
+  function currentShare() {
+    if (!channels.length || isAll()) return null;
+    return shareOf(currentStorefrontId());
+  }
+
+  /** Каналы К6: текст предупреждения о полной комиссии для канала с долей посредника. */
+  function shareWarningText(storefrontId) {
+    const share = shareOf(storefrontId);
+    if (!share) return '';
+    return `В канале «${titleOf(storefrontId)}» комиссию пишите ПОЛНУЮ — обе половины. ${share.intermediaryTitle} получит свои ${String(share.pct).replace('.', ',')}% автоматически, у DD останется остальное.`;
+  }
+
+  /**
+   * Строка «Создаётся в канале …» для форм создания; пусто, если каналов нет.
+   * @param {{commission?:boolean}} [opts] commission — форма с комиссией (корзина, лот): у канала с долей посредника —
+   *   ещё и предупреждение «пишите полную комиссию» (каналы К6).
+   */
+  function createHintHtml(opts) {
     if (!channels.length) return '';
     const text = isAll()
       ? 'Сейчас «Все вместе»: новая запись попадёт в канал клиента/менеджера (корзина, лот, коллективка — в основной). Чтобы выбрать канал — переключите его в шапке.'
       : `Создаётся в канале «${titleOf(currentStorefrontId())}».`;
-    return `<div class="channel-create-hint text-[12px] rounded-xl px-3 py-2 mb-3 font-medium" style="color:${currentColor()};background:${currentColor()}14">${esc(text)}</div>`;
+    const share = opts && opts.commission && !isAll() ? shareWarningText(currentStorefrontId()) : '';
+    return `<div class="channel-create-hint text-[12px] rounded-xl px-3 py-2 mb-3 font-medium" style="color:${currentColor()};background:${currentColor()}14">${esc(text)}${share ? `<div class="mt-1 font-semibold">⚠️ ${esc(share)}</div>` : ''}</div>`;
   }
 
   /** @private Кнопка-канал в шапке (живёт в шелле, экраны её не перерисовывают) + цветная полоска сверху. */
@@ -269,6 +296,7 @@
   }
 
   window.ChannelSwitch = {
-    init, param, enabled, isAll, currentStorefrontId, titleOf, colorOf, badgeHtml, createHintHtml, choose, list
+    init, param, enabled, isAll, currentStorefrontId, titleOf, colorOf, badgeHtml, createHintHtml, choose, list,
+    shareOf, currentShare, shareWarningText
   };
 })();
