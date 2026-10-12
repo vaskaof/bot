@@ -106,7 +106,7 @@
     const own = !isAll() && indexOf(storefrontId) === indexOf(currentStorefrontId());
     if (own && !o.always) return '';
     const color = colorOf(storefrontId);
-    return `<span class="text-[11px] px-2 py-0.5 rounded-full font-medium" style="color:${color};background:${color}1a">${esc((o.prefix || '') + titleOf(storefrontId))}</span>`;
+    return `<span class="text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap truncate max-w-full" style="color:${color};background:${color}1a">${esc((o.prefix || '') + titleOf(storefrontId))}</span>`;
   }
 
   /** Строка «Создаётся в канале …» для форм создания; пусто, если каналов нет. */
@@ -129,7 +129,7 @@
       chip.type = 'button';
       chip.id = 'channel-switch-btn';
       chip.title = 'Канал: чьи заказы, клиенты и оплаты показывать';
-      chip.className = 'flex items-center gap-1 max-w-[9rem] px-2.5 py-1 rounded-full text-[12px] font-semibold border transition-colors';
+      chip.className = 'flex items-center gap-1 max-w-[4.75rem] sm:max-w-[9rem] px-2 sm:px-2.5 py-1 rounded-full text-[12px] font-semibold border transition-colors';
       chip.addEventListener('click', openPicker);
       help.parentNode.insertBefore(chip, help);
     }

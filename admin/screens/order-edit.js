@@ -48,15 +48,19 @@ window.Screens.orderEdit = {
       <button type="button" id="back-btn" title="Назад" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors shrink-0">
         <i data-lucide="arrow-left" class="w-6 h-6"></i>
       </button>
-      <div class="flex flex-col items-center ml-2 min-w-0">
-        <h1 class="text-lg font-semibold text-gray-900 tracking-tight">Редактирование</h1>
-        <span class="text-[11px] text-gray-400" id="order-id-display"></span>
+      <div class="hidden sm:flex flex-col items-start ml-1 min-w-0 overflow-hidden">
+        <h1 class="text-lg font-semibold text-gray-900 tracking-tight truncate max-w-full">Редактирование</h1>
+        <span class="text-[11px] text-gray-400 truncate max-w-full" id="order-id-display"></span>
       </div>
     `;
+    // Узкий экран (репорт VASY 12.10.2026: «Назад», ID заказа и «Уведомить» налезали друг на друга) — на телефоне
+    // в шапке только кнопки (подпись «Уведомить» — колокольчиком), а номер заказа — первой строкой карточки
+    // (renderOrderTransferBox); с ширины sm — как раньше.
     document.getElementById('header-actions').innerHTML = `
-      <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
+      <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none shrink-0" title="Уведомить клиента об изменениях">
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
-        Уведомить
+        <i data-lucide="bell" class="w-4 h-4 sm:hidden" aria-label="Уведомить"></i>
+        <span class="hidden sm:inline">Уведомить</span>
       </label>
       <button id="duplicate-order-btn" title="Повторить покупку" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy" class="w-6 h-6"></i>
@@ -1372,14 +1376,18 @@ window.Screens.orderEdit = {
      */
     function renderOrderTransferBox(details) {
       const box = document.getElementById('order-transfer-box');
-      if (!box || !window.OrderTransfer) return;
-      const channelRow = window.ChannelSwitch && window.ChannelSwitch.enabled()
-        ? `<div class="flex items-center justify-between gap-2 mb-3 px-1">
-             <span>${window.ChannelSwitch.badgeHtml(details.storefrontId, { prefix: 'канал ', always: true })}</span>
-             <button type="button" id="order-transfer-channel-btn" class="text-[13px] font-medium text-indigo-600">Перенести в канал…</button>
-           </div>`
+      if (!box) return;
+      const channels = !!(window.ChannelSwitch && window.ChannelSwitch.enabled());
+      // Номер заказа на телефоне — здесь (в шапке ему не хватает места), с sm — в шапке.
+      const idHtml = `<span class="sm:hidden text-[13px] font-semibold text-gray-700 shrink-0">Заказ ${escapeHtmlClient(details.orderId)}</span>`;
+      const badge = channels ? window.ChannelSwitch.badgeHtml(details.storefrontId, { prefix: 'канал ', always: true }) : '';
+      const moveBtn = channels && window.OrderTransfer
+        ? '<button type="button" id="order-transfer-channel-btn" class="text-[13px] font-medium text-indigo-600 shrink-0">Перенести в канал…</button>'
         : '';
-      box.innerHTML = window.OrderTransfer.foreignBannerHtml(details.moneyOnOrder) + channelRow;
+      const row = `<div class="flex items-center justify-between gap-2 mb-3 px-1 ${channels ? '' : 'sm:hidden'}">
+          <span class="flex items-center gap-2 min-w-0">${idHtml}${badge}</span>${moveBtn}
+        </div>`;
+      box.innerHTML = (window.OrderTransfer ? window.OrderTransfer.foreignBannerHtml(details.moneyOnOrder) : '') + row;
     }
 
     document.addEventListener('click', async (e) => {
@@ -1610,7 +1618,10 @@ window.Screens.orderEdit = {
 
       // Каналы К4: при нескольких каналах — канал заказа (карточка открывается из любого канала).
       const orderChannelTitle = window.ChannelSwitch && window.ChannelSwitch.enabled() ? window.ChannelSwitch.titleOf(details.storefrontId) : '';
-      document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}${orderChannelTitle ? ` · канал «${orderChannelTitle}»` : ''}`;
+      // Канал заказа — строкой «канал … · Перенести в канал…» над карточкой (К5), в шапке только ID: на узком экране
+      // длинная подпись налезала на кнопки.
+      document.getElementById('order-id-display').textContent = `Заказ ${details.orderId}`;
+      document.getElementById('order-id-display').title = orderChannelTitle ? `Заказ ID: ${details.orderId} · канал «${orderChannelTitle}»` : '';
       renderOrderTransferBox(details);
       noteInput.value = details.remark;
       noteCounter.textContent = `${details.remark.length}/300`;
