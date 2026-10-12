@@ -346,6 +346,30 @@ window.Screens.staff = {
       return (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
 
+    /**
+     * Каналы К6.4: строка «Канал» в карточке менеджера (только когда каналов несколько). «Админ канала» — бренд бота
+     * канала, счёт, модули клиентов, свои менеджеры, своя доля; «только этот канал» — без переключателя каналов.
+     */
+    function channelAccessHtml(item) {
+      const cs = window.ChannelSwitch;
+      if (!cs || !cs.enabled() || item.accessRole === 'admin') return '';
+      const own = item.defaultStorefrontId || item.channelAdminOf;
+      const current = own ? String(own) : 'main';
+      return `
+        <div class="staff-channel-access mt-2 pt-2 border-t border-gray-50">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-gray-400 shrink-0">Канал:</span>
+            <select class="staff-channel-select flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-lg text-xs">
+              ${cs.list().map((c) => `<option value="${c.id === null ? 'main' : c.id}" ${String(c.id === null ? 'main' : c.id) === current ? 'selected' : ''}>${escapeHtmlClient(c.title)}</option>`).join('')}
+            </select>
+          </div>
+          ${current === 'main' ? '' : `
+          <label class="flex items-center gap-2 mt-1.5 text-xs text-gray-600"><input type="checkbox" class="staff-channel-admin" ${item.channelAdminOf ? 'checked' : ''}> Админ этого канала (бот, счёт, разделы клиентов, свои менеджеры, своя доля)</label>
+          <label class="flex items-center gap-2 mt-1 text-xs text-gray-600"><input type="checkbox" class="staff-channel-locked" ${item.channelLocked ? 'checked' : ''}> Работает только в этом канале</label>`}
+          ${current === 'main' ? '<input type="checkbox" class="staff-channel-admin hidden"><input type="checkbox" class="staff-channel-locked hidden">' : ''}
+        </div>`;
+    }
+
     async function loadReport(days) {
       renderPeriodButtons();
       const body = document.getElementById('staff-report-body');
@@ -504,6 +528,7 @@ window.Screens.staff = {
               `).join('')}
             </select>
           </div>
+          ${channelAccessHtml(item)}
           <div class="staff-history-block hidden mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1"></div>
         </div>
       `).join('');
@@ -597,6 +622,27 @@ window.Screens.staff = {
           }
         });
 
+        // Каналы К6.4 — канал менеджера, «админ канала», «только этот канал» (владелец; сервер проверяет сам).
+        const accessBox = card.querySelector('.staff-channel-access');
+        if (accessBox) {
+          accessBox.querySelectorAll('select, input').forEach((el) => el.addEventListener('change', async () => {
+            const channel = accessBox.querySelector('.staff-channel-select').value;
+            const access = {
+              defaultStorefrontId: channel === 'main' ? null : Number(channel),
+              channelAdminOf: accessBox.querySelector('.staff-channel-admin').checked && channel !== 'main' ? Number(channel) : null,
+              channelLocked: accessBox.querySelector('.staff-channel-locked').checked && channel !== 'main'
+            };
+            try {
+              await callServer('setStaffChannelAccess', telegramId, access);
+              showSaveToast(true, 'Доступ к каналам сохранён.');
+              await load();
+            } catch (error) {
+              showSaveToast(false, error.message || 'Не удалось сохранить.');
+              await load();
+            }
+          }));
+        }
+
         card.querySelector('.staff-history-toggle-btn').addEventListener('click', async () => {
           const block = card.querySelector('.staff-history-block');
           if (!block.classList.contains('hidden')) {
@@ -622,7 +668,7 @@ window.Screens.staff = {
     function formatAuditAction(action) {
       const labels = {
         added: 'Добавлен', role_changed: 'Смена роли', activated: 'Активирован', deactivated: 'Деактивирован',
-        renamed: 'Переименован', linked: 'Связан', unlinked: 'Отвязан', view_scope_changed: 'Смена области видимости'
+        renamed: 'Переименован', linked: 'Связан', unlinked: 'Отвязан', view_scope_changed: 'Смена области видимости', channel_access: 'Доступ к каналам'
       };
       return labels[action] || action;
     }

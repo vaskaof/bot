@@ -16,6 +16,7 @@
 
   let channels = []; // [{id:null|number, title}]
   let canSeeAll = false;
+  let locked = false; // Каналы К6.4: сотрудник «только свой канал» — выбора нет
   let current; // 'all' | 'main' | number
 
   function esc(text) {
@@ -46,8 +47,11 @@
   function init(info) {
     channels = info && Array.isArray(info.channels) ? info.channels : [];
     canSeeAll = !!(info && info.canSeeAllChannels);
+    locked = !!(info && info.channelLocked);
     if (channels.length < 2) { channels = []; current = undefined; return; }
-    current = normalize(readSaved()) || normalize(info.defaultChannel) || 'main';
+    current = locked
+      ? (normalize(info.defaultChannel) || 'main')
+      : normalize(readSaved()) || normalize(info.defaultChannel) || 'main';
     renderChip();
   }
 
@@ -167,7 +171,7 @@
     chip.style.color = color;
     chip.style.borderColor = color + '55';
     chip.style.background = color + '12';
-    chip.innerHTML = `<span>${esc(currentTitle())}</span><span aria-hidden="true">▾</span>`;
+    chip.innerHTML = `<span>${esc(currentTitle())}</span>${locked ? '' : '<span aria-hidden="true">▾</span>'}`;
     header.style.boxShadow = `inset 0 3px 0 ${color}`;
     queueLayout();
   }
@@ -245,6 +249,7 @@
 
   /** @private Выбор канала — лист снизу. */
   function openPicker() {
+    if (locked) return; // Каналы К6.4: работает только в своём канале
     const old = document.getElementById('channel-switch-sheet');
     if (old) old.remove();
     const options = [
@@ -282,6 +287,7 @@
 
   /** Сменить канал: запомнить и перерисовать текущий экран (данные — уже нового канала). */
   function choose(value) {
+    if (locked) return;
     const next = normalize(value);
     if (next === null || next === current) return;
     current = next;

@@ -283,6 +283,8 @@ function initAccessCheck(onSuccess) {
                 window.CURRENT_CAN_VIEW_ALL_CLIENTS = accessInfo.canViewAllClients === true;
                 window.CURRENT_LINKED_STAFF_TELEGRAM_ID = accessInfo.linkedTelegramId || '';
                 window.CURRENT_LINKED_STAFF_NAME = accessInfo.linkedName || '';
+                // Каналы К6.4: админ какого канала (null — нет). Права админа — только в этом канале (сервер).
+                window.CURRENT_CHANNEL_ADMIN_OF = accessInfo.channelAdminOf || null;
                 // Каналы К4: переключатель канала в шапке (только если каналов больше одного).
                 if (window.ChannelSwitch) window.ChannelSwitch.init(accessInfo);
             } catch (error) {
@@ -292,6 +294,7 @@ function initAccessCheck(onSuccess) {
                 window.CURRENT_CAN_VIEW_ALL_CLIENTS = false;
                 window.CURRENT_LINKED_STAFF_TELEGRAM_ID = '';
                 window.CURRENT_LINKED_STAFF_NAME = '';
+                window.CURRENT_CHANNEL_ADMIN_OF = null;
             }
             await profilePromise;
             loadingScreen.classList.add('hidden');

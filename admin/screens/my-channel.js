@@ -41,14 +41,22 @@ window.Screens.myChannel = {
     `;
     if (window.lucide) window.lucide.createIcons();
 
-    if (window.CURRENT_ACCESS_ROLE !== 'admin') {
+    // Каналы К6.4: админ канала — только бренд своего канала (сервер подставляет его сам).
+    const channelAdminOf = window.CURRENT_ACCESS_ROLE !== 'admin' ? window.CURRENT_CHANNEL_ADMIN_OF : null;
+    if (window.CURRENT_ACCESS_ROLE !== 'admin' && !channelAdminOf) {
       document.getElementById('my-channel-body').textContent = 'Этот раздел — только для администратора.';
+      return;
+    }
+    // Права админа канала — только в его канале: переключаем шапку (экран перерисуется уже в нём).
+    if (channelAdminOf && window.ChannelSwitch && window.ChannelSwitch.enabled()
+      && window.ChannelSwitch.currentStorefrontId() !== channelAdminOf) {
+      window.ChannelSwitch.choose(channelAdminOf);
       return;
     }
 
     let state = null;
     // Витрины: чей бренд правим — основного бота (null) или витрины (второй бот той же базы).
-    let storefrontId = null;
+    let storefrontId = channelAdminOf || null;
     let editingKey = null;
     let colorDraft = null; // выбранный, ещё не сохранённый цвет
     load();
@@ -209,6 +217,7 @@ window.Screens.myChannel = {
 
     /** Витрины: переключатель «чей бренд» — только если у канала есть второй бот. */
     function storefrontSwitchHtml() {
+      if (channelAdminOf) return '';
       const list = state.storefronts || [];
       if (list.length === 0) return '';
       const chip = (id, label, active) => `<button type="button" data-mc-storefront="${id === null ? '' : id}"

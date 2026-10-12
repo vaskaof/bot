@@ -38,6 +38,10 @@ window.Screens.more = {
       // Б1 (09.10.2026) — бронь под постом в канале.
       ...(hasModule('channel_booking') ? [{ route: 'bookings', icon: 'ticket', title: 'Брони', description: 'Кнопка «Забронировать» под постами канала, места и лист ожидания' }] : []),
       ...(hasModule('gamification') ? [{ route: 'contests', icon: 'gift', title: 'Конкурсы', description: 'Задания и лотереи', badgeId: 'contests-badge' }] : []),
+      // Каналы К6.4 — менеджер-админ своего канала: бренд бота, счёт, модули, свои менеджеры, своя доля.
+      ...(window.CURRENT_CHANNEL_ADMIN_OF && window.CURRENT_ACCESS_ROLE !== 'admin' && window.ChannelSwitch
+        ? [{ route: 'channel-admin', icon: 'store', title: `Мой канал «${window.ChannelSwitch.titleOf(window.CURRENT_CHANNEL_ADMIN_OF)}»`, description: 'Бот канала, счёт Кнопке, модули клиентов, свои менеджеры, своя доля' }]
+        : []),
       { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
       { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },
       { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' },

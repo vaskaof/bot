@@ -30,7 +30,7 @@
  */
 // 04.10.2026: + 'training'/'year-summaries' — на широком экране у них свои
 // кнопки в колонке навигации (там нет «Ещё»), на узком подсвечивают «Ещё».
-const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff', 'training', 'year-summaries', 'bookings'];
+const MORE_GROUP = ['settings', 'contests', 'analytics', 'clients', 'wallet', 'staff', 'training', 'year-summaries', 'bookings', 'channel-admin'];
 
 const ROUTES = [
   { path: 'home', screen: 'home', navKey: 'home', showNav: true },
@@ -43,6 +43,8 @@ const ROUTES = [
   { path: 'settings', screen: 'settings', navKey: 'settings', showNav: true },
   // В4 плана SaaS — «Мой канал» (бренд и тексты бота), admin-only, вход из «Настроек».
   { path: 'my-channel', screen: 'myChannel', navKey: 'settings', showNav: true },
+  // Каналы К6.4 — «Мой канал (админ)»: менеджер-админ канала, вход из «Ещё».
+  { path: 'channel-admin', screen: 'channelAdmin', navKey: 'more', showNav: true },
   { path: 'analytics', screen: 'analytics', navKey: 'analytics', showNav: true },
   // Э2 рефакторинга экономики, 25.08.2026 — форма "Конвертация" + отчёты
   // буфера/личных закупок, см. wallet.js. В MORE_GROUP наравне с settings/
