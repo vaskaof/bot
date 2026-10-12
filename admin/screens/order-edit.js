@@ -1283,13 +1283,23 @@ window.Screens.orderEdit = {
 
     async function loadCollectivesForBoxes() {
       try {
-        const list = await callServer('getCollectivesList');
+        // Каналы К4: все коллективки (подписи привязок, в т.ч. коллективки другого канала).
+        const list = await callServer('getCollectivesList', { scope: 'all' });
         collectivesById = new Map(list.map((c) => [c.collectiveId, c]));
       } catch (error) {
         // Список не критичен для остальной формы — карточка покажет ID.
       }
       collectivesLoaded = true;
       renderCollectiveBoxes();
+    }
+
+    /**
+     * Каналы К4: «Прикрепить к коллективке другого канала» — редкое действие, поэтому мелкой ссылкой под блоком.
+     * Только когда выбран конкретный канал (в «Все вместе» обычный выбор и так показывает все коллективки).
+     */
+    function otherChannelPickHtml(stage) {
+      if (!window.ChannelSwitch || !window.ChannelSwitch.enabled() || window.ChannelSwitch.isAll()) return '';
+      return `<button type="button" class="collective-pick-other-btn mt-1.5 text-[12px] text-gray-500 underline" data-stage="${stage}">Прикрепить к коллективке другого канала</button>`;
     }
 
     function collectiveTitle(id) {
@@ -1314,7 +1324,8 @@ window.Screens.orderEdit = {
             <div class="flex items-center justify-between gap-2">
               <span class="text-[15px] text-gray-400">Не в коллективке</span>
               <button type="button" class="collective-pick-btn text-sm font-medium text-indigo-600 px-2 py-1" data-stage="${stage}">Выбрать</button>
-            </div>`;
+            </div>
+            ${otherChannelPickHtml(stage)}`;
           continue;
         }
         const c = collectivesById.get(id);
@@ -1323,13 +1334,15 @@ window.Screens.orderEdit = {
         box.innerHTML = `
           <div class="rounded-xl border border-gray-200 p-3" data-collective-card="${escapeHtmlClient(id)}">
             <div class="text-[15px] font-medium text-gray-900 break-words">${escapeHtmlClient(collectiveTitle(id))}</div>
+            ${c && window.ChannelSwitch ? `<div class="mt-1">${window.ChannelSwitch.badgeHtml(c.storefrontId, { prefix: 'коллективка канала ' })}</div>` : ''}
             <div class="text-[12px] text-gray-500 mt-0.5">${meta.map(escapeHtmlClient).join(' · ')}</div>
             <div class="flex flex-wrap gap-3 mt-2">
               <button type="button" class="collective-pick-btn text-sm font-medium text-indigo-600" data-stage="${stage}">Сменить</button>
               <button type="button" class="collective-unassign-btn text-sm font-medium text-gray-500" data-stage="${stage}">Отвязать</button>
               <button type="button" class="collective-open-btn text-sm font-medium text-gray-500 ml-auto" data-id="${escapeHtmlClient(id)}">Открыть</button>
             </div>
-          </div>`;
+          </div>
+          ${otherChannelPickHtml(stage)}`;
       }
     }
 
@@ -1365,6 +1378,17 @@ window.Screens.orderEdit = {
           excludeCollectiveId: collectiveLinkByStage[pickerStage] || null,
           allowCreate: true,
           title: collectiveLinkByStage[pickerStage] ? 'Сменить коллективку' : 'Выбрать коллективку'
+        });
+        return;
+      }
+      const pickOtherBtn = e.target.closest('.collective-pick-other-btn');
+      if (pickOtherBtn) {
+        pickerStage = pickOtherBtn.dataset.stage;
+        orderCollectivePicker.open({
+          stageFilter: pickerStage,
+          excludeCollectiveId: collectiveLinkByStage[pickerStage] || null,
+          otherChannel: true,
+          title: 'Коллективка другого канала'
         });
         return;
       }
@@ -1534,7 +1558,9 @@ window.Screens.orderEdit = {
       }
       loadedDetails = details;
 
-      document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}`;
+      // Каналы К4: при нескольких каналах — канал заказа (карточка открывается из любого канала).
+      const orderChannelTitle = window.ChannelSwitch && window.ChannelSwitch.enabled() ? window.ChannelSwitch.titleOf(details.storefrontId) : '';
+      document.getElementById('order-id-display').textContent = `Заказ ID: ${details.orderId}${orderChannelTitle ? ` · канал «${orderChannelTitle}»` : ''}`;
       noteInput.value = details.remark;
       noteCounter.textContent = `${details.remark.length}/300`;
       releaseSearch.value = details.productOriginal;

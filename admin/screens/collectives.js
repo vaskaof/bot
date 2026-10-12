@@ -221,6 +221,7 @@ window.Screens.collectives = {
             </button>
           </div>
           <div class="p-4 space-y-3">
+            ${window.ChannelSwitch ? window.ChannelSwitch.createHintHtml() : ''}
             <div>
               <label class="text-xs font-medium text-gray-500">Название</label>
               <input type="text" id="new-collective-name" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-400" placeholder="Обязательно, только для менеджера — клиент не видит">
@@ -431,6 +432,7 @@ window.Screens.collectives = {
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${escapeHtmlClient(collectiveStageLabel(c.stage))}</span>
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">${escapeHtmlClient(c.status)}</span>
           <span class="text-[11px] text-gray-500">Заказов: ${c.orderCount}</span>
+          ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(c.storefrontId, { prefix: 'коллективка канала ' }) : ''}
         </div>
         ${warnings.length ? `<div class="mt-2 flex flex-wrap gap-1.5" data-collective-warnings>${warnings.map((w) => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">${escapeHtmlClient(w)}</span>`).join('')}</div>` : ''}
       `;

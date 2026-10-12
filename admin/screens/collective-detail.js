@@ -98,6 +98,7 @@ window.Screens.collectiveDetail = {
             <div class="flex items-center justify-between mb-1">
               <span class="text-[11px] text-gray-400">ID ${escapeHtmlClient(collectiveId)}</span>
               <span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700" id="stage-chip"></span>
+              <span id="collective-channel-chip"></span>
             </div>
             <div>
               <label class="text-xs font-medium text-gray-500">Название</label>
@@ -856,6 +857,9 @@ window.Screens.collectiveDetail = {
       sentCaption.textContent = details.sentAtDisplay ? `Отправлено: ${details.sentAtDisplay}` : '';
       sentCaption.classList.toggle('hidden', !details.sentAtDisplay);
       document.getElementById('stage-chip').textContent = typeof collectiveStageLabel === 'function' ? collectiveStageLabel(details.stage) : details.stage;
+      // Каналы К4: коллективка другого канала (или «Все вместе») — канал-владелец крупно.
+      document.getElementById('collective-channel-chip').innerHTML = window.ChannelSwitch
+        ? window.ChannelSwitch.badgeHtml(details.storefrontId, { prefix: 'коллективка канала ' }) : '';
       renderStatusOptions(details.status);
       renderSummary();
       // Аудит коллективок, п.6Б — "продолжить как По РФ" осмысленно только
@@ -1573,6 +1577,7 @@ window.Screens.collectiveDetail = {
                    как начальный дефолт для нетронутого ползунка, менеджер
                    двигает его так же независимо, как и раньше. -->
               ${o.lotId ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 cursor-pointer" data-lot-id="${escapeHtmlClient(o.lotId)}">Лот #${escapeHtmlClient(o.lotId)}</span>` : ''}
+              ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(o.storefrontId) : ''}
             </div>
             <div class="text-[13px] text-gray-500 mt-1.5">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
             ${o.remark ? `
@@ -1966,7 +1971,7 @@ window.Screens.collectiveDetail = {
             if (item.collectiveId && item.collectiveId !== collectiveId) {
               let sourceName = item.collectiveId;
               try {
-                const list = await callServer('getCollectivesList');
+                const list = await callServer('getCollectivesList', { scope: 'all' });
                 const source = list.find((c) => c.collectiveId === item.collectiveId);
                 if (source) sourceName = source.name || source.collectiveId;
               } catch (e) { /* best-effort — покажем хотя бы ID */ }

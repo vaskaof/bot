@@ -30,6 +30,9 @@
  * едет, трек, число заказов и дату; порядок — `sortCollectives(...,'smart')`
  * (в работе и свежие сверху); завершённые по всем шагам (`progress.done`)
  * свёрнуты под «Показать завершённые». `open({title})` — свой заголовок.
+ *
+ * Каналы К4: обычный выбор — только коллективки текущего канала (`scope: "own"`); `open({otherChannel:true})` —
+ * «Прикрепить к коллективке другого канала»: только чужие, канал каждой написан крупно, создать новую нельзя.
  */
 window.CollectivePickerModal = {
   html() {
@@ -106,6 +109,7 @@ window.CollectivePickerModal = {
     }
 
     let showDone = false;
+    let otherChannel = false;
 
     function rowHtml(c) {
       const stageLabel = (typeof collectiveStageLabel === 'function') ? collectiveStageLabel(c.stage) : c.stage;
@@ -113,6 +117,7 @@ window.CollectivePickerModal = {
       const meta = [c.status, stageLabel, c.trackNumber ? `трек ${c.trackNumber}` : '', `заказов: ${c.orderCount}`, date].filter(Boolean);
       return `
           <div class="min-w-0">
+            ${otherChannel && window.ChannelSwitch ? `<div class="mb-1">${window.ChannelSwitch.badgeHtml(c.storefrontId, { always: true, prefix: 'Канал ' })}</div>` : ''}
             <div class="text-sm font-medium text-gray-900 break-words">${escapeHtmlClient(c.name || ('ID ' + c.collectiveId))}</div>
             <div class="text-[11px] text-gray-500">${meta.map(escapeHtmlClient).join(' · ')}</div>
             ${c.name ? `<div class="text-[10px] text-gray-400">ID ${escapeHtmlClient(c.collectiveId)}</div>` : ''}
@@ -215,7 +220,8 @@ window.CollectivePickerModal = {
     async function open(opts) {
       excludeId = (opts && opts.excludeCollectiveId) || null;
       stageFilter = (opts && opts.stageFilter) || null;
-      allowCreate = !!(opts && opts.allowCreate);
+      otherChannel = !!(opts && opts.otherChannel);
+      allowCreate = !!(opts && opts.allowCreate) && !otherChannel;
       createStage = stageFilter;
       showDone = false;
       document.getElementById('collective-picker-title').textContent = (opts && opts.title) || 'Выбрать коллективку';
@@ -228,7 +234,7 @@ window.CollectivePickerModal = {
       modal.classList.add('flex');
 
       try {
-        all = await callServer('getCollectivesList', { progress: true });
+        all = await callServer('getCollectivesList', { progress: true, scope: otherChannel ? 'other' : 'own' });
         loadingEl.classList.add('hidden');
         render();
       } catch (error) {

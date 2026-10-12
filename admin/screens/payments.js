@@ -501,10 +501,11 @@ window.Screens.payments = {
               </div>
             </div>`).join('');
           return `
-          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" data-due-client="${escapeHtmlClient(c.telegramId)}">
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" data-due-client="${escapeHtmlClient(c.telegramId)}" data-due-channel="${escapeHtmlClient(c.storefrontId == null ? '' : c.storefrontId)}">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <div class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtmlClient(c.display)}</div>
+                ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(c.storefrontId) : ''}
                 <div class="text-[11px] text-gray-400">${c.lastPayment ? `последняя оплата ${money(c.lastPayment.amount)} ₽ — ${daysAgoLabel(c.lastPayment.at)}` : 'оплат ещё не было'}${c.lastReminderAt ? ` · напоминали ${daysAgoLabel(c.lastReminderAt)}` : ''}</div>
               </div>
               <div class="text-right shrink-0">
@@ -540,7 +541,8 @@ window.Screens.payments = {
       const btn = e.target.closest('[data-due-action]');
       if (!btn) return;
       const card = btn.closest('[data-due-client]');
-      const c = dueData && dueData.clients.find((x) => x.telegramId === card.dataset.dueClient);
+      const c = dueData && dueData.clients.find((x) => x.telegramId === card.dataset.dueClient
+        && String(x.storefrontId == null ? '' : x.storefrontId) === card.dataset.dueChannel);
       if (!c) return;
       if (btn.dataset.dueAction === 'pay') pendingDeepLinkAction = { kind: 'pay', orderId: c.orders.length === 1 ? c.orders[0].orderId : null };
       else if (btn.dataset.dueAction === 'remind') pendingDeepLinkAction = { kind: 'remind' };
@@ -548,7 +550,8 @@ window.Screens.payments = {
       updateTabStyles();
       const displayName = c.display;
       clientSearch.value = displayName;
-      selectClient({ telegramId: c.telegramId, username: c.username || '', name: c.name || '', displayName, pending: c.pending });
+      // Каналы К4: канал строки — для напоминания в «Все вместе» (клиент может быть должен в двух каналах).
+      selectClient({ telegramId: c.telegramId, username: c.username || '', name: c.name || '', displayName, pending: c.pending, storefrontId: c.storefrontId });
       window.scrollTo(0, 0);
     });
     loadDue();
@@ -560,6 +563,15 @@ window.Screens.payments = {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('ring-2', 'ring-indigo-400');
       setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400'), 2500);
+    }
+
+    /**
+     * Каналы К4: аргументы напоминания — клиент и, если клиент открыт из строки «Кто должен», её канал (сервер
+     * берёт его только в «Все вместе»; в канале — канал переключателя). Без канала поле не шлём: undefined в
+     * массиве аргументов JSON превратил бы в null — «основной канал».
+     */
+    function reminderTarget() {
+      return currentClient.storefrontId !== undefined ? [currentClient.telegramId, currentClient.storefrontId] : [currentClient.telegramId];
     }
 
     function selectClient(item) {
@@ -582,7 +594,7 @@ window.Screens.payments = {
           callServer('getClientPaymentsRollup', currentClient.telegramId),
           // «Сейчас к оплате» сверху карточки (05.10.2026) — то же число, что
           // во вкладке «Кто должен» и в напоминании. Необязательно.
-          callServer('getPaymentReminderPreview', currentClient.telegramId).catch(() => null)
+          callServer('getPaymentReminderPreview', ...reminderTarget()).catch(() => null)
         ]);
         currentPreview = preview;
         currentOrders = orders;
@@ -1464,7 +1476,7 @@ window.Screens.payments = {
       rmModal.classList.remove('hidden');
       rmModal.classList.add('flex');
       try {
-        rmPreview = await callServer('getPaymentReminderPreview', currentClient.telegramId);
+        rmPreview = await callServer('getPaymentReminderPreview', ...reminderTarget());
       } catch (error) {
         document.getElementById('rm-facts').innerHTML = `<div class="text-red-500">Ошибка: ${escapeHtmlClient(error.message)}</div>`;
         rmSend.disabled = true;
@@ -1498,7 +1510,8 @@ window.Screens.payments = {
         && !(await showConfirmModal(`Клиенту уже напоминали ${agoText(rmPreview.lastReminder.sentAt)}. Отправить ещё раз?`, { confirmLabel: 'Отправить' }))) return;
       rmSend.disabled = true;
       try {
-        const result = await callServer('sendPaymentReminder', currentClient.telegramId, rmText.value, rmPreview.toPay, rmRequestId);
+        const result = await callServer('sendPaymentReminder', currentClient.telegramId, rmText.value, rmPreview.toPay, rmRequestId,
+          ...(currentClient.storefrontId !== undefined ? [currentClient.storefrontId] : []));
         closeReminderModal();
         showSaveToast(true, result && result.queued ? 'Напоминание уйдёт утром (сейчас ночное окно)' : 'Напоминание отправлено');
       } catch (error) {

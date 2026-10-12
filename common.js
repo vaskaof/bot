@@ -87,6 +87,18 @@ function _rememberWorkingApiUrl(url, firstTried) {
     } catch (e) { /* не критично */ }
 }
 
+/**
+ * Тело запроса. Каналы К4: в админке с несколькими каналами — ещё `channel` (выбор переключателя в шапке,
+ * admin/screens/_channel-switch.js); у клиентского приложения и без каналов поля нет.
+ * @private
+ */
+function _requestBody(methodName, args, initData) {
+    const body = { method: methodName, args: args, initData: initData };
+    const channel = window.ChannelSwitch && typeof window.ChannelSwitch.param === 'function' ? window.ChannelSwitch.param() : undefined;
+    if (channel !== undefined) body.channel = channel;
+    return body;
+}
+
 function callServer(methodName, ...args) {
     const { tg, initData } = _getTelegramWebAppContext();
     if (!tg || !initData) {
@@ -106,7 +118,7 @@ function callServer(methodName, ...args) {
         return fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ method: methodName, args: args, initData: initData }),
+            body: JSON.stringify(_requestBody(methodName, args, initData)),
             signal: controller ? controller.signal : undefined
         }).then((response) => response.json())
             .then((data) => { if (timer) clearTimeout(timer); return data; }, (error) => {
@@ -271,6 +283,8 @@ function initAccessCheck(onSuccess) {
                 window.CURRENT_CAN_VIEW_ALL_CLIENTS = accessInfo.canViewAllClients === true;
                 window.CURRENT_LINKED_STAFF_TELEGRAM_ID = accessInfo.linkedTelegramId || '';
                 window.CURRENT_LINKED_STAFF_NAME = accessInfo.linkedName || '';
+                // Каналы К4: переключатель канала в шапке (только если каналов больше одного).
+                if (window.ChannelSwitch) window.ChannelSwitch.init(accessInfo);
             } catch (error) {
                 window.CURRENT_ACCESS_ROLE = null;
                 window.CURRENT_STAFF_NAME = '';

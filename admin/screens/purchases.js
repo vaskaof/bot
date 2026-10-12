@@ -102,6 +102,7 @@ window.Screens.purchases = {
         </div>
         <div class="flex flex-wrap gap-1.5 mt-2">
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">${p.items.length} ${p.items.length === 1 ? 'заказ' : 'заказов'}</span>
+          ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(p.storefrontId) : ''}
           ${p.lotIds.map((id) => `<button type="button" data-lot-id="${escapeHtmlClient(id)}" class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">лот #${escapeHtmlClient(id)} →</button>`).join('')}
           ${clients.slice(0, 3).map((c) => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 truncate max-w-[10rem]">${escapeHtmlClient(c)}</span>`).join('')}
           ${clients.length > 3 ? `<span class="text-[11px] text-gray-400">+${clients.length - 3}</span>` : ''}

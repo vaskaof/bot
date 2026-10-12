@@ -97,6 +97,7 @@ window.Screens.cartNew = {
            этого HTML-комментария — он живёт внутри JS template literal
            (см. JSDoc файла, наступали на это уже много раз). -->
       <main class="pt-16 pb-40 px-4 md:px-0 max-w-2xl lg:max-w-6xl mx-auto">
+        ${window.ChannelSwitch ? window.ChannelSwitch.createHintHtml() : ''}
         <!-- Широкий экран (04.10.2026, демо кабинета): слева шапка и заявки,
              справа «Итог и оплаты» (прилипает), панель итогов — карточкой
              под ней (app.html). На телефоне порядок прежний. НЕ использовать

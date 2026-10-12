@@ -547,6 +547,11 @@ function startAdminRouter() {
     window.APP_DICTIONARIES = dictionaries;
     renderRoute(dictionaries);
     window.addEventListener('hashchange', () => renderRoute(dictionaries));
+    // Каналы К4: сменили канал в шапке — тот же экран заново (данные и бейджи — уже нового канала).
+    window.rerenderCurrentRoute = () => {
+      _navBadgesLoaded = false;
+      renderRoute(dictionaries);
+    };
     // Обучение (04.10.2026): «Помощь» в шапке + продолжение сценария после
     // перезагрузки WebView (состояние — sessionStorage, см. _tour.js).
     if (window.TrainingUI) window.TrainingUI.wireHelpButton();

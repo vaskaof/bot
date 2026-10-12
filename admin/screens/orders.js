@@ -640,6 +640,11 @@ window.Screens.orders = {
       listContainer.innerHTML = '';
 
       if (toShow.length === 0) {
+        // Каналы К4: заказ другого канала здесь не виден — подсказка, где искать.
+        const sf = window.ChannelSwitch ? window.ChannelSwitch.currentStorefrontId() : undefined;
+        emptyMessage.textContent = sf === undefined
+          ? 'Заказы не найдены'
+          : `Заказы не найдены в канале «${window.ChannelSwitch.titleOf(sf)}». Заказы другого канала — переключите канал в шапке.`;
         emptyMessage.classList.remove('hidden');
       } else {
         emptyMessage.classList.add('hidden');
@@ -722,6 +727,7 @@ window.Screens.orders = {
                 : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">не в каталоге</span>`}
               ${collectiveLinksChips(o.collectiveLinks)}
               ${lotChip(o.lotId)}
+              ${window.ChannelSwitch ? window.ChannelSwitch.badgeHtml(o.storefrontId) : ''}
             </div>
             <div class="mt-2">${buildDeliveryLadder(o.deliveryLadder, o.statusDelivery, { compact: true })}</div>
             <div class="text-[13px] text-gray-500 mt-2">${escapeHtmlClient(o.clientDisplay || 'Клиент не привязан')}</div>
@@ -807,7 +813,7 @@ window.Screens.orders = {
       onPicked: async (collective) => {
         const orders = selectedOrders();
         if (orders.length === 0) return;
-        const collectivesById = new Map((await callServer('getCollectivesList')).map((c) => [c.collectiveId, c]));
+        const collectivesById = new Map((await callServer('getCollectivesList', { scope: 'all' })).map((c) => [c.collectiveId, c]));
         const text = buildAssignConfirmText(orders, collective.collectiveId, collectivesById);
         if (text === null) {
           showSaveToast(false, `Все выбранные заказы уже в «${collective.name || collective.collectiveId}».`);
@@ -836,7 +842,7 @@ window.Screens.orders = {
       if (!name || !name.trim()) return;
 
       const orders = selectedOrders();
-      const collectivesById = new Map((await callServer('getCollectivesList')).map((c) => [c.collectiveId, c]));
+      const collectivesById = new Map((await callServer('getCollectivesList', { scope: 'all' })).map((c) => [c.collectiveId, c]));
       const text = buildAssignConfirmText(orders, null, collectivesById);
       const confirmed = await showConfirmModal(
         `Создать «${name.trim()}» из ${orders.length} заказ(ов): ${text || 'все новые.'}\n\nПродолжить?`,
