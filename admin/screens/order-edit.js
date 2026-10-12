@@ -54,13 +54,12 @@ window.Screens.orderEdit = {
       </div>
     `;
     // Узкий экран (репорт VASY 12.10.2026: «Назад», ID заказа и «Уведомить» налезали друг на друга) — на телефоне
-    // в шапке только кнопки (подпись «Уведомить» — колокольчиком), а номер заказа — первой строкой карточки
-    // (renderOrderTransferBox); с ширины sm — как раньше.
+    // номер заказа — первой строкой карточки (renderOrderTransferBox), переключатель канала уходит второй строкой
+    // шапки (_channel-switch.js); с ширины sm — как раньше.
     document.getElementById('header-actions').innerHTML = `
       <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none shrink-0" title="Уведомить клиента об изменениях">
         <input type="checkbox" id="notify-client-checkbox" class="w-4 h-4 accent-indigo-600 cursor-pointer">
-        <i data-lucide="bell" class="w-4 h-4 sm:hidden" aria-label="Уведомить"></i>
-        <span class="hidden sm:inline">Уведомить</span>
+        Уведомить
       </label>
       <button id="duplicate-order-btn" title="Повторить покупку" class="p-2 text-indigo-600 rounded-full hover:bg-white/50 transition-colors">
         <i data-lucide="copy" class="w-6 h-6"></i>
@@ -1382,10 +1381,10 @@ window.Screens.orderEdit = {
       const idHtml = `<span class="sm:hidden text-[13px] font-semibold text-gray-700 shrink-0">Заказ ${escapeHtmlClient(details.orderId)}</span>`;
       const badge = channels ? window.ChannelSwitch.badgeHtml(details.storefrontId, { prefix: 'канал ', always: true }) : '';
       const moveBtn = channels && window.OrderTransfer
-        ? '<button type="button" id="order-transfer-channel-btn" class="text-[13px] font-medium text-indigo-600 shrink-0">Перенести в канал…</button>'
+        ? '<button type="button" id="order-transfer-channel-btn" class="ml-auto text-[13px] font-medium text-indigo-600 shrink-0">Перенести в канал…</button>'
         : '';
-      const row = `<div class="flex items-center justify-between gap-2 mb-3 px-1 ${channels ? '' : 'sm:hidden'}">
-          <span class="flex items-center gap-2 min-w-0">${idHtml}${badge}</span>${moveBtn}
+      const row = `<div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-3 px-1 ${channels ? '' : 'sm:hidden'}">
+          <span class="flex items-center gap-2">${idHtml}${badge}</span>${moveBtn}
         </div>`;
       box.innerHTML = (window.OrderTransfer ? window.OrderTransfer.foreignBannerHtml(details.moneyOnOrder) : '') + row;
     }
