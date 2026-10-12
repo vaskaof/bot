@@ -113,6 +113,10 @@
   <script src="screens/_assistant.js?v=20261012141207"></script>
   <script src="screens/training.js?v=20261012141207"></script>
   <style>
+    /* Шапка в две строки на узком экране (переключатель канала) — контент ниже на её лишнюю высоту. */
+    #screen-root { padding-top: var(--header-extra, 0px); }
+    #save-toast { margin-top: var(--header-extra, 0px); }
+
     /* Тумблер (05.10.2026, «Что нового» → «Показывать при входе») — как в client/app.html. */
     .toggle-switch { width: 40px; height: 24px; border-radius: 9999px; background: #e5e7eb; position: relative; transition: background-color 0.2s; cursor: pointer; flex-shrink: 0; }
     .toggle-switch.on { background: #4f46e5; }
@@ -387,8 +391,11 @@
   <div id="app-content" class="hidden">
     <!-- Общая шапка — живёт в шелле, НЕ пересоздаётся при смене экрана.
          Экран заполняет только #header-left/#header-actions в render(). -->
-    <header id="screen-header" class="fixed top-0 left-0 right-0 h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex items-center justify-between px-4">
-      <div id="header-left" class="flex items-center min-w-0"></div>
+    <!-- min-h-14 + flex-wrap (12.10.2026, репорт VASY): на узком экране, если переключателю канала не хватает места
+         рядом с кнопками и заголовком, он уходит второй строкой шапки справа (_channel-switch.js layoutHeader); высоту
+         шапки сверх 56px контент получает отступом (--header-extra). -->
+    <header id="screen-header" class="fixed top-0 left-0 right-0 min-h-14 bg-[#f3f4f9] bg-opacity-90 backdrop-blur-md z-40 flex flex-wrap items-center content-center justify-between px-4">
+      <div id="header-left" class="flex items-center min-w-0 flex-1 basis-0 h-14"></div>
       <div class="flex items-center gap-1 shrink-0">
         <div id="header-actions" class="flex items-center gap-1"></div>
         <!-- Обучение менеджеров (04.10.2026) — «Помощь» на любом экране: сценарии

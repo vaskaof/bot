@@ -106,7 +106,7 @@
     const own = !isAll() && indexOf(storefrontId) === indexOf(currentStorefrontId());
     if (own && !o.always) return '';
     const color = colorOf(storefrontId);
-    return `<span class="text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap truncate max-w-full" style="color:${color};background:${color}1a">${esc((o.prefix || '') + titleOf(storefrontId))}</span>`;
+    return `<span class="text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style="color:${color};background:${color}1a">${esc((o.prefix || '') + titleOf(storefrontId))}</span>`;
   }
 
   /** Строка «Создаётся в канале …» для форм создания; пусто, если каналов нет. */
@@ -129,16 +129,91 @@
       chip.type = 'button';
       chip.id = 'channel-switch-btn';
       chip.title = 'Канал: чьи заказы, клиенты и оплаты показывать';
-      chip.className = 'flex items-center gap-1 max-w-[4.75rem] sm:max-w-[9rem] px-2 sm:px-2.5 py-1 rounded-full text-[12px] font-semibold border transition-colors';
+      // Название канала — всегда целиком (репорт VASY 12.10.2026: на телефоне обрезалось и сжимало заголовок);
+      // не помещается рядом с кнопками — уходит второй строкой шапки (layoutHeader).
+      chip.className = 'flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-semibold border transition-colors whitespace-nowrap shrink-0';
       chip.addEventListener('click', openPicker);
       help.parentNode.insertBefore(chip, help);
+      watchHeader(header);
     }
     const color = currentColor();
     chip.style.color = color;
     chip.style.borderColor = color + '55';
     chip.style.background = color + '12';
-    chip.innerHTML = `<span class="truncate">${esc(currentTitle())}</span><span aria-hidden="true">▾</span>`;
+    chip.innerHTML = `<span>${esc(currentTitle())}</span><span aria-hidden="true">▾</span>`;
     header.style.boxShadow = `inset 0 3px 0 ${color}`;
+    queueLayout();
+  }
+
+  // Заголовку экрана оставляем хотя бы столько, прежде чем увести переключатель во вторую строку.
+  const MIN_TITLE_PX = 150;
+
+  /** @private Естественная ширина содержимого (обрезаемые подписи — по полному тексту). */
+  function naturalWidth(el) {
+    let w = 0;
+    for (const child of el.children) {
+      if (child.offsetParent === null) continue; // скрыт
+      let cw = child.scrollWidth;
+      child.querySelectorAll('*').forEach((d) => { if (d.offsetParent !== null) cw = Math.max(cw, d.scrollWidth); });
+      const st = getComputedStyle(child);
+      w += cw + (parseFloat(st.marginLeft) || 0) + (parseFloat(st.marginRight) || 0);
+    }
+    return w;
+  }
+
+  /**
+   * @private Переключатель — в строке с кнопками, если рядом остаётся место заголовку; иначе — второй строкой шапки
+   * справа. Решение не зависит от того, где переключатель сейчас (без «прыжков»). Лишнюю высоту шапки — контенту
+   * отступом (--header-extra).
+   */
+  function layoutHeader() {
+    const header = document.getElementById('screen-header');
+    const help = document.getElementById('header-help-btn');
+    const left = document.getElementById('header-left');
+    const chip = document.getElementById('channel-switch-btn');
+    if (!header || !help || !left || !chip) return;
+    const group = help.parentNode;
+    const inGroup = chip.parentNode === group;
+    const chipW = chip.offsetWidth;
+    const groupW = group.scrollWidth - (inGroup ? chipW + 4 : 0);
+    const avail = header.clientWidth - 32;
+    const fits = avail - groupW - chipW - 8 >= Math.min(naturalWidth(left), MIN_TITLE_PX);
+    let lineBreak = document.getElementById('header-line-break');
+    if (!lineBreak) {
+      lineBreak = document.createElement('div');
+      lineBreak.id = 'header-line-break';
+      lineBreak.className = 'basis-full h-0';
+    }
+    if (fits && !inGroup) {
+      chip.classList.remove('ml-auto', 'mb-2');
+      lineBreak.remove();
+      group.insertBefore(chip, help);
+    } else if (!fits && inGroup) {
+      chip.classList.add('ml-auto', 'mb-2');
+      header.appendChild(lineBreak);
+      header.appendChild(chip);
+    }
+    document.documentElement.style.setProperty('--header-extra', `${Math.max(0, header.offsetHeight - 56)}px`);
+  }
+
+  let layoutQueued = false;
+  function queueLayout() {
+    if (layoutQueued) return;
+    layoutQueued = true;
+    requestAnimationFrame(() => { layoutQueued = false; layoutHeader(); });
+  }
+
+  /** @private Перекладка шапки: смена экрана (заголовок/кнопки), канала, ширины окна. */
+  function watchHeader(header) {
+    window.addEventListener('resize', queueLayout);
+    if (typeof MutationObserver === 'function') {
+      const mo = new MutationObserver(queueLayout);
+      ['header-left', 'header-actions'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) mo.observe(el, { childList: true, subtree: true, characterData: true });
+      });
+    }
+    queueLayout();
   }
 
   /** @private Выбор канала — лист снизу. */
