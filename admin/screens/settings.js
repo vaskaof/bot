@@ -50,7 +50,7 @@ const CATEGORY_LABELS = {
   // 06.10.2026 (VASY) — свои пороги для оплат клиента, отдельно от «Доход Руб».
   payment_due_threshold: 'Когда этап нужно оплатить',
   // В4: название валюты бонусов — канала (у DD — совы); геттер, т.к. профиль канала грузится после скрипта.
-  get economy() { return `Экономика (${currencyLower()}/билеты)`; },
+  economy: 'Начисления',
   currency_margin: 'Курсы валют для цены клиенту',
   // Э6, D-10/F-24 (26.08.2026) — 2 generic percent-строки, тот же построчный
   // UI, что "Комиссия"/"Налоговый резерв" (не отдельный блок, ключи фиксированы
@@ -688,12 +688,19 @@ window.Screens.settings = {
       });
     }
 
+    // К7: строки в смысловом порядке (окно «с … до …», потом сводка), остальное — как пришло.
+    const ROW_ORDER = ['Тихие_Часы_Начало', 'Тихие_Часы_Конец', 'Час_Дайджеста', 'Дней_До_Эскалации', 'Налог_База', 'Резерв_Налог_Процент'];
+    function sortRows(rows) {
+      const rank = (s) => { const i = ROW_ORDER.indexOf(s.key); return i === -1 ? ROW_ORDER.length : i; };
+      return rows.slice().sort((a, b) => rank(a) - rank(b));
+    }
+
     function plainSectionHtml(category, rows) {
       return `
         <section class="mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS[category]}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="${category}">
-            ${rows.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : rows.map(rowHtml).join('')}
+            ${rows.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : sortRows(rows).map(rowHtml).join('')}
           </div>
           ${category === 'tax_reserve' ? workingCapitalFundBalanceHtml() : ''}
           ${category === 'notifications' ? notificationsMoscowClockHtml() : ''}
@@ -736,15 +743,16 @@ window.Screens.settings = {
 
     function rowHtml(s) {
       if (s.type === 'enum') return enumRowHtml(s);
-      const isHour = s.category === 'notifications';
+      const isDays = s.key === 'Дней_До_Эскалации';
+      const isHour = s.category === 'notifications' && !isDays;
       return `
         <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}">
           <div class="flex-1 min-w-0" title="${escapeHtmlClient(s.key)}">
             <div class="text-sm font-medium text-gray-900">${escapeHtmlClient(SettingsGuide.label(s))}</div>
             ${settingHelpHtml(s)}
           </div>
-          <input type="number" ${isHour ? 'step="1" min="0" max="23"' : 'step="0.01"'} class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
-          <span class="text-sm text-gray-400 w-4">${isHour ? 'ч' : (s.type === 'percent' ? '%' : '₽')}</span>
+          <input type="number" ${isHour ? 'step="1" min="0" max="23"' : isDays ? 'step="1" min="1"' : 'step="0.01"'} class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
+          <span class="text-sm text-gray-400 w-4">${isHour ? 'ч' : isDays ? 'дн' : (s.type === 'percent' ? '%' : '₽')}</span>
           <button type="button" class="save-row-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
           </button>
@@ -1020,7 +1028,7 @@ window.Screens.settings = {
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="economy">
             ${ECONOMY_SETTINGS_DEFS.map(def => economyRowHtml(def, rows.find(r => r.key === def.key))).join('')}
           </div>
-          <div class="text-[11px] text-gray-400 px-1 mt-2">Раньше правилось вручную в таблице (лист "Настройки_Экономики"), теперь — здесь. Реферальные суммы можно поставить 0, чтобы временно отключить бонус; курс должен быть больше 0.</div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Реферальные суммы можно поставить 0, чтобы временно отключить бонус; курс должен быть больше 0.</div>
         </section>
       `;
     }
@@ -1082,6 +1090,7 @@ window.Screens.settings = {
       return `
         <section class="mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.payout_share}</div>
+          <div class="text-[11px] text-gray-500 px-1 mb-2 leading-snug">Как делится комиссия заказа после резерва на налоги. Пример: комиссия 2 000 ₽, резерв 6% → делится 1 880 ₽; доля 10% = 188 ₽. Недобор до 100% уходит в фонд оборотных средств.</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" id="shares-list">
             ${sharesDraft.length === 0 ? '<div class="p-4 text-sm text-gray-400">Пока пусто</div>' : sharesDraft.map((s, i) => shareRowHtml(s, i)).join('')}
           </div>
@@ -1101,8 +1110,7 @@ window.Screens.settings = {
       return `
         <div class="flex items-center gap-2 p-3" data-share-index="${index}">
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(s.label)}</div>
-            <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
+            <div class="text-sm font-medium text-gray-900 truncate" title="${escapeHtmlClient(s.key)}">${escapeHtmlClient(s.label)}</div>
           </div>
           <input type="number" step="0.01" class="share-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
           <span class="text-sm text-gray-400 w-4">%</span>
