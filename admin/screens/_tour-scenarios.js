@@ -300,7 +300,7 @@
       startRoute: 'collectives', startScreens: ['training', 'orders', 'collectives'],
       block: [
         '#collective-picker-create-save', '#create-collective-save', '#pool-cancel-btn',
-        '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#apply-costs-confirm', '#detail-delete-btn',
+        '#detail-save-btn', '#logistics-save-btn', '#apply-costs-confirm', '#detail-delete-btn',
         '#bulk-unassign-btn', '#bulk-transfer-btn', '#bulk-continue-rf-btn', '.unassign-order-btn', '.units-slider',
         '#detail-order-dropdown > *', '[data-todo-action]', '[data-sdek-action]', '#select-mode-btn',
         '.collective-pick-btn', '.collective-unassign-btn', ...ORDER_WRITES
@@ -382,8 +382,8 @@
           text: 'Под полем — сколько это в рублях, ниже — <b>курс</b> («1 ₽ = … ₸»), тот же, что в калькуляторе заказа. Сам пересчитывать не нужно и курс из интернета не нужен — <b>вписывай ровно как в чеке</b> и выбирай валюту чека: ₸ у поля подсвечен жёлтым.'
         },
         {
-          target: '#logistics-save-btn', title: 'Две разные кнопки',
-          text: '<b>«Сохранить сверку»</b> — записать, сколько стоила посылка (наш расход): клиентам ничего не меняет. <b>«Применить расход в заказы»</b> — разложить расход по долям в цену СДЭК каждого заказа: <b>меняет клиентам сумму к оплате</b>. Сначала сверка, потом — применить. Сейчас учебный режим, не сохраняем.'
+          target: '#logistics-save-btn', title: 'Сохранить и разложить',
+          text: 'Одна кнопка — два шага. Сначала она <b>сохраняет расход</b> (сколько стоила посылка — наш учёт, клиентам ничего не меняет). Потом открывает окно: <b>сколько это каждому заказу</b> по долям, было → станет. «Записать в заказы» — клиенты увидят новую цену СДЭК; «Только сохранить расход» — заказы не меняются. Поменяли доли — нажмите ещё раз. Сейчас учебный режим, не сохраняем.'
         },
         {
           title: 'Проверка 1 из 2',
@@ -421,7 +421,7 @@
       // С настоящей коллективки («Здесь есть урок») — сначала в учебный список (tour.js enterSandbox).
       startRoute: 'collectives', startScreens: ['training', 'orders', 'collectives'],
       block: [
-        '#detail-save-btn', '#logistics-save-btn', '#apply-costs-btn', '#detail-delete-btn', '.units-slider', '#detail-order-dropdown > *',
+        '#detail-save-btn', '#logistics-save-btn', '#detail-delete-btn', '.units-slider', '#detail-order-dropdown > *',
         '[data-todo-action]', '[data-sdek-action="no-sdek"]', '[data-sdek-action="remind"]', '#select-mode-btn', '.unassign-order-btn',
         '#rp-save', '#em-save', '#rm-send', '[data-action="edit-payment"]', '[data-action="cancel-payment"]', '[data-action="cancel-earmark"]',
         '.attach-receipt-input'

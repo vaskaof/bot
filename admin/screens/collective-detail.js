@@ -146,16 +146,13 @@ window.Screens.collectiveDetail = {
             <div class="grid grid-cols-3 gap-2 mt-1" id="cost-fields-grid"></div>
             <div id="kzt-rate-line" class="hidden text-[11px] text-indigo-900 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1.5 mt-1.5"></div>
             <div class="text-[11px] text-gray-500 mt-1.5">Итого: <span id="logistics-total" class="font-medium text-gray-700">0</span> ₽</div>
-            <button id="logistics-save-btn" class="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Сохранить сверку</button>
+            <!-- Одна кнопка вместо «Сохранить сверку» + «Применить расход в заказы» (13.10.2026, отзыв Милены и
+                 VASY: «зачем 2 кнопки, если одна жмётся после другой»): сохраняет расход с текущими долями (наш
+                 учёт, клиентам ничего не меняет) и сразу открывает окно «сколько каждому заказу» — записать в
+                 заказы или оставить только сохранённый расход. -->
+            <button id="logistics-save-btn" class="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5">Сохранить и разложить по заказам${helpIcon('Что делает кнопка', '<p><b>1. Сохраняет расход</b> — сколько реально стоила посылка. Это наш учёт: клиентам ничего не меняет.</p><p><b>2. Показывает, сколько это каждому заказу</b> по долям: было → станет. Нажмёте «Записать в заказы» — цена СДЭК в заказах обновится и клиенты увидят новую сумму к оплате. Нажмёте «Только сохранить расход» — заказы не изменятся.</p><p>Поменяли доли — нажмите кнопку ещё раз: расход разложится по новым долям.</p>')}</button>
             <div id="logistics-error-text" class="text-xs text-red-500 hidden mt-1.5"></div>
             <div id="reconciliation-banner" class="hidden text-xs rounded-lg p-2.5 mt-1.5"></div>
-            <!-- Доработка 30.08.2026 (запрос VASY) — пишет посчитанную долю
-                 ПРЯМО в цель оплаты заказа (не только в леджер, как
-                 "Сохранить сверку" выше), даже для заказов без предварительной
-                 стоимости. Требует уже сохранённой сверки — сервер сам
-                 откажет ("Сначала сохраните сверку"), если факт. расход ещё
-                 не введён. -->
-            <button type="button" id="apply-costs-btn" disabled class="w-full mt-2 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Применить расход в заказы${helpIcon('Что это делает', '<p>Берёт факт. расход, посчитанный по коэффициентам (долям) заказов, и записывает его прямо в поле «Стоимость доставки» каждого заказа — даже там, где предварительной стоимости ещё не было.</p><p>Это МЕНЯЕТ сумму к оплате клиентом за это плечо доставки, даже если поле уже было заполнено раньше — расчёт с клиентом пересматривается по факту.</p>')}</button>
           </div>
 
           <!-- Коллективки 2.0 э2: «Оплата СДЭК» по клиентам — только чтение +
@@ -230,6 +227,7 @@ window.Screens.collectiveDetail = {
             </button>
           </div>
           <div id="apply-costs-hint" class="hidden px-4 pt-3 text-[12px] text-gray-500"></div>
+          <div id="apply-costs-mode" class="hidden px-4 pt-3 space-y-1.5"></div>
           <div class="p-4 overflow-y-auto custom-scrollbar" id="apply-costs-list"></div>
           <div class="p-4 border-t border-gray-100 space-y-2 shrink-0">
             <label class="flex items-center gap-2 text-sm text-gray-600">
@@ -239,7 +237,7 @@ window.Screens.collectiveDetail = {
             <div id="apply-costs-warning" class="text-xs text-red-500 hidden"></div>
             <div class="flex gap-2">
               <button type="button" id="apply-costs-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">Отмена</button>
-              <button type="button" id="apply-costs-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Применить</button>
+              <button type="button" id="apply-costs-confirm" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium">Записать в заказы</button>
             </div>
           </div>
         </div>
@@ -1282,11 +1280,6 @@ window.Screens.collectiveDetail = {
       });
       const total = round2(actualCosts.sdekCost + actualCosts.taxiKzCost + actualCosts.taxiRfCost);
       document.getElementById('logistics-total').textContent = total.toLocaleString('ru-RU');
-      // "Применить в заказы" читает СОХРАНЁННУЮ сверку на сервере — гейтим
-      // кнопку тем же ориентиром (total > 0), финальную проверку "сверка
-      // реально сохранена" всё равно делает сервер при клике.
-      const applyBtn = document.getElementById('apply-costs-btn');
-      if (applyBtn) applyBtn.disabled = total <= 0;
       renderOrderList(); // доля в ₽/разница видны только когда total > 0 (п.3) — пересчитать видимость
     }
 
@@ -1797,9 +1790,10 @@ window.Screens.collectiveDetail = {
           ...costs,
           shares: orders.map((o) => ({ orderId: o.orderId, units: o.currentUnits }))
         });
-        showSaveToast(true, 'Сверка логистики сохранена');
         renderReconciliationBanner(result);
         await loadAll(); // перезагрузка — alreadyEstimated теперь отражает только что сохранённое
+        // Сразу второй шаг — окно «сколько каждому заказу» (раньше отдельная кнопка «Применить расход в заказы»).
+        if (!(await openApplyCosts('choose', logisticsSaveBtn))) showSaveToast(true, 'Расход сохранён');
       } catch (error) {
         logisticsErrorText.textContent = error.message;
         logisticsErrorText.classList.remove('hidden');
@@ -1842,7 +1836,6 @@ window.Screens.collectiveDetail = {
     // предпросмотр/применение читают `actualLogisticsCosts` с сервера, не
     // текущие незасейвленные значения полей формы.
 
-    const applyCostsBtn = document.getElementById('apply-costs-btn');
     const applyCostsModal = document.getElementById('apply-costs-modal');
     const applyCostsList = document.getElementById('apply-costs-list');
     const applyCostsNotify = document.getElementById('apply-costs-notify');
@@ -1853,35 +1846,85 @@ window.Screens.collectiveDetail = {
       applyCostsModal.classList.add('hidden');
       applyCostsModal.classList.remove('flex');
     }
-    document.getElementById('apply-costs-close').addEventListener('click', closeApplyCostsModal);
-    document.getElementById('apply-costs-cancel').addEventListener('click', closeApplyCostsModal);
+    // После «Сохранить и разложить» отказ = расход уже сохранён, заказы не меняются — говорим это явно.
+    function dismissApplyCostsModal() {
+      closeApplyCostsModal();
+      if (applyCostsPreviews) showSaveToast(true, 'Расход сохранён. Заказы не менялись.');
+    }
+    document.getElementById('apply-costs-close').addEventListener('click', dismissApplyCostsModal);
+    document.getElementById('apply-costs-cancel').addEventListener('click', dismissApplyCostsModal);
 
     function orderLabelFor(orderId) {
       const o = orders.find((x) => x.orderId === orderId);
       return o ? `${o.productDisplay} (${o.orderId})` : orderId;
     }
 
-    // Коллективки 2.0 э2: 'all' — кнопка «Применить расход в заказы» (как было),
-    // 'unpriced' — «Внести цену по чеку» из «Оплаты СДЭК» (только открытые без цены).
+    // Коллективки 2.0 э2: 'unpriced' — «Внести цену по чеку» из «Оплаты СДЭК» (только открытые без цены).
+    // 13.10.2026: 'choose' — сразу после «Сохранить и разложить по заказам»: в окне выбор «только без цены» /
+    // «все заказы» (бывшая отдельная кнопка «Применить расход в заказы» = 'all'), отмена = «Только сохранить расход».
     let applyCostsMode = 'all';
+    let applyCostsPreviews = null; // { unpriced, all } в режиме 'choose'
 
+    const APPLY_HINT_UNPRICED = 'Только заказы без цены, которые ещё не у клиента. Остальные заказы не меняются.';
+    const APPLY_HINT_ALL = 'Цена СДЭК перепишется у всех заказов посылки — и там, где уже была выставлена. Клиенты увидят новую сумму к оплате.';
+
+    /** @returns {Promise<boolean>} true — окно открыто. */
     async function openApplyCosts(mode, triggerBtn) {
-      if (!(await warnIfCostFieldsDirty())) return;
+      if (!(await warnIfCostFieldsDirty())) return false;
       triggerBtn.disabled = true;
       try {
+        const cancelBtn = document.getElementById('apply-costs-cancel');
+        const modeBox = document.getElementById('apply-costs-mode');
+        const hint = document.getElementById('apply-costs-hint');
+        if (mode === 'choose') {
+          const [unpriced, all] = await Promise.all([
+            callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId, { onlyUnpriced: true }),
+            callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId, { onlyUnpriced: false })
+          ]);
+          if (all.length === 0) return false;
+          applyCostsPreviews = { unpriced, all };
+          document.getElementById('apply-costs-title').textContent = 'Расход сохранён — разложить по заказам?';
+          cancelBtn.textContent = 'Только сохранить расход';
+          hint.classList.add('hidden');
+          modeBox.classList.remove('hidden');
+          modeBox.innerHTML = `
+            <div class="text-[12px] text-gray-500">Сколько это каждому заказу по долям. «Записать в заказы» — клиенты увидят новую цену СДЭК.</div>
+            ${[['unpriced', `Только заказы без цены (${unpriced.length})`], ['all', `Все заказы — пересчитать и уже выставленные (${all.length})`]].map(([value, label]) => `
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="radio" name="apply-costs-scope" value="${value}" ${value === 'unpriced' && unpriced.length === 0 ? 'disabled' : ''} class="accent-indigo-600">
+                <span class="${value === 'unpriced' && unpriced.length === 0 ? 'text-gray-400' : ''}">${label}</span>
+              </label>`).join('')}`;
+          const pick = (scope) => {
+            applyCostsMode = scope;
+            modeBox.querySelector(`input[value="${scope}"]`).checked = true;
+            const warn = document.getElementById('apply-costs-scope-hint');
+            if (warn) warn.textContent = scope === 'all' ? APPLY_HINT_ALL : APPLY_HINT_UNPRICED;
+            renderApplyCostsList(applyCostsPreviews[scope]);
+          };
+          modeBox.insertAdjacentHTML('beforeend', '<div id="apply-costs-scope-hint" class="text-[11px] text-amber-700"></div>');
+          modeBox.querySelectorAll('input[name="apply-costs-scope"]').forEach((input) => input.addEventListener('change', () => pick(input.value)));
+          openApplyCostsModal(unpriced.length > 0 ? unpriced : all);
+          pick(unpriced.length > 0 ? 'unpriced' : 'all');
+          return true;
+        }
         const preview = await callServer('previewApplyCollectiveLogisticsSharesToOrders', collectiveId, { onlyUnpriced: mode === 'unpriced' });
         if (preview.length === 0) {
           showSaveToast(true, mode === 'unpriced' ? 'Заказов без цены нет.' : 'Заказов нет.');
-          return;
+          return false;
         }
         applyCostsMode = mode;
-        document.getElementById('apply-costs-title').textContent = mode === 'unpriced' ? 'Внести цену по чеку' : 'Применить расход в заказы';
-        const hint = document.getElementById('apply-costs-hint');
-        hint.textContent = mode === 'unpriced' ? 'Только заказы без цены, которые ещё не у клиента. Остальные заказы не меняются.' : '';
+        applyCostsPreviews = null;
+        document.getElementById('apply-costs-title').textContent = mode === 'unpriced' ? 'Внести цену по чеку' : 'Записать расход в заказы';
+        cancelBtn.textContent = 'Отмена';
+        modeBox.classList.add('hidden');
+        modeBox.innerHTML = '';
+        hint.textContent = mode === 'unpriced' ? APPLY_HINT_UNPRICED : '';
         hint.classList.toggle('hidden', mode !== 'unpriced');
         openApplyCostsModal(preview);
+        return true;
       } catch (error) {
         showSaveToast(false, 'Не удалось построить предпросмотр: ' + error.message);
+        return false;
       } finally {
         triggerBtn.disabled = false;
       }
@@ -1890,6 +1933,13 @@ window.Screens.collectiveDetail = {
     function openApplyCostsModal(preview) {
       applyCostsNotify.checked = false;
       applyCostsWarning.classList.add('hidden');
+      renderApplyCostsList(preview);
+      applyCostsModal.classList.remove('hidden');
+      applyCostsModal.classList.add('flex');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderApplyCostsList(preview) {
       applyCostsList.innerHTML = preview.map((p) => {
         const beforeText = p.before === null ? 'пусто' : `${p.before.toLocaleString('ru-RU')} ₽`;
         // «Сбор на СДЭК» (э3): сколько уже собрали на это плечо → что дальше.
@@ -1913,15 +1963,7 @@ window.Screens.collectiveDetail = {
           </div>
         `;
       }).join('');
-      applyCostsModal.classList.remove('hidden');
-      applyCostsModal.classList.add('flex');
-      if (window.lucide) window.lucide.createIcons();
     }
-
-    applyCostsBtn.addEventListener('click', async () => {
-      if (applyCostsBtn.disabled) return;
-      await openApplyCosts('all', applyCostsBtn);
-    });
 
     applyCostsConfirmBtn.addEventListener('click', async () => {
       if (applyCostsConfirmBtn.disabled) return;

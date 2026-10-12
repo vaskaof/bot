@@ -455,7 +455,7 @@
   /** «Разложить по заказам»: как ordersService.computeCollectiveSdekForecast — прогноз только заказам без цены. */
   function forecastPlan(id, input) {
     const col = findCol(id);
-    if (costTotal(col) > 0) throw new Error('Чек СДЭК уже внесён — прогноз больше не нужен, используйте «Применить расход в заказы».');
+    if (costTotal(col) > 0) throw new Error('Чек СДЭК уже внесён — прогноз больше не нужен, нажмите «Сохранить и разложить по заказам».');
     const rub = round2(Number(input && input.totalRub) || 0);
     if (!(rub > 0)) throw new Error('Введите ожидаемую сумму СДЭК больше нуля.');
     const forecast = { rub, currency: input.currency === 'KZT' ? 'KZT' : 'RUB', original: input.original === undefined ? null : input.original };
@@ -474,11 +474,11 @@
     return { col, forecast, orders, skipped };
   }
 
-  /** «Внести цену по чеку» / «Применить расход»: доля чека каждому заказу (как computeCollectiveOrderShares). */
+  /** «Внести цену по чеку» / «Сохранить и разложить по заказам»: доля чека каждому заказу (как computeCollectiveOrderShares). */
   function sharesPlan(id, options) {
     const col = findCol(id);
     const total = costTotal(col);
-    if (!(total > 0)) throw new Error('Сначала сохраните сверку — внесите чек и «Сохранить сверку».');
+    if (!(total > 0)) throw new Error('Сначала внесите чек и нажмите «Сохранить и разложить по заказам».');
     const ratios = unitRatios(id);
     const onlyUnpriced = !!(options && options.onlyUnpriced);
     return membersOf(id)
@@ -555,7 +555,7 @@
     },
     {
       skip: {
-        days: 5, event: 'Посылка уехала, пришёл чек СДЭК — 2 000 ₽. Его вписали в «Расходы» и нажали «Сохранить сверку»',
+        days: 5, event: 'Посылка уехала, пришёл чек СДЭК — 2 000 ₽. Его вписали в «Расходы» и нажали «Сохранить и разложить по заказам»',
         changes: [['Статус коллективки', 'Формируется', 'Отправлено (СДЭК)'], ['СДЭК за посылку', 'ожидали ≈2 400 ₽', 'вышло 2 000 ₽']]
       },
       apply: () => {
@@ -696,7 +696,7 @@
         const target = behind[0].items.find((i) => i.kind === 'behind_collective').targetStatus;
         steps.push({ key: 'behind', text: `Догнать статусы: ${behind.length} → «${target}»`, action: { type: 'catchUp', orderIds: behind.map((o) => o.def.id), targetStatus: target } });
       }
-      if (!costTotal(col)) steps.push({ key: 'check', text: 'Внести чек СДЭК («Сохранить сверку»)', action: { type: 'open' } });
+      if (!costTotal(col)) steps.push({ key: 'check', text: 'Внести чек СДЭК («Сохранить и разложить по заказам»)', action: { type: 'open' } });
       if (closed.length) steps.push({ key: 'closedCosts', text: `Закрыто без расходов: ${closed.length}`, action: { type: 'closedCosts' } });
       if (!steps.length) continue;
       result.push({
