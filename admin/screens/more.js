@@ -43,7 +43,7 @@ window.Screens.more = {
         ? [{ route: 'channel-admin', icon: 'store', title: `Мой канал «${window.ChannelSwitch.titleOf(window.CURRENT_CHANNEL_ADMIN_OF)}»`, description: 'Бот канала, счёт Кнопке, модули клиентов, свои менеджеры, своя доля' }]
         : []),
       { route: 'clients', icon: 'users', title: 'Клиенты', description: 'Блокировка, отчёты, вопросы и вишлист по клиенту' },
-      { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Комиссия, налоги, доли выплат' },
+      { route: 'settings', icon: 'settings', title: 'Настройки', description: 'Статусы и этапы оплат, деньги и курсы, напоминания, бонусы' },
       { route: 'analytics', icon: 'bar-chart-2', title: 'Аналитика', description: 'Кто и как пользуется приложением' },
       // Э2 рефакторинга экономики, 25.08.2026 — "Факт выкупа" сюда не входит,
       // он привязан к заказу и открывается с экрана заказа (order-edit.js).

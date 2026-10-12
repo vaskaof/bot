@@ -42,21 +42,21 @@
 window.Screens = window.Screens || {};
 
 const CATEGORY_LABELS = {
-  commission: 'Комиссия',
+  commission: 'Комиссия по умолчанию',
   tax_reserve: 'Налоговый резерв',
-  forecast: 'Прогноз расходов на заказ',
+  forecast: 'Ожидаемые расходы на заказ',
   payout_share: 'Доли выплат',
-  delivery_position_threshold: 'Пороги для "Доход Руб"',
+  delivery_position_threshold: 'Когда неоплаченный расход вычитать из дохода',
   // 06.10.2026 (VASY) — свои пороги для оплат клиента, отдельно от «Доход Руб».
   payment_due_threshold: 'Когда этап нужно оплатить',
   // В4: название валюты бонусов — канала (у DD — совы); геттер, т.к. профиль канала грузится после скрипта.
   get economy() { return `Экономика (${currencyLower()}/билеты)`; },
-  currency_margin: 'Наценка на конвертацию (курсы валют)',
+  currency_margin: 'Курсы валют для цены клиенту',
   // Э6, D-10/F-24 (26.08.2026) — 2 generic percent-строки, тот же построчный
   // UI, что "Комиссия"/"Налоговый резерв" (не отдельный блок, ключи фиксированы
   // на backend — financeService.FINANCE_PARAM_COMMISSION_WARN_PERCENT/
   // _REASON_PERCENT, но форма их не знает как особые, просто рендерит).
-  commission_floor: 'Комиссия — пороги занижения',
+  commission_floor: 'Заниженная комиссия',
   // Аудит коллективок, п.6А (27.08.2026) — сегодня один enum-параметр
   // (COLLECTIVE_AUTO_NOTIFY_KEY); сама таблица соответствий "статус
   // коллективки → статус доставки" — отдельный блок ниже
@@ -69,6 +69,14 @@ const CATEGORY_LABELS = {
   notifications: 'Уведомления и тихие часы'
 };
 const CATEGORY_ORDER = ['commission', 'commission_floor', 'tax_reserve', 'forecast', 'payment_due_threshold', 'delivery_position_threshold', 'economy', 'currency_margin', 'collective_automation', 'notifications', 'payout_share'];
+// К7 (проход по настройкам, «ок» VASY 12.10.2026) — группы по задачам; каждая категория CATEGORY_ORDER входит ровно
+// в одну группу. Не-категории: ladder/order_statuses (только пояснение), collective_map (своя таблица).
+const SETTINGS_GROUPS = [
+  { id: 'statuses', title: 'Статусы и этапы', hint: 'С какого шага доставки клиент платит за этап и когда расход считается в доходе. Что делает каждый статус заказа.', parts: ['ladder', 'payment_due_threshold', 'delivery_position_threshold', 'order_statuses', 'collective_map'] },
+  { id: 'money', title: 'Деньги', hint: 'Комиссия, налоги, доли выплат, ожидаемые расходы и курсы валют для цены клиенту.', parts: ['commission', 'commission_floor', 'currency_margin', 'tax_reserve', 'payout_share', 'forecast'] },
+  { id: 'reminders', title: 'Напоминания и уведомления', hint: 'Когда приходит сводка сотрудникам и в какие часы бот пишет клиентам.', parts: ['notifications', 'collective_automation'] },
+  { id: 'bonus', get title() { return `Бонусы: ${currencyLower()} и билеты`; }, hint: 'Сколько начислять клиентам за оплаты и приглашения.', parts: ['economy'] }
+];
 const SHARE_SUM_TOLERANCE = 0.01;
 
 // Категории, доступные в форме "Добавить позицию" (payout_share сюда НЕ входит —
@@ -93,11 +101,11 @@ const ADDABLE_CATEGORIES = [
 // точный алгоритм слага снаружи невозможно. GBP-строка показывается ПУСТОЙ
 // (setting=undefined), пока VASY не впишет и не сохранит значение сам.
 const CURRENCY_MARGIN_DEFS = [
-  { key: 'Маржа_RUB_KZT', label: 'Наценка: рубль → тенге' },
-  { key: 'Маржа_KZT_USD', label: 'Наценка: тенге → доллар' },
-  { key: 'Маржа_KZT_CNY', label: 'Наценка: тенге → юань' },
-  { key: 'Маржа_KZT_EUR', label: 'Наценка: тенге → евро' },
-  { key: 'Маржа_KZT_GBP', label: 'Наценка: тенге → фунт' }
+  { key: 'Маржа_RUB_KZT', label: 'Обмен ₽ → ₸' },
+  { key: 'Маржа_KZT_USD', label: 'Обмен ₸ → доллар' },
+  { key: 'Маржа_KZT_CNY', label: 'Обмен ₸ → юань' },
+  { key: 'Маржа_KZT_EUR', label: 'Обмен ₸ → евро' },
+  { key: 'Маржа_KZT_GBP', label: 'Обмен ₸ → фунт' }
 ];
 const TYPE_OPTIONS = [
   { value: 'percent', label: 'Процент (%)', help: 'Значение — процент от базы (например, от суммы товара или от комиссии).' },
@@ -155,11 +163,11 @@ const PAYMENT_DUE_THRESHOLD_DEFS = [
 const POSITION_THRESHOLD_SECTIONS = {
   delivery_position_threshold: {
     defs: DELIVERY_POSITION_THRESHOLD_DEFS,
-    hint: 'Номер шага в лестнице статуса доставки (1-12) — неоплаченный расход по этой статье считается вычетом из "Доход Руб" только когда заказ уже прошёл этот шаг, не раньше.'
+    hint: '«Доход Руб» — расчётная прибыль по заказу. Неоплаченный расход по этапу вычитается из неё, только когда заказ дошёл до выбранного шага доставки — раньше расход ещё не наступил. Пример: СДЭК с шага 9 — пока посылка у посредника в КЗ, СДЭК из дохода не вычитается.'
   },
   payment_due_threshold: {
     defs: PAYMENT_DUE_THRESHOLD_DEFS,
-    hint: 'Номер шага в лестнице статуса доставки (1-12), с которого этап — «Приоритетно сейчас» у клиента, в «Кто должен» и в напоминаниях (если сумма подтверждена, не предварительная). С этого же шага остаток клиента сам закрывает этап. 1 — Ожидает выкупа, 4 — На складе в США, 8 — У посредника в КЗ, 10 — У посредника в РФ.'
+    hint: 'С какого шага доставки клиент должен оплатить этап: этап становится «Приоритетно сейчас» у клиента, попадает в «Кто должен» и в напоминания (если сумма подтверждена, не предварительная). С этого же шага остаток денег клиента сам закрывает этап. Пример: Вес с шага 4 — клиента просят оплатить вес, когда посылка на складе в США.'
   }
 };
 
@@ -265,6 +273,8 @@ window.Screens.settings = {
     // независимый запрос; статусы доставки — тот же справочник, что форма заказа.
     let collectiveStatusMapRows = [];
     let statusDeliveryOptions = [];
+    let statusOrderOptions = [];
+    let conversionAdvice = null; // К7: getConversionAdvice — курсы ЦБ + реальные обмены ₽→₸
 
     const myChannelLink = document.getElementById('my-channel-link');
     if (myChannelLink) myChannelLink.addEventListener('click', () => navigateTo('my-channel'));
@@ -541,9 +551,17 @@ window.Screens.settings = {
           ]);
           collectiveStatusMapRows = config.statusMap;
           statusDeliveryOptions = dicts.statusDelivery || [];
+          statusOrderOptions = dicts.statusOrder || [];
         } catch (error) {
           collectiveStatusMapRows = [];
           statusDeliveryOptions = [];
+          statusOrderOptions = [];
+        }
+        // К7: подсказка «сколько ставить» у курсов — best-effort, без неё блок курсов работает как раньше.
+        try {
+          conversionAdvice = await callServer('getConversionAdvice');
+        } catch (error) {
+          conversionAdvice = null;
         }
         renderBody(settings);
       } catch (error) {
@@ -565,15 +583,29 @@ window.Screens.settings = {
 
       // Классы «Загрузка...» (по центру, py-10) снимаем — раньше они
       // оставались и центровали весь экран настроек (04.10.2026).
-      body.className = 'wide-columns';
-      body.innerHTML = CATEGORY_ORDER.map(cat => {
-        if (cat === 'payout_share') return sharesSectionHtml();
-        if (cat === 'forecast') return forecastSectionHtml(forecastRows);
-        if (cat === 'delivery_position_threshold' || cat === 'payment_due_threshold') return positionThresholdSectionHtml(settings.filter(s => s.category === cat), cat);
-        if (cat === 'economy') return economySectionHtml(economyRows);
-        if (cat === 'currency_margin') return currencyMarginSectionHtml(currencyMarginRows);
-        return plainSectionHtml(cat, byCategory[cat] || []);
-      }).join('') + collectiveStatusMapSectionHtml(collectiveStatusMapRows, statusDeliveryOptions);
+      // К7: разделы сгруппированы по задачам, непонятное (статусы, пороги) — первым. Внутри группы — две колонки
+      // на широком экране, как раньше было у всего экрана.
+      const sectionHtml = (part) => {
+        if (part === 'ladder') return SettingsGuide.ladderHtml(settings);
+        if (part === 'order_statuses') return SettingsGuide.orderStatusesHtml(statusOrderOptions);
+        if (part === 'collective_map') return collectiveStatusMapSectionHtml(collectiveStatusMapRows, statusDeliveryOptions);
+        if (part === 'payout_share') return sharesSectionHtml();
+        if (part === 'forecast') return forecastSectionHtml(forecastRows);
+        if (part === 'delivery_position_threshold' || part === 'payment_due_threshold') return positionThresholdSectionHtml(settings.filter(s => s.category === part), part);
+        if (part === 'economy') return economySectionHtml(economyRows);
+        if (part === 'currency_margin') return currencyMarginSectionHtml(currencyMarginRows);
+        return plainSectionHtml(part, byCategory[part] || []);
+      };
+      const shared = window.ChannelSwitch && window.ChannelSwitch.enabled()
+        ? '<span class="ml-2 inline-block rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-[10px] font-normal align-middle">общее для всех каналов</span>'
+        : '';
+      body.className = '';
+      body.innerHTML = SETTINGS_GROUPS.map(group => `
+        <div class="mb-4" data-settings-group="${group.id}">
+          <h2 class="text-base font-semibold text-gray-900 px-1">${group.title}${shared}</h2>
+          <div class="text-[12px] text-gray-500 px-1 mb-3">${group.hint}</div>
+          <div class="wide-columns">${group.parts.map(sectionHtml).join('')}</div>
+        </div>`).join('');
 
       CATEGORY_ORDER.filter(c => !specialCategories.includes(c)).forEach(cat => wirePlainSection(cat));
       wireSharesSection();
@@ -695,14 +727,21 @@ window.Screens.settings = {
     // как есть, кроме двух мелочей ниже: суффикс единицы и шаг/границы
     // числового инпута — иначе часовое значение показывалось бы с "₽" и
     // допускало дробные/отрицательные часы.
+    // К7: строка «на что влияет» с примером на текущем значении (вместо технического ключа — он в title).
+    function settingHelpHtml(s) {
+      const text = SettingsGuide.help(s, allSettingsCache);
+      if (text) return `<div class="text-[11px] text-gray-500 leading-snug mt-0.5" data-setting-help="${escapeHtmlClient(s.key)}">${escapeHtmlClient(text)}</div>`;
+      return `<div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>`;
+    }
+
     function rowHtml(s) {
       if (s.type === 'enum') return enumRowHtml(s);
       const isHour = s.category === 'notifications';
       return `
         <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}">
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(s.label)}</div>
-            <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
+          <div class="flex-1 min-w-0" title="${escapeHtmlClient(s.key)}">
+            <div class="text-sm font-medium text-gray-900">${escapeHtmlClient(SettingsGuide.label(s))}</div>
+            ${settingHelpHtml(s)}
           </div>
           <input type="number" ${isHour ? 'step="1" min="0" max="23"' : 'step="0.01"'} class="value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${s.value}" />
           <span class="text-sm text-gray-400 w-4">${isHour ? 'ч' : (s.type === 'percent' ? '%' : '₽')}</span>
@@ -722,9 +761,9 @@ window.Screens.settings = {
     function enumRowHtml(s) {
       return `
         <div class="flex items-center gap-2 p-3" data-row-key="${escapeHtmlClient(s.key)}" data-row-type="enum">
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(s.label)}</div>
-            <div class="text-[11px] text-gray-400">${escapeHtmlClient(s.key)}</div>
+          <div class="flex-1 min-w-0" title="${escapeHtmlClient(s.key)}">
+            <div class="text-sm font-medium text-gray-900">${escapeHtmlClient(SettingsGuide.label(s))}</div>
+            ${settingHelpHtml(s)}
           </div>
           <select class="value-select rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
             ${(ENUM_OPTIONS_BY_KEY[s.key] || []).map(o => `<option value="${o.value}" ${o.value === s.valueText ? 'selected' : ''}>${o.label}</option>`).join('')}
@@ -802,7 +841,7 @@ window.Screens.settings = {
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="forecast">
             ${FORECAST_FIELD_DEFS.map(def => forecastRowHtml(def, rows.find(r => r.key === def.key))).join('')}
           </div>
-          <div class="text-[11px] text-gray-400 px-1 mt-2">«Доставка КЗ→РФ» на самом заказе складывается из «Такси КЗ» + «СДЭК» + «Такси РФ» — здесь задаются только прогнозы для предзаполнения формы.</div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Подставляются в новый заказ как ожидаемые расходы, пока нет настоящих сумм. «Доставка КЗ→РФ» в заказе = «Такси КЗ» + «СДЭК» + «Такси РФ».</div>
         </section>
       `;
     }
@@ -833,9 +872,12 @@ window.Screens.settings = {
       const value = setting ? setting.value : '';
       return `
         <div class="flex items-center gap-2 p-3" data-position-key="${def.key}" data-position-label="${escapeHtmlClient(def.label)}">
-          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
-          <input type="number" step="1" min="1" max="12" class="position-value-input w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${value}" />
-          <span class="text-[11px] text-gray-400 w-10">шаг</span>
+          <div class="w-28 shrink-0 text-sm font-medium text-gray-900">${escapeHtmlClient(def.label)}</div>
+          <!-- К7: шаг выбирается по названию статуса доставки, сохраняется тот же номер 1–12. -->
+          <select class="position-value-input flex-1 min-w-0 rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
+            ${value === '' ? '<option value="" selected>— не задано —</option>' : ''}
+            ${SettingsGuide.stepOptionsHtml(value)}
+          </select>
           <button type="button" class="position-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
           </button>
@@ -879,6 +921,12 @@ window.Screens.settings = {
           try {
             await callServer('upsertFinancialSetting', { key, label, value, type: 'fixed', category });
             showSaveToast(true, 'Сохранено.');
+            // К7: отметки «оплатить / в доходе» на шагах доставки — сразу по новому значению.
+            const cached = allSettingsCache.find(s => s.key === key);
+            if (cached) cached.value = value;
+            else allSettingsCache.push({ key, label, value, type: 'fixed', category });
+            const ladder = document.getElementById('settings-ladder');
+            if (ladder) ladder.closest('section').outerHTML = SettingsGuide.ladderHtml(allSettingsCache);
           } catch (error) {
             showSaveToast(false, error.message);
           } finally {
@@ -892,7 +940,10 @@ window.Screens.settings = {
       const value = setting ? setting.value : '';
       return `
         <div class="flex items-center gap-2 p-3" data-economy-key="${def.key}" data-economy-label="${escapeHtmlClient(def.label)}" data-economy-min="${def.min}">
-          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-gray-900">${escapeHtmlClient(def.label)}</div>
+            ${setting ? settingHelpHtml(setting) : ''}
+          </div>
           <input type="number" step="1" min="${def.min}" class="economy-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" value="${value}" />
           <button type="button" class="economy-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
             <i data-lucide="check" class="w-4 h-4"></i>
@@ -904,13 +955,18 @@ window.Screens.settings = {
     function currencyMarginRowHtml(def, setting) {
       const value = setting ? setting.value : '';
       return `
-        <div class="flex items-center gap-2 p-3" data-margin-key="${def.key}" data-margin-label="${escapeHtmlClient(def.label)}">
-          <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
-          <input type="number" step="0.001" min="0" class="margin-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" placeholder="1.00" value="${value}" />
-          <span class="text-sm text-gray-400 w-4">×</span>
-          <button type="button" class="margin-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
-            <i data-lucide="check" class="w-4 h-4"></i>
-          </button>
+        <div class="p-3" data-margin-key="${def.key}" data-margin-label="${escapeHtmlClient(def.label)}">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">${escapeHtmlClient(def.label)}</div>
+            <input type="number" step="0.001" min="0" class="margin-value-input w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right" placeholder="1.00" value="${value}" />
+            <span class="text-sm text-gray-400 w-4">×</span>
+            <button type="button" class="margin-save-btn p-2 text-indigo-600 rounded-full hover:bg-indigo-50" title="Сохранить">
+              <i data-lucide="check" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <!-- К7: живой пересчёт «сколько это клиенту» при вводе (SettingsGuide.wireCurrencyHints). -->
+          <div class="text-[11px] text-gray-500 leading-snug mt-1" data-margin-hint="${def.key}"></div>
+          ${def.key === 'Маржа_RUB_KZT' ? '<div id="margin-advice" class="mt-2 p-2.5 rounded-lg bg-indigo-50/70 text-[11px] text-gray-600 leading-relaxed"></div>' : ''}
         </div>
       `;
     }
@@ -919,10 +975,11 @@ window.Screens.settings = {
       return `
         <section class="mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-2">${CATEGORY_LABELS.currency_margin}</div>
+          <div class="text-[11px] text-gray-500 px-1 mb-2 leading-snug">${SettingsGuide.marginIntroHtml()}</div>
           <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100" data-category="currency_margin">
             ${CURRENCY_MARGIN_DEFS.map(def => currencyMarginRowHtml(def, rows.find(r => r.key === def.key))).join('')}
           </div>
-          <div class="text-[11px] text-gray-400 px-1 mt-2">Множитель наценки на одно звено конвертации через тенге (например 1.04 = "+4%", 0.94 = "-6%"). "Наценка: тенге → фунт" пуста, пока не впишешь и не сохранишь значение — без неё фунт просто не участвует в расчёте курса заказа.</div>
+          <div class="text-[11px] text-gray-400 px-1 mt-2">Новый коэффициент идёт в новые заказы; у уже заведённых курс записан при создании и сам не меняется. «Обмен ₽ → ₸» также переводит в рубли расходы коллективок в тенге. «Буфер» в «Кошелёк ₸» на цену клиенту не влияет — только на отчёты и подсказку минимальной комиссии.</div>
         </section>
       `;
     }
@@ -930,6 +987,7 @@ window.Screens.settings = {
     function wireCurrencyMarginSection() {
       const container = document.querySelector('[data-category="currency_margin"]');
       if (!container) return;
+      SettingsGuide.wireCurrencyHints(container, conversionAdvice);
 
       container.querySelectorAll('[data-margin-key]').forEach(row => {
         const key = row.dataset.marginKey;

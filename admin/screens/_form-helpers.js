@@ -58,6 +58,14 @@ window.FormHelpers = {
         select.value = lastRealValue;
         return;
       }
+      // К7: порядок шагов доставки задан в программе — новый статус в шаги не попадёт (предупредить, не запрещать).
+      if (category === 'statusDelivery' && !(await showConfirmModal(
+        `Статуса «${trimmed}» нет в шагах доставки. На нём не сработают оплаты по этапам, пороги из «Настроек» и закрытие заказа — заказ будет как без статуса. Всё равно добавить?`,
+        { confirmLabel: 'Добавить' }
+      ))) {
+        select.value = lastRealValue;
+        return;
+      }
 
       try {
         const result = await callServer('addDictionaryValue', category, trimmed);
