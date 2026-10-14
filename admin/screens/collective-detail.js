@@ -52,6 +52,13 @@
  * recalculateCollectiveReconciliation`), это уже не "бесплатное" действие.
  */
 window.Screens = window.Screens || {};
+
+// Последний заказ, открытый из списка коллективки (отзыв Милены 12.10.2026:
+// после правки заказа возвращало в начало списка). Переживает пересоздание
+// экрана при возврате (router.js каждый раз зовёт render() заново и крутит
+// страницу в начало) — первая загрузка после возврата прокручивает к этой карточке.
+let lastOpenedCollectiveOrder = null;
+
 window.Screens.collectiveDetail = {
   render(root, dictionaries, params, signal) {
     const collectiveId = params.collectiveId;
@@ -324,6 +331,16 @@ window.Screens.collectiveDetail = {
 
     loadAll();
 
+    // Один раз за возврат на экран: к карточке заказа, из которого вышли.
+    function scrollToLastOpenedOrder() {
+      const last = lastOpenedCollectiveOrder;
+      if (!last || last.collectiveId !== collectiveId) return;
+      lastOpenedCollectiveOrder = null;
+      const card = Array.from(document.querySelectorAll('#order-list > [data-order-id]'))
+        .find((el) => el.dataset.orderId === last.orderId);
+      if (card) card.scrollIntoView({ block: 'center' });
+    }
+
     async function loadAll() {
       try {
         const [d, logistics, sdek] = await Promise.all([
@@ -349,6 +366,7 @@ window.Screens.collectiveDetail = {
         loadErrorEl.classList.add('hidden');
         bodyEl.classList.remove('hidden');
         if (window.lucide) window.lucide.createIcons();
+        scrollToLastOpenedOrder();
       } catch (error) {
         loadErrorEl.textContent = 'Не удалось загрузить коллективку: ' + error.message;
         loadErrorEl.classList.remove('hidden');
@@ -1532,6 +1550,7 @@ window.Screens.collectiveDetail = {
       function openOrderTap(e) {
         e.stopPropagation();
         if (selectMode) { toggleSelected(o.orderId); renderOrderList(); return; }
+        lastOpenedCollectiveOrder = { collectiveId, orderId: o.orderId };
         navigateTo(`orders/${encodeURIComponent(o.orderId)}/edit`);
       }
 
