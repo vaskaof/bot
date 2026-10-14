@@ -335,7 +335,7 @@ window.CartPosition = {
       <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
         <input type="checkbox" class="own-purchase-checkbox w-4 h-4 accent-indigo-600 cursor-pointer">
         Личный заказ (без плательщика)
-        ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
+        ${helpIcon('Личный заказ', '<p>Для себя, без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны. В поле клиента подставится ваш аккаунт — при необходимости замените его; денег по такому заказу с клиента не берётся.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
       </label>
       <!-- "Товар выкупил сам клиент" (22.09.2026) — НЕ то же, что "Личный
            заказ": клиент реальный, платит за доставку/комиссию как обычно
@@ -825,13 +825,11 @@ window.CartPosition = {
     item.amountCurrencySymbolEl.textContent = CartMoney.CURRENCY_SYMBOLS[ctx.getCurrentCurrency()] || '';
     rowEl.querySelector('.remove-item-btn').addEventListener('click', () => ctx.removeItem(id));
 
-    // "Личный заказ" — та же логика, что order-new.js:230-235,656-664:
-    // скрывает поиск клиента, на getPayload() игнорирует уже выбранного.
-    item.ownPurchaseCheckboxEl.addEventListener('change', () => {
-      rowEl.querySelector('.client-row').classList.toggle('hidden', item.ownPurchaseCheckboxEl.checked);
-      item.clientDropdownEl.classList.remove('active');
-      ctx.updateSummaryDisplay(); // §4 C1 — метка "Личный заказ" в разбивке "по клиентам"
-    });
+    // «Личный заказ» (14.10.2026, отзыв Милены, решение VASY): если клиент ещё не выбран, подставляется аккаунт
+    // самого менеджера — менеджер может сменить его в том же поле. Строка клиента остаётся видимой. Плательщика у
+    // такого заказа всё равно нет (сервер не пускает его в деньги). Подставленный автоматически аккаунт снимается
+    // при снятии галочки; выбранный вручную остаётся.
+    FormHelpers.wireOwnPurchaseClient(item, () => ctx.updateSummaryDisplay()); // §4 C1 — метка «Личный заказ» в разбивке «по клиентам»
 
     // «На продаже» (IMPLEMENTATION-PLAN-ON-SALE.md §4.2, 08.09.2026) —
     // внутренний флаг, НЕ чекбокс на карточке (единственный путь сюда —
@@ -1640,7 +1638,7 @@ window.CartPosition = {
       const pay = ctx.paymentFor(`pos${id}`);
       const singleDiscount = item.getSingleDiscount();
       return [{
-        client: (item.ownPurchaseCheckboxEl.checked || item.onSale)
+        client: item.onSale
           ? { telegramId: '', username: '', name: '' }
           : (item.manualClientData
             ? { telegramId: '', username: item.manualClientData.username, name: item.manualClientData.name }

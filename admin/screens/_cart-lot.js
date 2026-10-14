@@ -781,7 +781,7 @@ window.CartLot = {
         <label class="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none mt-1.5">
           <input type="checkbox" class="own-purchase-checkbox w-3.5 h-3.5 accent-indigo-600 cursor-pointer">
           Личный заказ (без плательщика)
-          ${helpIcon('Личный заказ', '<p>Для себя, без клиента и без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
+          ${helpIcon('Личный заказ', '<p>Для себя, без будущей оплаты (подарок, тест, личная покупка) — комиссия и уведомление клиенту не нужны. В поле клиента подставится ваш аккаунт — при необходимости замените его; денег по такому заказу с клиента не берётся.</p><p>Если товар куплен впрок для будущей продажи (покупателя пока нет, но расход уже есть) — это НЕ личный заказ, для этого случая отдельный статус «На продаже».</p>')}
         </label>
         <!-- «Сколько уже оплачено» — в блоке «Итог и оплаты» в конце экрана
              (волна 2 аудита менеджера, сессия 2), выбор по клиенту. -->
@@ -841,11 +841,8 @@ window.CartLot = {
       lotRows.push(row);
 
       // "Личный заказ" — та же логика, что на отдельной позиции (§2.1).
-      row.ownPurchaseCheckboxEl.addEventListener('change', () => {
-        rowEl.querySelector('.client-row').classList.toggle('hidden', row.ownPurchaseCheckboxEl.checked);
-        row.clientDropdownEl.classList.remove('active');
-        ctx.updateSummaryDisplay(); // §4 C1 — метка "Личный заказ" в разбивке "по клиентам"
-      });
+      // С 14.10.2026 строка клиента остаётся видимой, в неё подставляется аккаунт менеджера (см. wireOwnPurchaseClient).
+      FormHelpers.wireOwnPurchaseClient(row, () => ctx.updateSummaryDisplay()); // §4 C1 — метка «Личный заказ» в разбивке «по клиентам»
 
       if (prefillClient) {
         row.telegramId = prefillClient.telegramId || '';
@@ -1150,7 +1147,7 @@ window.CartLot = {
           weightTotalRub: weightTotalInput.value.trim()
         },
         positions: lotRows.map((r) => ({
-          client: (r.ownPurchaseCheckboxEl.checked || r.onSale)
+          client: r.onSale
             ? { telegramId: '', username: '', name: '' }
             : (r.manualClientData
               ? { telegramId: '', username: r.manualClientData.username, name: r.manualClientData.name }

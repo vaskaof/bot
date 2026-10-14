@@ -129,6 +129,63 @@ window.FormHelpers = {
   },
 
   /**
+   * Аккаунт самого менеджера как клиент — для «Личный заказ» (отзыв Милены 12.10.2026: подставлять её аккаунт,
+   * чтобы не было путаницы; клиента можно сменить). `{telegramId, username, name, display}` в том же виде, что
+   * выбор из поиска клиентов, или null, если свой Telegram ID неизвестен. Читается один раз за сессию.
+   */
+  async getMyClient() {
+    const telegramId = String(window.CURRENT_STAFF_TELEGRAM_ID || '').trim();
+    if (!telegramId) return null;
+    if (!FormHelpers._myClientPromise || FormHelpers._myClientFor !== telegramId) {
+      FormHelpers._myClientFor = telegramId;
+      FormHelpers._myClientPromise = (async () => {
+        let found = null;
+        try { found = await callServer('getClientByTelegramId', telegramId); } catch (_error) { /* ниже — по данным доступа */ }
+        const name = (found && found.name) || window.CURRENT_STAFF_NAME || '';
+        const username = (found && found.username) || '';
+        return {
+          telegramId, username, name,
+          display: name !== '' ? `${name}${username ? ` (${username})` : ''}` : (username || telegramId)
+        };
+      })();
+    }
+    return FormHelpers._myClientPromise;
+  },
+
+  /**
+   * Поведение галочки «Личный заказ» для сущности с полями клиента (`telegramId/username/name/manualClientData`,
+   * `clientSearchEl`, `clientDropdownEl`, `ownPurchaseCheckboxEl`) — позиция корзины и строка лота. При включении без
+   * выбранного клиента подставляется аккаунт менеджера (см. getMyClient); подставленное автоматически снимается при
+   * снятии галочки, выбранное руками остаётся. `onChange` — перерисовка сводки.
+   */
+  wireOwnPurchaseClient(entity, onChange) {
+    const noClientChosen = () => !entity.telegramId && !entity.manualClientData && !entity.clientSearchEl.value.trim();
+    entity.ownPurchaseCheckboxEl.addEventListener('change', async () => {
+      entity.clientDropdownEl.classList.remove('active');
+      if (entity.ownPurchaseCheckboxEl.checked) {
+        if (noClientChosen()) {
+          const mine = await FormHelpers.getMyClient();
+          // за время запроса галочку могли снять или клиента выбрать руками
+          if (mine && entity.ownPurchaseCheckboxEl.checked && noClientChosen()) {
+            entity.telegramId = mine.telegramId; entity.username = mine.username; entity.name = mine.name;
+            entity.clientSearchEl.value = mine.display;
+            entity.ownClientAutoFilled = true;
+          }
+        }
+      } else {
+        if (entity.ownClientAutoFilled) {
+          entity.telegramId = ''; entity.username = ''; entity.name = '';
+          entity.clientSearchEl.value = '';
+        }
+        entity.ownClientAutoFilled = false;
+      }
+      onChange();
+    });
+    // Выбор или ввод клиента руками — больше не «автоподстановка» (выбор из списка идёт через input в поле поиска).
+    entity.clientSearchEl.addEventListener('input', () => { entity.ownClientAutoFilled = false; });
+  },
+
+  /**
    * Универсальный обработчик тэг-переключателей Да/Нет. Состояние хранится
    * в data-value контейнера.
    */

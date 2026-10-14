@@ -1286,6 +1286,31 @@ window.Screens.orderEdit = {
     clientSearch.addEventListener('input', handleClientSearch);
     clientSearch.addEventListener('focus', (e) => { if (e.target.value.trim().length >= 2) clientDropdown.classList.add('active'); });
 
+    // «Личный заказ» (14.10.2026, отзыв Милены, решение VASY): если клиента нет, подставляется аккаунт самого
+    // менеджера — его можно заменить в этом же поле. Подставленное само снимается при снятии галочки.
+    let ownClientAutoFilled = false;
+    clientSearch.addEventListener('input', () => { ownClientAutoFilled = false; });
+    document.getElementById('own-purchase-checkbox').addEventListener('change', async (e) => {
+      const noClientChosen = () => !selectedClientId && !manualClientData && !clientSearch.value.trim();
+      if (e.target.checked) {
+        if (!noClientChosen()) return;
+        const mine = await FormHelpers.getMyClient();
+        if (mine && e.target.checked && noClientChosen()) {
+          selectedClientId = mine.telegramId;
+          selectedClientUsername = mine.username;
+          selectedClientName = mine.name;
+          clientSearch.value = mine.display;
+          ownClientAutoFilled = true;
+        }
+      } else if (ownClientAutoFilled) {
+        selectedClientId = '';
+        selectedClientUsername = '';
+        selectedClientName = '';
+        clientSearch.value = '';
+        ownClientAutoFilled = false;
+      }
+    });
+
     document.addEventListener('click', (e) => {
       if (!releaseSearch.contains(e.target) && !releaseDropdown.contains(e.target)) {
         releaseDropdown.classList.remove('active');
