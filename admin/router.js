@@ -272,6 +272,7 @@ function navigateBack(fallbackPath, fallbackParams) {
  * (screens/_error-hints.js): человеческий текст, подсказка, «Сообщить».
  */
 function showSaveToast(success, message) {
+  if (!success && window.UiEvents) window.UiEvents.onErrorShown(message);
   if (!success && window.ErrorHints) {
     ErrorHints.show(message);
     return;
@@ -413,6 +414,8 @@ function renderRoute(dictionaries) {
   _currentScreenController = new AbortController();
 
   root.innerHTML = '';
+  // Этап 1 (17.10.2026): события интерфейса — до render(), чтобы запросы экрана посчитались к новому визиту.
+  if (window.UiEvents) window.UiEvents.onScreen(screen);
   screenModule.render(root, dictionaries, params, _currentScreenController.signal);
   // Обучение, этап 4: «здесь есть урок» — один раз на сценарий (см. _training-ui.js).
   if (window.TrainingUI && window.TrainingUI.offerMoment) window.TrainingUI.offerMoment();

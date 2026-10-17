@@ -34,7 +34,7 @@
   // Записи, которые разрешены и в учебном режиме: само обучение и служебное.
   const ALLOWED_WRITES = new Set([
     'recordTrainingEvent', 'submitStaffFeedback', 'markTrainingBadgesSeen', 'markWhatsNewSeen',
-    'reportUiError', 'reportClientBootIssue', 'recordPrivacyConsent'
+    'reportUiError', 'reportClientBootIssue', 'recordPrivacyConsent', 'recordUiEvents'
   ]);
   const WRITE_RE = /^(create|record|update|set|assign|unassign|delete|save|approve|reject|snooze|dismiss|undismiss|close|add|cancel|edit|apply|attach|send|release|refund|bulk|link|resolve|merge|publish|submit|mark|confirm|import|take|move|restore|clear|toggle|join|draw|finish|book|ask|rate)/;
 
