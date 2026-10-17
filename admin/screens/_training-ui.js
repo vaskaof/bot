@@ -111,7 +111,7 @@
       sendBtn.disabled = true;
       sendBtn.textContent = 'Отправляю…';
       try {
-        await callServer('submitStaffFeedback', { kind: 'idea', screen, text: text.value.trim() });
+        await callServer('submitStaffFeedback', { kind: 'idea', screen, text: text.value.trim(), context: ideaContext() });
         close();
         showSaveToast(true, 'Спасибо! Ушло VASY. Статус идеи — в «Обучении».');
         checkNewBadges();
@@ -122,6 +122,20 @@
       }
     };
     setTimeout(() => text.focus(), 50);
+  }
+
+  /**
+   * Этап 2 обратной связи (17.10.2026, п.12–13): к «Неудобно / идея» экран, версия, телефон и признаки трудности
+   * визита (ошибки, повторные клики, нажатия без отклика, медленные ответы — _ui-events.js) прикладываются сами.
+   */
+  function ideaContext() {
+    const context = problemContext({});
+    try {
+      const s = window.UiEvents && UiEvents.signals ? UiEvents.signals() : {};
+      const parts = Object.entries(s).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${v}`);
+      if (parts.length) context.uiSignals = parts.join(' ');
+    } catch (_e) { /* без сборщика — без признаков */ }
+    return context;
   }
 
   // --- «Сообщить о проблеме» (этап 2, 04.10.2026) ---

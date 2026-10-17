@@ -40,7 +40,7 @@
   const SERVICE_METHODS = new Set([
     'recordUiEvents', 'reportUiError', 'recordTrainingEvent', 'markTrainingBadgesSeen', 'markWhatsNewSeen',
     'setWhatsNewPopup', 'submitStaffFeedback', 'askAssistant', 'rateAssistantSession', 'attachAssistantScreenshot',
-    'recordPracticeSignal'
+    'recordPracticeSignal', 'requestActionFeedback', 'answerActionFeedback'
   ]);
 
   function isWriteMethod(method) {
@@ -161,8 +161,9 @@
   }
 
   /**
-   * Ядро без DOM: состояние визита и правила признаков. `emit(event)` — в очередь.
-   * @param {{now: () => number, emit: (e: object) => void}} io
+   * Ядро без DOM: состояние визита и правила признаков. `emit(event)` — в очередь; `onAction(info)` — удачная
+   * запись с признаками трудности визита (Этап 2: вопрос «Удобно было?», _action-feedback.js).
+   * @param {{now: () => number, emit: (e: object) => void, onAction?: (info: object) => void}} io
    */
   function createCore(io) {
     let visit = null;
@@ -200,7 +201,8 @@
       prevVisit = left;
       visit = {
         screen, enteredAt: now, visibleMs: 0, visibleSince: now, readyAt: null, windowCalls: 0, pending: 0,
-        calls: 0, inputs: 0, textInputsSinceSave: 0, fields: new Set(), firstInputAt: null, errors: 0, clicks: 0, saves: 0
+        calls: 0, inputs: 0, textInputsSinceSave: 0, fields: new Set(), firstInputAt: null, errors: 0, clicks: 0, saves: 0,
+        rage: 0, dead: 0, slow: 0
       };
     }
 
@@ -260,7 +262,10 @@
       const write = isWriteMethod(token.method);
       const screen = v ? v.screen : '';
       if (outcome.networkFail) emit({ kind: 'net_fail', screen, target: token.method, ms });
-      if (ms >= SLOW_CALL_MS) emit({ kind: 'slow_call', screen, target: token.method, ms, data: { write, ok: !!outcome.ok } });
+      if (ms >= SLOW_CALL_MS) {
+        if (v) v.slow += 1;
+        emit({ kind: 'slow_call', screen, target: token.method, ms, data: { write, ok: !!outcome.ok } });
+      }
       if (write && !outcome.networkFail) {
         const data = { ok: !!outcome.ok, errors: v ? v.errors : 0 };
         if (v) data.sinceScreenMs = visibleMs(v, token.start);
@@ -269,6 +274,13 @@
         if (outcome.ok && v) {
           v.textInputsSinceSave = 0;
           v.saves += 1;
+        }
+        if (outcome.ok && io.onAction) {
+          io.onAction({
+            method: token.method, screen, modal: token.modal, callMs: ms,
+            sinceScreenMs: data.sinceScreenMs, sinceInputMs: data.sinceInputMs,
+            signals: v ? { errors: v.errors, rage: v.rage, dead: v.dead, slow: v.slow } : {}
+          });
         }
       }
       if (outcome.ok && /^search/.test(token.method) && token.qLen > 0 && isEmptyResult(outcome.result)) {
@@ -296,6 +308,7 @@
       rage.last = now;
       if (rage.count >= RAGE_COUNT && !rage.reported) {
         rage.reported = true;
+        if (visit) visit.rage += 1;
         emit({ kind: 'rage_click', screen: visit ? visit.screen : '', target, modal, data: { n: rage.count } });
       }
     }
@@ -306,6 +319,7 @@
       const t = io.now();
       if (lastDead.target === target && t - lastDead.at < 2000) return;
       lastDead = { target, at: t };
+      if (visit) visit.dead += 1;
       emit({ kind: 'dead_click', screen: visit ? visit.screen : '', target, modal, data: extra || {} });
     }
 
@@ -317,6 +331,7 @@
     return {
       onScreen, onHidden, onVisible, leave, snapshot, callStart, callEnd, onInput, onClick, onDeadClick, onError,
       screen: () => (visit ? visit.screen : ''),
+      signals: () => (visit ? { errors: visit.errors, rage: visit.rage, dead: visit.dead, slow: visit.slow } : {}),
       callCount: () => calls
     };
   }
@@ -475,7 +490,7 @@
       if (!core || disabled()) return;
       const el = e.target;
       if (!el || !el.tagName || isSearchField(el)) return;
-      if (el.closest && el.closest('#training-assistant-sheet, #lesson-feedback-sheet')) return;
+      if (el.closest && el.closest('#training-assistant-sheet, #lesson-feedback-sheet, #save-toast')) return;
       const text = isTextField(el);
       if (isChange && text) return; // текстовое поле уже посчитано по input
       core.onInput(describeTarget(el), text, now());
@@ -521,7 +536,7 @@
   function start(screen) {
     started = true;
     sessionId = randomId();
-    core = createCore({ now, emit: push });
+    core = createCore({ now, emit: push, onAction: (info) => { if (window.ActionFeedback) window.ActionFeedback.onAction(info); } });
     const prev = restore();
     if (prev && prev.queue.length) send(prev.sessionId || sessionId, prev.queue.slice(-BATCH));
     const type = navType();
@@ -537,6 +552,7 @@
     try {
       if (!started) start(screen);
       core.onScreen(screen, now());
+      if (window.ActionFeedback) window.ActionFeedback.onScreen(screen);
     } catch (_e) { /* сбор не мешает */ }
   }
 
@@ -558,6 +574,8 @@
     onScreen,
     onErrorShown,
     flush,
+    /** Признаки трудности текущего визита (жалоба «Неудобно / идея» прикладывает их сама). */
+    signals: () => { try { return core ? core.signals() : {}; } catch (_e) { return {}; } },
     // Для тестов.
     _createCore: createCore,
     _describeTarget: describeTarget,
